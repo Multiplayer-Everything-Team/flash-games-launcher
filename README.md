@@ -46,9 +46,8 @@ Native C++20/Win32, no dependencies, one small `.exe`.
 **Getting the games.** When a game file is missing, the game shows *Download game
 files*: the launcher fetches them from [multiplayereverything/flash-games](https://github.com/multiplayereverything/flash-games),
 checks each file against the SHA-256 in that repository's catalog, and saves it in
-`games\`. Right now that covers Gun Mayhem 2 (original and online) and the original
-Stealth Hunter 2; the Stealth Hunter 2 co-op build follows once its next release
-passes testing. You can also put your own `.swf` files in `games\` (names are in
+`games\`. Right now that covers Gun Mayhem 2 and Stealth Hunter 2, each original
+and online (the repository's README lists how far each build is tested). You can also put your own `.swf` files in `games\` (names are in
 `games\README.txt`), use *Locate game file...*, or install Flashpoint, whose copies
 are picked up automatically.
 
