@@ -28,6 +28,14 @@
       "id": "ruffle",
       "name": "Ruffle",
       "website": "https://ruffle.rs/downloads",
+      // When Ruffle isn't found, the launcher offers to install the latest stable
+      // release from Ruffle's official GitHub page (checked against its SHA-256).
+      "install": {
+        "github": "ruffle-rs/ruffle",
+        "asset": "*windows-x86_64.zip",
+        "dir": "${PLAYERS_DIR}\\ruffle",
+        "exe": "ruffle.exe"
+      },
       "paths": [
         "${PLAYERS_DIR}\\ruffle\\ruffle.exe",
         "${PLAYERS_DIR}\\ruffle.exe",

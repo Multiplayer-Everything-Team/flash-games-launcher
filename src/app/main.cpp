@@ -4,6 +4,7 @@
 #include "app/cli.h"
 #include "core/config.h"
 #include "core/fs.h"
+#include "core/install.h"
 #include "core/library.h"
 #include "core/log.h"
 #include "core/relay.h"
@@ -107,7 +108,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
-    bool cliMode = a.help || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.error.empty();
+    bool cliMode = a.help || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
+                   !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
         fail(a.error + L"\n\n" + usageText());
@@ -146,6 +148,27 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Library lib(cfg, base);
     std::wstring userPath = fs::join(lib.dataDir(), L"settings.json");
     UserData user = loadUserData(userPath);
+
+    if (!a.installPlayer.empty()) {
+        const PlayerSpec* p = cfg.findPlayer(a.installPlayer);
+        if (!p || !p->install.enabled()) {
+            fail(L"No installable player with id \"" + widen(a.installPlayer) + L"\" (it needs an \"install\" entry)");
+            return 3;
+        }
+        int lastPct = -1;
+        InstallResult r = installPlayer(*p, lib.vars(), [&](const InstallStatus& s) {
+            if (s.stage != InstallStatus::Stage::Downloading || !s.total) return;
+            int pct = static_cast<int>(s.done * 100 / s.total);
+            if (pct / 10 != lastPct / 10) out(std::to_wstring(pct) + L"%\n");
+            lastPct = pct;
+        }, nullptr);
+        if (!r.ok) {
+            fail(cfg.t("install.failed", {{L"PLAYER", p->name}, {L"ERROR", r.error}}));
+            return 1;
+        }
+        out(cfg.t("install.done", {{L"PLAYER", r.version.empty() ? p->name : p->name + L" " + r.version}}) + L"\n" + r.exe + L"\n");
+        return 0;
+    }
 
     if (a.list) {
         for (const auto& p : lib.players())

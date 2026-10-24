@@ -18,6 +18,7 @@ endif()
 add_library(launcher_core STATIC
   src/core/config.cpp
   src/core/fs.cpp
+  src/core/install.cpp
   src/core/json.cpp
   src/core/library.cpp
   src/core/log.cpp
@@ -28,7 +29,7 @@ add_library(launcher_core STATIC
   src/core/vars.cpp
 )
 target_include_directories(launcher_core PUBLIC src)
-target_link_libraries(launcher_core PUBLIC bcrypt shell32 ole32 uuid advapi32 user32 ws2_32 iphlpapi)
+target_link_libraries(launcher_core PUBLIC bcrypt shell32 ole32 uuid advapi32 user32 ws2_32 iphlpapi winhttp)
 
 # ---- launcher executable --------------------------------------------------
 set(APP_RC "${CMAKE_BINARY_DIR}/app.rc")

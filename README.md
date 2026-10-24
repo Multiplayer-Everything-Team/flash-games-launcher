@@ -9,10 +9,17 @@ Native C++20/Win32, no dependencies, one small `.exe`.
 
 ## What it does
 
-- **Finds everything itself.** Ruffle (bundled folder, `Program Files`, PATH),
-  Flashpoint's Flash Player 32, and each game's `.swf` in `games\` or your
+- **Finds everything itself.** Ruffle (its own `players\` folder, `Program Files`,
+  PATH), Flashpoint's Flash Player 32, and each game's `.swf` in `games\` or your
   Flashpoint folder. Anything missing gets a button that fixes it: *Locate game
-  file...* or *Get Ruffle*.
+  file...* or *Install Ruffle*.
+- **Installs Ruffle for you.** With no Flash player on the PC, the launcher offers
+  to install Ruffle: it downloads the latest stable release from Ruffle's official
+  GitHub page, checks it against the published SHA-256 checksum, and unpacks it
+  into `players\ruffle\`. Nothing is downloaded without your OK.
+- **Player slots.** Every game shows how many players it takes, in the players'
+  own colors (P1 red, P2 blue, P3 green, P4 yellow). While you host, the slots fill
+  with the names of the people who joined.
 - **Hosting without extra windows.** *Host online* starts a built-in relay (the
   same protocol as the mods' `gm2_relay.py` / `sh2_relay.py`, so no Python is
   needed) and shows who is connected plus the addresses friends should type,
@@ -44,9 +51,13 @@ automatically.
 ## Install and play
 
 1. Download `MultiplayerFlashLauncher.zip` from Releases (or build it, below) and unzip it anywhere.
-2. Install [Ruffle](https://ruffle.rs/downloads) (desktop) or put `ruffle.exe` in `players\ruffle\`.
+2. Run `FlashLauncher.exe`. If no Flash player is found it offers to install
+   Ruffle; say yes. (Or install [Ruffle](https://ruffle.rs/downloads) yourself.)
    Flashpoint users already have Flash Player 32; the launcher finds it.
-3. Run `FlashLauncher.exe`.
+
+Flash Player itself can't be installed automatically: Adobe stopped distributing
+it, so there is no official download left. Install [Flashpoint](https://flashpointarchive.org/downloads)
+if a game needs Flash Player instead of Ruffle.
 
 **Hosting:** select the game, press *Host online*, then in the game press **F9**
 and click **HOST**. Give friends an address from the *Hosting* box. Windows may
@@ -66,6 +77,7 @@ searches, **F5** rescans for players and game files, **Tab** reaches every butto
 FlashLauncher.exe --list                       every game and whether it can start
 FlashLauncher.exe --launch gunmayhem2:host     start an action without the window
 FlashLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
+FlashLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
 FlashLauncher.exe --validate                   check launcher.json
 ```
 
@@ -83,7 +95,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Dist
 
 `-Test` runs the C++ tests (config, file lookup, command lines, settings, and
 the relay against real sockets) and `tests\e2e.ps1`, which drives the real exe
-and its window through the accessibility API with a fake player. `-Dist` makes
+and its window through the accessibility API with a fake player, and installs a
+fake player from a local test server (checksum, failed reinstall, first-run prompt). `-Dist` makes
 `dist\MultiplayerFlashLauncher\` and its `.zip`, and refuses to package any
 `.swf` or player binary.
 
@@ -91,14 +104,12 @@ and its window through the accessibility API with a fake player. `-Dist` makes
 
 | Path | Contents |
 |---|---|
-| `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, settings |
+| `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, player install, settings |
 | `src/ui/` | The launcher window and its theme |
 | `src/app/` | Entry point and command line |
 | `launcher/` | What ships next to the exe: `launcher.json`, `games\`, `players\` |
 | `tests/` | C++ tests and the end-to-end script |
 | [CONFIG.md](CONFIG.md) | Every `launcher.json` option |
-| [AGENTS.md](AGENTS.md) | Architecture and rules for changing the code |
-| [PROMPT.md](PROMPT.md) | The build prompt for this launcher |
 
 Ruffle is open source ([ruffle.rs](https://ruffle.rs)). Flash Player and the
 games belong to their owners; this project ships neither.

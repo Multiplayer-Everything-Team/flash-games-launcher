@@ -90,6 +90,84 @@ $relay = Start-Process -FilePath $Launcher -ArgumentList @('--relay', ($port + 1
 Check (WaitFor { PortOpen ($port + 1) }) '--relay runs a bare relay'
 Stop-Process -Id $relay.Id -Force
 
+# ---- installing a missing player (served from 127.0.0.1, no internet) -----
+$pkg = Join-Path $work 'pkg\FakePlayer'
+New-Item -ItemType Directory -Force $pkg | Out-Null
+Copy-Item $fake (Join-Path $pkg 'fakeplay.exe')
+Compress-Archive -Path $pkg -DestinationPath "$work\fake.zip"  # the archive wraps a top folder
+$sha = (Get-FileHash "$work\fake.zip" -Algorithm SHA256).Hash.ToLower()
+$httpPort = $port + 2
+$server = Start-Job -ArgumentList $httpPort, "$work\fake.zip" -ScriptBlock {
+  param($p, $file)
+  $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
+  $l.Start()
+  $bytes = [IO.File]::ReadAllBytes($file)
+  for ($i = 0; $i -lt 4; $i++) {
+    $c = $l.AcceptTcpClient(); $s = $c.GetStream()
+    $buf = New-Object byte[] 8192; $null = $s.Read($buf, 0, $buf.Length)
+    $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $($bytes.Length)`r`nConnection: close`r`n`r`n")
+    $s.Write($h, 0, $h.Length); $s.Write($bytes, 0, $bytes.Length); $s.Flush(); $c.Close()
+  }
+  $l.Stop()
+}
+Start-Sleep -Milliseconds 800
+function InstallConfig([string]$hash) {
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["`${PLAYERS_DIR}\\fake\\fakeplay.exe"],
+                 "install": { "url": "http://127.0.0.1:$httpPort/fake.zip", "sha256": "$hash",
+                              "dir": "`${PLAYERS_DIR}\\fake", "exe": "fakeplay.exe" } } ],
+  "games": [ { "id": "demo", "name": "Demo Game", "actions": [ { "id": "play", "label": "Play", "swf": "`${GAMES_DIR}\\demo.swf" } ] } ]
+}
+"@
+}
+Set-Content "$work\install.json" (InstallConfig $sha) -Encoding UTF8
+$r = Run @('--list', '--config', "`"$work\install.json`"")
+Check ($r.Out -match 'Fake Player: not found') 'player starts out missing'
+$r = Run @('--install-player', 'fake', '--config', "`"$work\install.json`"")
+Check ($r.Code -eq 0 -and (Test-Path "$work\players\fake\fakeplay.exe")) "--install-player downloads, checks and unpacks ($($r.Out.Trim() -replace '\s+', ' '))"
+$r = Run @('--list', '--config', "`"$work\install.json`"")
+Check ($r.Out -match 'play \(Play\): ready, Fake Player') 'the installed player is used right away'
+Check (-not (Test-Path "$work\players\fake.installing") -and -not (Test-Path "$work\players\fake.old")) 'no leftovers after installing'
+
+Set-Content "$work\install.json" (InstallConfig ('0' * 64)) -Encoding UTF8
+$r = Run @('--install-player', 'fake', '--config', "`"$work\install.json`"")
+Check ($r.Code -eq 1 -and $r.Out -match 'checksum') 'a download with the wrong checksum is refused'
+Check (Test-Path "$work\players\fake\fakeplay.exe") 'a failed reinstall keeps the working player'
+$r = Run @('--install-player', 'nope', '--config', "`"$work\install.json`"")
+Check ($r.Code -eq 3) 'unknown player id exits 3'
+
+# First run with no player: the window offers the install; accept it.
+Set-Content "$work\install.json" (InstallConfig $sha) -Encoding UTF8
+Remove-Item -Recurse -Force "$work\players\fake"
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices; using System.Text;
+public static class Top {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+    public static IntPtr Find(uint pid, string cls) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); var sb = new StringBuilder(64); GetClassName(h, sb, 64);
+            if (p == pid && sb.ToString() == cls) { found = h; return false; } return true; }, IntPtr.Zero);
+        return found;
+    }
+}
+'@
+$first = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\install.json`"") -PassThru
+$dlg = [IntPtr]::Zero
+WaitFor { $script:dlg = [Top]::Find([uint32]$first.Id, '#32770'); $script:dlg -ne [IntPtr]::Zero } 10000 | Out-Null
+Check ($dlg -ne [IntPtr]::Zero) 'first run with no player asks to install one'
+if ($dlg -ne [IntPtr]::Zero) {
+  [Top]::SendMessage($dlg, 0x0466, [IntPtr]6, [IntPtr]::Zero) | Out-Null  # TDM_CLICK_BUTTON, IDYES
+  Check (WaitFor { Test-Path "$work\players\fake\fakeplay.exe" } 15000) 'accepting the prompt installs the player'
+}
+Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
+Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
+
 # ---- window, through MSAA (the API screen readers use for Win32 controls) ----
 Add-Type -ReferencedAssemblies Accessibility -TypeDefinition @'
 using System;

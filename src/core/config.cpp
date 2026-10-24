@@ -38,18 +38,17 @@ ThemeColors darkPalette() {
     c.sidebar = rgb(0x0E1014);
     c.sidebarText = rgb(0xF2F4F7);
     c.sidebarTextMuted = rgb(0x8B93A1);
-    // White labels on primary must reach 4.5:1 (WCAG AA); #4F8BFF only reached 3.25:1.
-    c.primary = rgb(0x2F6FEB);
-    c.primaryHover = rgb(0x255FD0);
+    c.primary = rgb(0xC8313A);  // the arcade start button; white on it is 5.3:1
+    c.primaryHover = rgb(0xB42A33);
     c.onPrimary = rgb(0xFFFFFF);
     c.text = rgb(0xE8EAED);
     c.textMuted = rgb(0x9AA1AC);
     c.border = rgb(0x323743);
-    c.focus = rgb(0xA9C6FF);
+    c.focus = rgb(0x8FB0FF);
     c.success = rgb(0x3CCB7F);
     c.warning = rgb(0xF2B544);
     c.error = rgb(0xFF6464);
-    c.online = rgb(0x2BD4C5);
+    c.online = rgb(0x8FB0FF);
     return c;
 }
 
@@ -61,8 +60,8 @@ ThemeColors lightPalette() {
     c.sidebar = rgb(0x1B2030);
     c.sidebarText = rgb(0xF2F4F7);
     c.sidebarTextMuted = rgb(0xA3ABBA);
-    c.primary = rgb(0x2F6FEB);
-    c.primaryHover = rgb(0x255FD0);
+    c.primary = rgb(0xB42A33);
+    c.primaryHover = rgb(0x9C232B);
     c.onPrimary = rgb(0xFFFFFF);
     c.text = rgb(0x1C2128);
     c.textMuted = rgb(0x5B6472);
@@ -105,12 +104,18 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"status.noPlayer", L"No Flash player found"},
         {"status.noSwf", L"Game file missing"},
         {"status.playing", L"Playing"},
-        {"badge.online", L"ONLINE"},
+        {"badge.online", L"Online"},
+        {"slot.label", L"P${N}"},
+        {"slot.open", L"Open"},
+        {"slot.host", L"${NAME} (host)"},
+        {"detail.playerAuto", L"Automatic (${PLAYER})"},
+        {"detail.playerAutoNone", L"Automatic"},
         {"detail.player", L"Player"},
         {"detail.players", L"Players"},
         {"detail.controls", L"Controls"},
         {"detail.never", L"Not played yet"},
-        {"detail.stats", L"Played ${COUNT}\u00D7 \u00B7 ${TIME} \u00B7 last ${WHEN}"},
+        {"detail.stats", L"Played ${COUNT} times for ${TIME} in total, last ${WHEN}."},
+        {"detail.statsOnce", L"Played once for ${TIME}, ${WHEN}."},
         {"detail.empty", L"Pick a game on the left."},
         {"button.favorite", L"\u2606  Favorite"},
         {"button.unfavorite", L"\u2605  Favorite"},
@@ -118,6 +123,17 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"button.locateFor", L"Locate file for \u201C${ACTION}\u201D\u2026"},
         {"button.folder", L"Open folder"},
         {"button.getPlayer", L"Get ${PLAYER}"},
+        {"button.installPlayer", L"Install ${PLAYER}"},
+        {"install.title", L"Install ${PLAYER}?"},
+        {"install.firstRun", L"No Flash player was found on this PC, so games can't start yet."},
+        {"install.body", L"The launcher downloads the latest ${PLAYER} release from ${SOURCE}, checks it, and puts it in ${DIR}. ${PLAYER} is free and open source."},
+        {"install.yes", L"Install ${PLAYER}"},
+        {"install.no", L"Not now"},
+        {"install.finding", L"Looking up the latest ${PLAYER} release\u2026"},
+        {"install.downloading", L"Downloading ${PLAYER}: ${DONE} of ${TOTAL}"},
+        {"install.unpacking", L"Unpacking ${PLAYER}\u2026"},
+        {"install.done", L"${PLAYER} is installed. Games can start now."},
+        {"install.failed", L"Couldn't install ${PLAYER}: ${ERROR}"},
         {"button.stopHost", L"Stop hosting"},
         {"button.copyAddress", L"Copy address"},
         {"host.running", L"Hosting on port ${PORT}"},
@@ -138,7 +154,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"bar.found", L"${PLAYER} \u2713"},
         {"bar.missing", L"${PLAYER} \u2717"},
         {"bar.flashpoint", L"Flashpoint: ${PATH}"},
-        {"bar.playing", L"Playing ${GAME} \u00B7 ${TIME}"},
+        {"bar.playing", L"Playing ${GAME} for ${TIME}"},
         {"empty.title", L"No games here"},
         {"empty.body", L"Try another category or clear the search."},
         {"time.never", L"never"},
@@ -364,6 +380,18 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             for (auto& [name, field] : colorFields(b.colors)) cs.color(name, *field);
         }
         s.str("font", b.font);
+        s.str("displayFont", b.displayFont);
+        if (auto pc = s.get("playerColors", Type::Array)) {
+            b.playerColors.clear();
+            for (size_t i = 0; i < pc->size(); ++i) {
+                Color col;
+                if (!pc->at(i).isString() || !parseColor(widen(pc->at(i).str()), col))
+                    s.error(L"playerColors", L"must be a list of colors like \"#E5484D\"");
+                else
+                    b.playerColors.push_back(col);
+            }
+            if (b.playerColors.empty()) s.error(L"playerColors", L"needs at least one color");
+        }
         s.real("fontSize", b.fontSize, 7, 20);
         Section ws(s.get("window", Type::Object), L"branding.window", issues);
         ws.integer("width", b.window.width, 400, 8000);
@@ -393,6 +421,15 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("website", p.website);
             s.strList("paths", p.paths);
             s.strList("args", p.args);
+            if (auto inst = s.get("install", Type::Object)) {
+                Section is(inst, s.child("install"), issues);
+                is.str("github", p.install.github);
+                is.str("asset", p.install.asset);
+                is.str("url", p.install.url);
+                is.str("sha256", p.install.sha256);
+                is.str("dir", p.install.dir);
+                is.str("exe", p.install.exe);
+            }
             if (p.name.empty()) p.name = widen(p.id);
             c.players.push_back(std::move(p));
         }
@@ -416,6 +453,11 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("name", g.name);
             s.str("description", g.description);
             s.str("players", g.playerCount);
+            s.integer("maxPlayers", g.maxPlayers, 0, 16);
+            if (!g.maxPlayers)
+                for (size_t k = 0; k < g.playerCount.size(); ++k)  // "1-4 players" -> 4
+                    if (iswdigit(g.playerCount[k]))
+                        g.maxPlayers = std::max(g.maxPlayers, _wtoi(g.playerCount.c_str() + k));
             s.str("controls", g.controls);
             s.str("image", g.image);
             s.idList("categories", g.categories);
@@ -497,6 +539,18 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
         if (p.paths.empty()) err(where + L".paths", L"list at least one place to look for the player");
         for (const auto& s : p.paths) checkVars(s, where + L".paths", issues);
         for (const auto& s : p.args) checkVars(s, where + L".args", issues);
+        const InstallSpec& in = p.install;
+        if (in.enabled() || !in.dir.empty()) {
+            if (in.dir.empty()) err(where + L".install.dir", L"say which folder the player is unpacked into");
+            if (!in.github.empty() && in.asset.empty())
+                err(where + L".install.asset", L"give the release file name, e.g. \"*windows-x86_64.zip\"");
+            if (!in.github.empty() && in.github.find('/') == std::string::npos)
+                err(where + L".install.github", L"must look like \"owner/repo\"");
+            if (!in.url.empty() && !startsWithI(in.url, L"https://") && !startsWithI(in.url, L"http://127.0.0.1"))
+                err(where + L".install.url", L"must be an https:// address");
+            if (!in.enabled()) err(where + L".install", L"needs \"github\" or \"url\"");
+            checkVars(in.dir, where + L".install.dir", issues);
+        }
     }
     ids.clear();
     for (size_t i = 0; i < cfg.categories.size(); ++i) {

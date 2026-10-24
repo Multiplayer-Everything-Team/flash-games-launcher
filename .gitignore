@@ -4,3 +4,6 @@ dist/
 *.swf
 launcher/players/**/*.exe
 *.log
+# Notes for AI coding agents; kept local, not published.
+AGENTS.md
+PROMPT.md

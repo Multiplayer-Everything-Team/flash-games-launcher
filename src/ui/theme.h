@@ -16,8 +16,10 @@ struct Theme {
     bool dark = true;
     UINT dpi = 96;
 
+    // Body text in the UI font; title, heading, brand, name (card titles) and
+    // button (action labels) in the display font.
     HFONT body = nullptr, strong = nullptr, caption = nullptr, tiny = nullptr, title = nullptr, brand = nullptr,
-          heading = nullptr;
+          heading = nullptr, name = nullptr, button = nullptr;
     HBRUSH brBackground = nullptr, brSurface = nullptr, brSidebar = nullptr;
     HICON iconBig = nullptr, iconSmall = nullptr;
 
@@ -36,7 +38,7 @@ private:
     void release();
     const Config* cfg_ = nullptr;
     ThemeColors configured_;
-    std::wstring family_;
+    std::wstring family_, display_, displayCondensed_;
 };
 
 Gdiplus::Color gc(const Color& c, uint8_t alpha = 255);
@@ -55,7 +57,7 @@ int textWidth(HDC dc, HFONT font, const std::wstring& text);
 std::wstring fitText(HDC dc, HFONT font, const std::wstring& text, int width, int maxHeight);
 
 std::unique_ptr<Gdiplus::Bitmap> loadImageFile(const std::wstring& path);
-// Generated cover art: gradient, soft shapes and the game's initials.
+// Generated cover art: the game's initials as pixel blocks on its own color.
 std::unique_ptr<Gdiplus::Bitmap> coverArt(const std::wstring& name, const Color& from, const Color& to, int w, int h);
 // Draws `img` scaled to cover `box` (cropping the overflow), clipped to rounded corners.
 void drawCover(Gdiplus::Graphics& g, Gdiplus::Bitmap& img, const Gdiplus::RectF& box, float radius, bool roundBottom);

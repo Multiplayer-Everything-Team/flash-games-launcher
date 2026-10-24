@@ -126,40 +126,79 @@ static std::wstring initialsOf(const std::wstring& name) {
     return out.empty() ? L"?" : out.substr(0, 3);
 }
 
+// A 5x7 pixel font for cover initials, drawn by hand for this launcher:
+// A-Z then 0-9, one byte per row, bit 4 is the leftmost column.
+static const uint8_t kPixelFont[36][7] = {
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},  // A
+    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E},  // B
+    {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E},  // C
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E},  // D
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F},  // E
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10},  // F
+    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F},  // G
+    {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},  // H
+    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E},  // I
+    {0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C},  // J
+    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11},  // K
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F},  // L
+    {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11},  // M
+    {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11},  // N
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},  // O
+    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10},  // P
+    {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D},  // Q
+    {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11},  // R
+    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E},  // S
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},  // T
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E},  // U
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04},  // V
+    {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A},  // W
+    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11},  // X
+    {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04},  // Y
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F},  // Z
+    {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},  // 0
+    {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},  // 1
+    {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F},  // 2
+    {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E},  // 3
+    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02},  // 4
+    {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E},  // 5
+    {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E},  // 6
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},  // 7
+    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},  // 8
+    {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C},  // 9
+};
+
+static const uint8_t* pixelGlyph(wchar_t ch) {
+    ch = static_cast<wchar_t>(towupper(ch));
+    if (ch >= L'A' && ch <= L'Z') return kPixelFont[ch - L'A'];
+    if (ch >= L'0' && ch <= L'9') return kPixelFont[26 + ch - L'0'];
+    return nullptr;
+}
+
 std::unique_ptr<Bitmap> coverArt(const std::wstring& name, const fl::Color& from, const fl::Color& to, int w, int h) {
     auto bmp = std::make_unique<Bitmap>(w, h, PixelFormat32bppPARGB);
     Graphics g(bmp.get());
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
     REAL W = static_cast<REAL>(w), H = static_cast<REAL>(h);
-    LinearGradientBrush br(PointF(0, 0), PointF(W, H), gc(from), gc(to));
-    g.FillRectangle(&br, 0.0f, 0.0f, W, H);
-    // Soft circles give each cover some depth without any copyrighted art.
-    unsigned seed = 0;
-    for (wchar_t ch : name) seed = seed * 31 + ch;
-    for (int i = 0; i < 4; ++i) {
-        seed = seed * 1103515245u + 12345u;
-        REAL size = H * (0.6f + (seed % 100) / 100.0f);
-        REAL x = W * ((seed >> 8) % 100) / 100.0f - size / 2;
-        REAL y = H * ((seed >> 16) % 100) / 100.0f - size / 2;
-        SolidBrush b(Gdiplus::Color(i % 2 ? 22 : 30, 255, 255, 255));
-        g.FillEllipse(&b, x, y, size, size);
-    }
-    LinearGradientBrush shade(PointF(0, H * 0.45f), PointF(0, H), Gdiplus::Color(0, 0, 0, 0), Gdiplus::Color(90, 0, 0, 0));
-    g.FillRectangle(&shade, 0.0f, H * 0.45f, W, H * 0.55f + 1);
-    std::wstring text = initialsOf(name);
-    FontFamily fam(L"Segoe UI Black");
-    FontFamily fallback(L"Segoe UI");
-    Font font(fam.IsAvailable() ? &fam : &fallback, H * (text.size() > 2 ? 0.34f : 0.42f), FontStyleBold, UnitPixel);
-    StringFormat fmt;
-    fmt.SetAlignment(StringAlignmentCenter);
-    fmt.SetLineAlignment(StringAlignmentCenter);
-    RectF r(0, 0, W, H);
-    RectF shadow(0, H * 0.025f, W, H);
-    SolidBrush dim(Gdiplus::Color(70, 0, 0, 0));
-    g.DrawString(text.c_str(), -1, &font, shadow, &fmt, &dim);
-    SolidBrush white(Gdiplus::Color(245, 255, 255, 255));
-    g.DrawString(text.c_str(), -1, &font, r, &fmt, &white);
+    SolidBrush base(gc(from));
+    g.FillRectangle(&base, 0.0f, 0.0f, W, H);
+    // A floor band in the second color: the ground line of a platform level.
+    REAL floorY = std::floor(H * 0.78f);
+    SolidBrush floor(gc(to));
+    g.FillRectangle(&floor, 0.0f, floorY, W, H - floorY + 1);
+
+    std::vector<const uint8_t*> glyphs;
+    for (wchar_t ch : initialsOf(name))
+        if (const uint8_t* gl = pixelGlyph(ch)) glyphs.push_back(gl);
+    if (glyphs.empty()) return bmp;
+    // Whole-number block size so every block is identical: the pixel look.
+    int cols = static_cast<int>(glyphs.size()) * 6 - 1, rowsN = 7;
+    REAL px = std::floor(std::min(W * 0.6f / cols, floorY * 0.55f / rowsN));
+    if (px < 1) px = 1;
+    REAL x0 = std::floor((W - cols * px) / 2), y0 = std::floor((floorY - rowsN * px) / 2);
+    SolidBrush ink(Gdiplus::Color(255, 255, 255, 255));
+    for (size_t i = 0; i < glyphs.size(); ++i)
+        for (int r = 0; r < 7; ++r)
+            for (int c = 0; c < 5; ++c)
+                if (glyphs[i][r] & (0x10 >> c)) g.FillRectangle(&ink, x0 + (i * 6 + c) * px, y0 + r * px, px, px);
     return bmp;
 }
 
@@ -218,6 +257,13 @@ void Theme::init(const Config& cfg) {
         logger().warn(L"Font '" + family_ + L"' is not available; using Segoe UI.");
         family_ = L"Segoe UI";
     }
+    // Variable fonts such as Bahnschrift appear to GDI as one family per named
+    // instance ("Bahnschrift SemiBold Condensed"), so look for those first.
+    display_ = cfg.branding.displayFont;
+    displayCondensed_ = display_ + L" SemiBold Condensed";
+    if (fontInstalled(display_ + L" SemiBold")) display_ += L" SemiBold";
+    else if (!fontInstalled(display_)) display_ = family_;
+    if (!fontInstalled(displayCondensed_)) displayCondensed_ = display_;
     HINSTANCE inst = GetModuleHandleW(nullptr);
     iconBig = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON),
                                             GetSystemMetrics(SM_CYICON), 0));
@@ -226,7 +272,7 @@ void Theme::init(const Config& cfg) {
 }
 
 void Theme::release() {
-    for (HFONT* f : {&body, &strong, &caption, &tiny, &title, &brand, &heading}) {
+    for (HFONT* f : {&body, &strong, &caption, &tiny, &title, &brand, &heading, &name, &button}) {
         if (*f) DeleteObject(*f);
         *f = nullptr;
     }
@@ -255,22 +301,25 @@ void Theme::build(UINT newDpi) {
     }
     dark = luminance(c.background) < 0.5f;
     float pt = cfg_ ? cfg_->branding.fontSize : 10.0f;
-    auto make = [&](float size, int weight) {
+    auto makeFace = [&](const std::wstring& face, float size, int weight) {
         LOGFONTW lf{};
         lf.lfHeight = -static_cast<LONG>(size * dpi / 72.0f + 0.5f);
         lf.lfWeight = weight;
         lf.lfCharSet = DEFAULT_CHARSET;
         lf.lfQuality = CLEARTYPE_QUALITY;
-        wcsncpy_s(lf.lfFaceName, family_.c_str(), _TRUNCATE);
+        wcsncpy_s(lf.lfFaceName, face.c_str(), _TRUNCATE);
         return CreateFontIndirectW(&lf);
     };
+    auto make = [&](float size, int weight) { return makeFace(family_, size, weight); };
     body = make(pt, FW_NORMAL);
     strong = make(pt, FW_SEMIBOLD);
     caption = make(pt - 1.0f, FW_NORMAL);
     tiny = make(pt - 2.0f, FW_BOLD);
-    heading = make(pt + 1.5f, FW_SEMIBOLD);
-    title = make(pt * 1.9f, FW_BOLD);
-    brand = make(pt * 1.3f, FW_BOLD);
+    heading = makeFace(display_, pt * 1.3f, FW_SEMIBOLD);
+    title = makeFace(displayCondensed_, pt * 2.3f, FW_SEMIBOLD);
+    brand = makeFace(display_, pt * 1.45f, FW_SEMIBOLD);
+    name = makeFace(displayCondensed_, pt * 1.35f, FW_SEMIBOLD);
+    button = makeFace(display_, pt * 1.25f, FW_SEMIBOLD);
     brBackground = CreateSolidBrush(c.background.ref());
     brSurface = CreateSolidBrush(c.surface.ref());
     brSidebar = CreateSolidBrush(c.sidebar.ref());

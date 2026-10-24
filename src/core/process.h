@@ -19,8 +19,9 @@ struct Started {
     HANDLE process = nullptr;  // owned by the caller (or handed to ProcessWatcher)
     DWORD pid = 0;
 };
+// `hidden`: no console window (for helper tools such as tar.exe).
 bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args, const std::wstring& workDir,
-                  Started& out, std::wstring& error);
+                  Started& out, std::wstring& error, bool hidden = false);
 
 bool openPath(const std::wstring& pathOrUrl);
 // Opens Explorer with `file` selected (or the folder itself).

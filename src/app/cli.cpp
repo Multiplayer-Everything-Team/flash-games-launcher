@@ -21,7 +21,10 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--log") value(a.log);
         else if (k == L"--snapshot") value(a.snapshot);
         else if (k == L"--launch") value(a.launch);
-        else if (k == L"--select") {
+        else if (k == L"--install-player") {
+            value(tmp);
+            a.installPlayer = narrow(tmp);
+        } else if (k == L"--select") {
             value(tmp);
             a.select = narrow(tmp);
         } else if (k == L"--size") {
@@ -54,6 +57,8 @@ launcher.json next to the exe.
                          Start a game without the window (default action: the first).
                          Host actions keep the relay running until the game exits.
   --relay <port>         Run only the netplay relay (a dedicated relay PC); Ctrl+C stops
+  --install-player <id>  Download and install a player that has an "install" entry
+                         (e.g. ruffle) into its folder, then exit
   --validate             Check launcher.json, print problems, exit
   --log <file>           Write the log here instead of the data folder
   --snapshot <png>       Render the window to a PNG and exit (visual checks)

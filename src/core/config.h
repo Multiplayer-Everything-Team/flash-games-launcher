@@ -41,7 +41,13 @@ struct Branding {
     std::wstring theme = L"dark";  // dark | light
     ThemeColors colors;            // palette for `theme` with overrides applied
     std::wstring font = L"Segoe UI";
+    // Titles, card names and buttons. Bahnschrift ships with Windows 10+; its
+    // condensed scoreboard look suits arcade games and fits long titles.
+    std::wstring displayFont = L"Bahnschrift";
     float fontSize = 10.0f;  // points
+    // P1-P4, the colors the games give their players. Used only to mark player slots.
+    std::vector<Color> playerColors = {{0xE5, 0x48, 0x4D, 255}, {0x3E, 0x7B, 0xFA, 255}, {0x2E, 0xBD, 0x6B, 255},
+                                       {0xF5, 0xB8, 0x3D, 255}};
     WindowSpec window;
 };
 
@@ -59,9 +65,21 @@ struct Behavior {
     int quickExitSeconds = 4;  // a player that exits faster than this with an error is reported
 };
 
+// Where to get a player that isn't installed. Either a GitHub repository whose
+// latest release has an asset matching `asset`, or a fixed `url`.
+struct InstallSpec {
+    std::string github;         // "owner/repo"
+    std::wstring asset;         // file name glob, e.g. "*windows-x86_64.zip"
+    std::wstring url, sha256;   // fixed download instead of GitHub (sha256 optional)
+    std::wstring dir;           // unpack here; replaced on reinstall
+    std::wstring exe;           // the player inside the archive, e.g. "ruffle.exe"
+    bool enabled() const { return !github.empty() || !url.empty(); }
+};
+
 struct PlayerSpec {
     std::string id;
     std::wstring name, website;
+    InstallSpec install;
     // Candidates, first match wins: absolute paths (a '*' is allowed in the file
     // name), or a bare file name looked up on PATH.
     std::vector<std::wstring> paths;
@@ -92,6 +110,7 @@ struct ActionSpec {
 struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
+    int maxPlayers = 0;  // player slots to light; 0 = highest number in playerCount
     std::vector<std::string> categories;
     Color color{0x4F, 0x8B, 0xFF, 255}, colorEnd{0x9C, 0x6B, 0xFF, 255};
     std::vector<ActionSpec> actions;

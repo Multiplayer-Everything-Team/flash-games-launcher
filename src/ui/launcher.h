@@ -8,7 +8,12 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
+#include <mutex>
+#include <thread>
+
 #include "core/config.h"
+#include "core/install.h"
 #include "core/library.h"
 #include "core/process.h"
 #include "core/relay.h"
@@ -56,7 +61,7 @@ private:
         bool ready = true;
     };
     struct DetailLayout {
-        RECT art{}, title{}, meta{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
+        RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
         std::vector<RECT> hostLines;
     };
 
@@ -88,6 +93,9 @@ private:
     void drawCard(HDC dc, int gameIndex, RECT r, bool selected, bool focused);
     void drawButton(HWND button, HDC dc, RECT r, UINT state);
     void drawNavItem(const DRAWITEMSTRUCT& d);
+    void paintSlots(Gdiplus::Graphics& g, const GameSpec& game);
+    std::wstring categoryText(const GameSpec& game) const;
+    std::wstring statsText(const GameStats* st) const;
     Gdiplus::Bitmap* art(int gameIndex, int w, int h, bool detail);
 
     void runAction(int gameIndex, size_t actionIndex);
@@ -96,6 +104,10 @@ private:
     void locateFile();
     void openFolder();
     void getPlayer();
+    // Asks, then downloads and unpacks `player` on a worker thread.
+    void offerInstall(const PlayerSpec& player, bool firstRun);
+    void onInstalled();
+    std::wstring installText() const;
     void copyAddress();
     void toggleFavorite();
     void onPlayerChoice();
@@ -145,6 +157,13 @@ private:
     Color noticeColor_;
     ULONGLONG noticeUntil_ = 0;
     bool snapshot_ = false;
+
+    std::thread installThread_;
+    std::atomic<bool> installing_{false}, installCancel_{false};
+    const PlayerSpec* installPlayer_ = nullptr;
+    mutable std::mutex installMu_;
+    InstallStatus installStatus_;
+    InstallResult installResult_;
 };
 
 }  // namespace fl::ui

@@ -41,13 +41,13 @@ std::wstring buildCommandLine(const std::wstring& exe, const std::vector<std::ws
 }
 
 bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args, const std::wstring& workDir,
-                  Started& out, std::wstring& error) {
+                  Started& out, std::wstring& error, bool hidden) {
     std::wstring cmd = buildCommandLine(exe, args);
     logger().info(L"Starting: " + cmd + (workDir.empty() ? L"" : L"  (in " + workDir + L")"));
     STARTUPINFOW si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
+    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, hidden ? CREATE_NO_WINDOW : 0, nullptr,
                         workDir.empty() ? nullptr : workDir.c_str(), &si, &pi)) {
         error = win32ErrorMessage(GetLastError());
         logger().error(L"CreateProcess failed: " + error);

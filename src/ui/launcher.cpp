@@ -21,6 +21,9 @@ namespace {
 constexpr wchar_t kClass[] = L"MultiplayerFlashLauncher";
 constexpr UINT WM_APP_EXIT = WM_APP + 1;   // wParam pid, lParam exit code
 constexpr UINT WM_APP_RELAY = WM_APP + 2;  // relay peers changed
+constexpr UINT WM_APP_INSTALL = WM_APP + 3;   // player install progress
+constexpr UINT WM_APP_INSTALLED = WM_APP + 4; // player install finished
+constexpr UINT WM_APP_FIRSTRUN = WM_APP + 5;  // offer to install a player
 constexpr UINT_PTR kTimer = 1;
 
 enum : int {
@@ -103,6 +106,8 @@ Launcher::Launcher(const Config& cfg, Library& lib, UserData& user, std::wstring
     : cfg_(cfg), lib_(lib), user_(user), userPath_(std::move(userPath)) {}
 
 Launcher::~Launcher() {
+    installCancel_ = true;
+    if (installThread_.joinable()) installThread_.join();
     relay_.stop();
     watcher_.reset();
 }
@@ -247,6 +252,13 @@ void Launcher::create(const LauncherOptions& opt) {
     } else {
         ShowWindow(hwnd_, user_.maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
         SetTimer(hwnd_, kTimer, 1000, nullptr);
+        // Nothing can start without a player: offer to install one right away.
+        bool anyPlayer = false, installable = false;
+        for (const auto& p : lib_.players()) {
+            anyPlayer = anyPlayer || p.found();
+            installable = installable || p.spec->install.enabled();
+        }
+        if (!anyPlayer && installable) PostMessageW(hwnd_, WM_APP_FIRSTRUN, 0, 0);
     }
     SetFocus(grid_);
 }
@@ -394,7 +406,13 @@ void Launcher::select(int gi) {
     SendMessageW(playerCombo_, CB_RESETCONTENT, 0, 0);
     if (gi >= 0) {
         const GameSpec& g = cfg_.games[gi];
-        std::wstring autoText = L"Automatic";
+        // Say what "Automatic" picks right now, so nobody has to guess.
+        UserData noChoice = user_;
+        noChoice.stats(g.id).player.clear();
+        ResolvedAction autoPick = g.actions.empty() ? ResolvedAction{} : lib_.resolve(g, g.actions.front(), noChoice);
+        std::wstring autoText = autoPick.state == ActionState::Ready && autoPick.player
+                                    ? cfg_.t("detail.playerAuto", {{L"PLAYER", autoPick.player->name}})
+                                    : cfg_.t("detail.playerAutoNone");
         SendMessageW(playerCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(autoText.c_str()));
         const GameStats* st = user_.find(g.id);
         int sel = 0, idx = 1;
@@ -430,7 +448,7 @@ void Launcher::select(int gi) {
         info.style = i == 0 ? BtnStyle::Primary : BtnStyle::Secondary;
         info.ready = r.state == ActionState::Ready;
         std::wstring sub = a.description;
-        if (r.state == ActionState::Ready && r.player) sub = sub.empty() ? r.player->name : sub + L" \u00B7 " + r.player->name;
+        if (sub.empty() && r.player) sub = r.player->name;
         if (r.state != ActionState::Ready) sub = stateReason(cfg_, r);
         info.sub = sub;
         SetWindowTextW(b, a.label.c_str());
@@ -514,7 +532,7 @@ void Launcher::layoutGrid() {
     int cols = std::max(1, avail / std::max(minTile, 1));
     int tw = std::max(minTile, avail / cols);
     int cardW = tw - theme_.s(kGap);
-    int th = static_cast<int>(cardW * 0.5625) + theme_.s(84) + theme_.s(kGap);
+    int th = static_cast<int>(cardW * 0.5625) + theme_.s(94) + theme_.s(kGap);
     if (tw == tileW_ && th == tileH_) return;
     tileW_ = tw;
     tileH_ = th;
@@ -546,10 +564,10 @@ void Launcher::layoutDetail() {
     // The header (art, title, meta, status) is placed after the controls so the
     // art can shrink on short windows instead of running into the buttons.
     int titleH = textHeight(dc, t.title, g.name, w);
-    std::wstring meta = g.playerCount;
-    for (const auto& c : g.categories)
-        if (auto cat = cfg_.findCategory(c)) meta += (meta.empty() ? L"" : L" \u00B7 ") + cat->name;
-    int metaH = textHeight(dc, t.caption, meta, w);
+    std::wstring meta = categoryText(g);
+    int metaH = meta.empty() ? 0 : textHeight(dc, t.caption, meta, w);
+    bool hostingThis = relay_.running() && relayGame_ == selected_;
+    int slotsH = g.maxPlayers > 0 ? t.s(hostingThis ? 56 : 40) : 0;
 
     // Everything below the description is laid out bottom-up from the panel's
     // end, so the buttons never move when the description is long.
@@ -565,8 +583,7 @@ void Launcher::layoutDetail() {
     }
     bool hosting = relay_.running() && relayGame_ == selected_;
     RelaySnapshot snap = relay_.snapshot();
-    int hostLines = 2 + static_cast<int>(std::max<size_t>(snap.peers.size(), 1)) +
-                    static_cast<int>(std::min<size_t>(std::max<size_t>(addresses_.size(), 1), 3));
+    int hostLines = 2 + static_cast<int>(std::min<size_t>(std::max<size_t>(addresses_.size(), 1), 3));
     int hostLineH = textHeight(dc, t.caption, L"Ag", 100, DT_SINGLELINE) + t.s(4);
     int hostBoxH = t.s(14) + hostLines * hostLineH + t.s(8) + rowH + t.s(14);
     int comboH = t.s(30);
@@ -576,7 +593,7 @@ void Launcher::layoutDetail() {
     // so the game's name and state stay visible above the buttons.
     int fixed = rowH + gap + (missingPlayer ? rowH + gap : 0) + (missingSwf ? rowH + gap : 0) +
                 (hosting ? hostBoxH + t.s(12) : 0);
-    int headerMin = titleH + t.s(4 + 24 + 16);
+    int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0);
     int actionsH = static_cast<int>(g.actions.size()) * (actionH + gap) + (picker ? comboH + t.s(16) : 0);
     if (bottom - fixed - actionsH < y + headerMin) {
         actionH = t.s(40);
@@ -604,7 +621,10 @@ void Launcher::layoutDetail() {
         bottom -= rowH + gap;
     };
     if (missingPlayer)
-        SetWindowTextW(getPlayerBtn_, cfg_.t("button.getPlayer", {{L"PLAYER", missingPlayer->name}}).c_str());
+        SetWindowTextW(getPlayerBtn_, cfg_.t(missingPlayer->install.enabled() ? "button.installPlayer" : "button.getPlayer",
+                                             {{L"PLAYER", missingPlayer->name}})
+                                          .c_str());
+    EnableWindow(getPlayerBtn_, !installing_);
     place(getPlayerBtn_, missingPlayer != nullptr);
     if (missingSwf)
         SetWindowTextW(locateBtn_, (g.actions.size() > 1 ? cfg_.t("button.locateFor", {{L"ACTION", missingSwf->label}})
@@ -650,7 +670,9 @@ void Launcher::layoutDetail() {
         ShowWindow(playerCombo_, SW_HIDE);
     }
 
-    int headerH = titleH + t.s(4) + metaH + t.s(10) + t.s(24) + t.s(12);
+    // The art gives way before the description does: keep room for two lines of it.
+    int descMin = g.description.empty() ? 0 : textHeight(dc, t.body, L"Ag", w, DT_SINGLELINE) * 2 + t.s(10);
+    int headerH = titleH + t.s(4) + metaH + t.s(10) + (slotsH ? slotsH + t.s(12) : 0) + t.s(24) + t.s(12) + descMin;
     int artH = std::min(static_cast<int>(w * 0.5625), t.s(200));
     int room = bottom - t.s(8) - y - headerH - t.s(16);
     if (room < artH) artH = room >= t.s(72) ? room : 0;
@@ -664,9 +686,13 @@ void Launcher::layoutDetail() {
         dl_.title = {x, y, x + w, y + titleH};
         y += titleH + t.s(4);
     }
-    if (y + metaH + t.s(10 + 24) <= limit) {
+    if (metaH && y + metaH + t.s(10 + 24) <= limit) {
         dl_.meta = {x, y, x + w, y + metaH};
         y += metaH + t.s(10);
+    }
+    if (slotsH && y + slotsH + t.s(12) <= limit) {
+        dl_.slots = {x, y, x + w, y + slotsH};
+        y += slotsH + t.s(12);
     }
     if (y + t.s(24) <= limit) {
         dl_.status = {x, y, x + w, y + t.s(24)};
@@ -676,12 +702,7 @@ void Launcher::layoutDetail() {
     // Text between the status pill and the controls, dropped when it doesn't fit.
     int textBottom = bottom - t.s(8);
     std::wstring stats;
-    if (st && st->plays > 0)
-        stats = cfg_.t("detail.stats", {{L"COUNT", std::to_wstring(st->plays)},
-                                        {L"TIME", formatDuration(st->seconds)},
-                                        {L"WHEN", formatAgo(st->lastPlayed)}});
-    else
-        stats = cfg_.t("detail.never");
+    stats = statsText(st);
     int statsH = textHeight(dc, t.caption, stats, w);
     if (textBottom - statsH >= y) {
         dl_.stats = {x, textBottom - statsH, x + w, textBottom};
@@ -789,7 +810,7 @@ void Launcher::paintSidebar(Graphics& g, HDC) {
     SolidBrush sb(gc(t.c.sidebar));
     g.FillRectangle(&sb, rf(sidebar_));
     // Text-only brand: no logo has been supplied, so none is invented.
-    RECT r1{t.s(24), t.s(22), sidebar_.right - t.s(12), t.s(48)};
+    RECT r1{t.s(24), t.s(20), sidebar_.right - t.s(12), t.s(48)};
     drawText(g, cfg_.branding.title, r1, t.brand, t.c.sidebarText, DT_SINGLELINE | DT_END_ELLIPSIS);
     RECT r2{t.s(24), t.s(48), sidebar_.right - t.s(12), t.s(70)};
     drawText(g, cfg_.branding.subtitle, r2, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -813,10 +834,8 @@ void Launcher::paintDetail(Graphics& g, HDC) {
         if (Bitmap* a = art(selected_, width(dl_.art), height(dl_.art), true))
             drawCover(g, *a, rf(dl_.art), t.sf(12), true);
     if (height(dl_.title) > 0) drawText(g, game.name, dl_.title, t.title, t.c.text, DT_WORDBREAK);
-    std::wstring meta = game.playerCount;
-    for (const auto& c : game.categories)
-        if (auto cat = cfg_.findCategory(c)) meta += (meta.empty() ? L"" : L" \u00B7 ") + cat->name;
-    if (height(dl_.meta) > 0) drawText(g, meta, dl_.meta, t.caption, t.c.textMuted, DT_WORDBREAK);
+    if (height(dl_.meta) > 0) drawText(g, categoryText(game), dl_.meta, t.caption, t.c.textMuted, DT_WORDBREAK);
+    if (height(dl_.slots) > 0) paintSlots(g, game);
 
     // Status pill.
     if (height(dl_.status) > 0) {
@@ -839,11 +858,7 @@ void Launcher::paintDetail(Graphics& g, HDC) {
         drawText(g, cfg_.t("detail.controls"), dl_.controlsHead, t.strong, t.c.text, DT_SINGLELINE);
         drawText(g, controlsText_, dl_.controls, t.caption, t.c.textMuted, DT_WORDBREAK);
     }
-    const GameStats* st = user_.find(game.id);
-    std::wstring stats = st && st->plays > 0 ? cfg_.t("detail.stats", {{L"COUNT", std::to_wstring(st->plays)},
-                                                                        {L"TIME", formatDuration(st->seconds)},
-                                                                        {L"WHEN", formatAgo(st->lastPlayed)}})
-                                             : cfg_.t("detail.never");
+    std::wstring stats = statsText(user_.find(game.id));
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);
     if (width(dl_.playerLabel) > 0)
         drawText(g, cfg_.t("detail.player"), dl_.playerLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
@@ -851,20 +866,12 @@ void Launcher::paintDetail(Graphics& g, HDC) {
     if (height(dl_.host) > 0 && !dl_.hostLines.empty()) {
         fillRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.10f));
         strokeRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.55f), t.sf(1));
-        RelaySnapshot snap = relay_.snapshot();
         size_t line = 0;
         auto put = [&](const std::wstring& s, HFONT f, const Color& c) {
             if (line < dl_.hostLines.size()) drawText(g, s, dl_.hostLines[line++], f, c, DT_SINGLELINE | DT_END_ELLIPSIS);
         };
         std::wstring port = std::to_wstring(relay_.port());
-        put(L"\u25CF  " + cfg_.t("host.running", {{L"PORT", port}}), t.strong, t.c.online);
-        if (snap.peers.empty()) {
-            put(cfg_.t("host.waiting"), t.caption, t.c.textMuted);
-        } else {
-            for (const auto& p : snap.peers)
-                put(L"\u2022 " + p.name + (p.host ? L" " + cfg_.t("host.you") : L"") + L"   " + p.address, t.caption,
-                    t.c.text);
-        }
+        put(cfg_.t("host.running", {{L"PORT", port}}), t.button, t.c.online);
         put(cfg_.t("host.addresses"), t.caption, t.c.textMuted);
         if (addresses_.empty()) {
             put(cfg_.t("host.noAddress", {{L"PORT", port}}), t.caption, t.c.text);
@@ -898,6 +905,9 @@ void Launcher::paintStatus(Graphics& g, HDC) {
     if (!notice_.empty() && GetTickCount64() < noticeUntil_) {
         text = notice_;
         color = noticeColor_;
+    } else if (installing_) {
+        text = installText();
+        color = t.c.online;
     } else if (!sessions_.empty()) {
         const Session& s = sessions_.back();
         ULONGLONG secs = (GetTickCount64() - s.started) / 1000;
@@ -932,41 +942,45 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     if (Bitmap* a = art(gi, width(artR), height(artR), false)) drawCover(g, *a, rf(artR), radius, false);
 
     // Badges on the art.
-    auto badge = [&](const std::wstring& text, const Color& color, bool right) {
+    auto badge = [&](const std::wstring& text, const Color& textColor, bool right) {
         HDC mdc = g.GetHDC();
         int w = textWidth(mdc, t.tiny, text) + t.s(14);
         g.ReleaseHDC(mdc);
         int bh = t.s(20);
         RECT b = right ? RECT{artR.right - t.s(10) - w, artR.top + t.s(10), artR.right - t.s(10), artR.top + t.s(10) + bh}
                        : RECT{artR.left + t.s(10), artR.top + t.s(10), artR.left + t.s(10) + w, artR.top + t.s(10) + bh};
-        fillRound(g, rf(b), t.sf(10), color);
-        drawText(g, text, b, t.tiny, Color{255, 255, 255, 255}, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+        fillRound(g, rf(b), t.sf(10), Color{t.c.sidebar.r, t.c.sidebar.g, t.c.sidebar.b, 225});
+        drawText(g, text, b, t.tiny, textColor, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
     };
     bool online = false;
     for (const auto& a : game.actions) online = online || a.relay.enabled;
-    // Badges are darkened until white text on them reaches 4.5:1.
-    if (online) badge(cfg_.t("badge.online"), mix(t.c.online, Color{0, 0, 0, 255}, 0.45f), false);
+    if (online) badge(cfg_.t("badge.online"), t.c.sidebarText, false);
     const GameStats* st = user_.find(game.id);
-    if (st && st->favorite) badge(L"\u2605", mix(t.c.warning, Color{0, 0, 0, 255}, 0.45f), true);
+    if (st && st->favorite) badge(L"\u2605", t.c.warning, true);
 
-    int x = c.left + t.s(14), w = width(c) - t.s(28), y = artR.bottom + t.s(12);
-    RECT name{x, y, x + w, y + t.s(22)};
-    drawText(g, game.name, name, t.strong, t.c.text, DT_SINGLELINE | DT_END_ELLIPSIS);
-    y += t.s(22);
-    std::wstring meta = game.playerCount;
-    if (!game.categories.empty())
-        if (auto cat = cfg_.findCategory(game.categories.front())) meta += (meta.empty() ? L"" : L" \u00B7 ") + cat->name;
-    RECT mr{x, y, x + w, y + t.s(20)};
-    drawText(g, meta, mr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_END_ELLIPSIS);
+    int x = c.left + t.s(14), w = width(c) - t.s(28), y = artR.bottom + t.s(10);
+    RECT nameR{x, y, x + w, y + t.s(26)};
+    drawText(g, game.name, nameR, t.name, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    y += t.s(28);
+    // One block per player slot, in the players' own colors.
+    int pip = t.s(10), pipGap = t.s(3), px = x;
+    const auto& colors = cfg_.branding.playerColors;
+    for (int i = 0; i < game.maxPlayers && !colors.empty(); ++i) {
+        fillRound(g, RectF(static_cast<REAL>(px), static_cast<REAL>(y + t.s(5)), static_cast<REAL>(pip),
+                           static_cast<REAL>(pip)),
+                  t.sf(2), colors[i % colors.size()]);
+        px += pip + pipGap;
+    }
+    RECT mr{px + (game.maxPlayers ? t.s(6) : 0), y, x + w, y + t.s(20)};
+    drawText(g, game.playerCount, mr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     y += t.s(24);
     Color sc;
     std::wstring status = stateText(gi, sc);
-    SolidBrush dot(gc(sc));
-    g.FillEllipse(&dot, static_cast<REAL>(x), static_cast<REAL>(y + t.s(6)), t.sf(8), t.sf(8));
-    RECT sr{x + t.s(14), y, x + w, y + t.s(20)};
-    drawText(g, status, sr, t.caption, sc, DT_SINGLELINE | DT_END_ELLIPSIS);
+    RECT sr{x, y, x + w, y + t.s(20)};
+    drawText(g, status, sr, t.caption, sc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
-    if (selected) strokeRound(g, rf(c), radius, t.c.primary, t.sf(2));
+    // Selection is a neutral outline: red means "start", blue means keyboard focus.
+    if (selected) strokeRound(g, rf(c), radius, t.c.text, t.sf(2));
     if (focused && !(SendMessageW(hwnd_, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
         RECT f{c.left - t.s(3), c.top - t.s(3), c.right + t.s(3), c.bottom + t.s(3)};
         strokeRound(g, rf(f), radius + t.sf(3), t.c.focus, t.sf(1.5));
@@ -1024,7 +1038,7 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
         if (!info.sub.empty() && height(r) >= t.s(48)) {
             RECT top{tr.left, t.s(8), tr.right, height(r) / 2 + t.s(2)};
             RECT bottom{tr.left, height(r) / 2 + t.s(1), tr.right, height(r) - t.s(6)};
-            drawText(g, label, top, t.heading, text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            drawText(g, label, top, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
             Color subColor = info.style == BtnStyle::Primary && info.ready ? t.c.onPrimary
                              : info.ready                                   ? t.c.textMuted
                                                                             : t.c.warning;
@@ -1034,7 +1048,7 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
                 drawText(g, L"\u25B6", arrow, t.body, text, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
             }
         } else {
-            drawText(g, label, tr, t.strong, text, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
+            drawText(g, label, tr, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
         }
         if ((state & CDIS_FOCUS) && !(SendMessageW(button, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
             RectF f(t.sf(2), t.sf(2), static_cast<REAL>(width(r)) - t.sf(4), static_cast<REAL>(height(r)) - t.sf(4));
@@ -1057,11 +1071,7 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
         g.FillRectangle(&bg, 0, 0, width(r), height(r));
         bool sel = (d.itemState & ODS_SELECTED) != 0;
         RectF box(0, t.sf(2), static_cast<REAL>(width(r)), static_cast<REAL>(height(r)) - t.sf(4));
-        if (sel) {
-            fillRound(g, box, t.sf(8), mix(t.c.sidebar, t.c.primary, 0.22f));
-            RectF accent(0, box.Y + t.sf(8), t.sf(3), box.Height - t.sf(16));
-            fillRound(g, accent, t.sf(1.5), t.c.primary);
-        }
+        if (sel) fillRound(g, box, t.sf(8), mix(t.c.sidebar, t.c.sidebarText, 0.10f));
         RECT tr{t.s(14), 0, width(r) - t.s(44), height(r)};
         drawText(g, n.label, tr, sel ? t.strong : t.body, sel ? t.c.sidebarText : mix(t.c.sidebarText, t.c.sidebarTextMuted, 0.4f),
                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
@@ -1072,6 +1082,67 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
             strokeRound(g, box, t.sf(8), t.c.focus, t.sf(1.5));
     }
     BitBlt(d.hDC, r.left, r.top, width(r), height(r), buf.dc, 0, 0, SRCCOPY);
+}
+
+std::wstring Launcher::categoryText(const GameSpec& game) const {
+    std::wstring out;
+    for (const auto& c : game.categories)
+        if (auto cat = cfg_.findCategory(c)) out += (out.empty() ? L"" : L", ") + cat->name;
+    return out;
+}
+
+std::wstring Launcher::statsText(const GameStats* st) const {
+    if (!st || st->plays <= 0) return cfg_.t("detail.never");
+    if (st->plays == 1)
+        return cfg_.t("detail.statsOnce", {{L"TIME", formatDuration(st->seconds)}, {L"WHEN", formatAgo(st->lastPlayed)}});
+    return cfg_.t("detail.stats", {{L"COUNT", std::to_wstring(st->plays)},
+                                   {L"TIME", formatDuration(st->seconds)},
+                                   {L"WHEN", formatAgo(st->lastPlayed)}});
+}
+
+// The player slots: one tile per player the game supports, topped with that
+// player's color. While hosting, each tile names who is in that slot (the host
+// is P1 and friends follow in the order they joined, as the online mods do).
+void Launcher::paintSlots(Graphics& g, const GameSpec& game) {
+    const Theme& t = theme_;
+    const auto& colors = cfg_.branding.playerColors;
+    int n = game.maxPlayers;
+    if (n <= 0 || colors.empty()) return;
+    bool hosting = relay_.running() && relayGame_ == selected_;
+    std::vector<std::wstring> names;
+    if (hosting) {
+        RelaySnapshot snap = relay_.snapshot();
+        for (const auto& p : snap.peers)
+            names.push_back(p.host ? cfg_.t("slot.host", {{L"NAME", p.name}}) : p.name);
+    }
+    int gap = t.s(8), w = width(dl_.slots);
+    int tileW = (w - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i) {
+        RECT r{dl_.slots.left + i * (tileW + gap), dl_.slots.top, dl_.slots.left + i * (tileW + gap) + tileW,
+               dl_.slots.bottom};
+        fillRound(g, rf(r), t.sf(8), t.c.surfaceHover);
+        RectF top(rf(r).X, rf(r).Y, rf(r).Width, t.sf(5));
+        Region old;
+        g.GetClip(&old);
+        GraphicsPath shape;
+        roundRectPath(shape, rf(r), t.sf(8));
+        g.SetClip(&shape, CombineModeIntersect);
+        SolidBrush colorBar(gc(colors[i % colors.size()]));
+        g.FillRectangle(&colorBar, top);
+        g.SetClip(&old);
+        std::wstring label = cfg_.t("slot.label", {{L"N", std::to_wstring(i + 1)}});
+        if (!hosting) {
+            RECT lr{r.left, r.top + t.s(5), r.right, r.bottom};
+            drawText(g, label, lr, t.button, t.c.text, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+            continue;
+        }
+        RECT lr{r.left + t.s(10), r.top + t.s(9), r.right - t.s(6), r.top + t.s(29)};
+        drawText(g, label, lr, t.button, t.c.text, DT_SINGLELINE | DT_VCENTER);
+        bool filled = i < static_cast<int>(names.size());
+        RECT nr{r.left + t.s(10), r.top + t.s(29), r.right - t.s(6), r.bottom - t.s(6)};
+        drawText(g, filled ? names[i] : cfg_.t("slot.open"), nr, t.caption, filled ? t.c.text : t.c.textMuted,
+                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    }
 }
 
 // ---- actions --------------------------------------------------------------
@@ -1234,12 +1305,101 @@ void Launcher::getPlayer() {
     const GameSpec& g = cfg_.games[selected_];
     for (const auto& a : g.actions) {
         ResolvedAction r = lib_.resolve(g, a, user_);
+        if (r.state == ActionState::NoPlayer && r.player && r.player->install.enabled()) {
+            offerInstall(*r.player, false);
+            return;
+        }
         if (r.state == ActionState::NoPlayer && r.player && !r.player->website.empty()) {
             sys::openPath(r.player->website);
             return;
         }
     }
     sys::openPath(lib_.vars().get(L"PLAYERS_DIR"));
+}
+
+void Launcher::offerInstall(const PlayerSpec& player, bool firstRun) {
+    if (installing_ || snapshot_) return;
+    const InstallSpec& in = player.install;
+    std::wstring source = !in.github.empty() ? L"github.com/" + widen(in.github) : in.url;
+    std::wstring dir = lib_.vars().expand(in.dir);
+    std::wstring title = cfg_.t("install.title", {{L"PLAYER", player.name}});
+    std::wstring body = cfg_.t("install.body", {{L"PLAYER", player.name}, {L"SOURCE", source}, {L"DIR", dir}});
+    if (firstRun) body = cfg_.t("install.firstRun") + L"\n\n" + body;
+    std::wstring yes = cfg_.t("install.yes", {{L"PLAYER", player.name}}), no = cfg_.t("install.no");
+    TASKDIALOG_BUTTON buttons[] = {{IDYES, yes.c_str()}, {IDNO, no.c_str()}};
+    TASKDIALOGCONFIG tdc{sizeof tdc};
+    tdc.hwndParent = hwnd_;
+    tdc.dwFlags = TDF_POSITION_RELATIVE_TO_WINDOW;
+    tdc.pszWindowTitle = cfg_.branding.subtitle.c_str();
+    tdc.pszMainInstruction = title.c_str();
+    tdc.pszContent = body.c_str();
+    tdc.cButtons = 2;
+    tdc.pButtons = buttons;
+    tdc.nDefaultButton = IDYES;
+    int choice = 0;
+    if (FAILED(TaskDialogIndirect(&tdc, &choice, nullptr, nullptr)) || choice != IDYES) return;
+
+    if (installThread_.joinable()) installThread_.join();
+    installing_ = true;
+    installCancel_ = false;
+    installPlayer_ = &player;
+    {
+        std::lock_guard<std::mutex> lock(installMu_);
+        installStatus_ = {};
+    }
+    Vars vars = lib_.vars();
+    HWND wnd = hwnd_;
+    installThread_ = std::thread([this, &player, vars, wnd] {
+        InstallResult r = installPlayer(
+            player, vars,
+            [this, wnd](const InstallStatus& s) {
+                std::lock_guard<std::mutex> lock(installMu_);
+                // Downloads report every 256 KB; repaint at most for each new percent.
+                bool post = s.stage != installStatus_.stage ||
+                            (s.total && s.done * 100 / s.total != installStatus_.done * 100 / std::max<uint64_t>(installStatus_.total, 1));
+                installStatus_ = s;
+                if (post) PostMessageW(wnd, WM_APP_INSTALL, 0, 0);
+            },
+            &installCancel_);
+        {
+            std::lock_guard<std::mutex> lock(installMu_);
+            installResult_ = r;
+        }
+        PostMessageW(wnd, WM_APP_INSTALLED, 0, 0);
+    });
+    layoutDetail();
+    InvalidateRect(hwnd_, &status_, FALSE);
+}
+
+std::wstring Launcher::installText() const {
+    if (!installing_ || !installPlayer_) return {};
+    std::lock_guard<std::mutex> lock(installMu_);
+    const std::wstring& name = installPlayer_->name;
+    switch (installStatus_.stage) {
+        case InstallStatus::Stage::Downloading:
+            return cfg_.t("install.downloading", {{L"PLAYER", name},
+                                                  {L"DONE", formatBytes(installStatus_.done)},
+                                                  {L"TOTAL", installStatus_.total ? formatBytes(installStatus_.total) : L"?"}});
+        case InstallStatus::Stage::Verifying:
+        case InstallStatus::Stage::Unpacking: return cfg_.t("install.unpacking", {{L"PLAYER", name}});
+        default: return cfg_.t("install.finding", {{L"PLAYER", name}});
+    }
+}
+
+void Launcher::onInstalled() {
+    if (installThread_.joinable()) installThread_.join();
+    installing_ = false;
+    InstallResult r;
+    {
+        std::lock_guard<std::mutex> lock(installMu_);
+        r = installResult_;
+    }
+    std::wstring name = installPlayer_ ? installPlayer_->name : std::wstring();
+    refreshAll();
+    if (r.ok)
+        notice(cfg_.t("install.done", {{L"PLAYER", r.version.empty() ? name : name + L" " + r.version}}), theme_.c.success);
+    else
+        notice(cfg_.t("install.failed", {{L"PLAYER", name}, {L"ERROR", r.error}}), theme_.c.error);
 }
 
 void Launcher::copyAddress() {
@@ -1514,6 +1674,19 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_APP_EXIT:
             onProcessExit(static_cast<DWORD>(w), static_cast<DWORD>(l));
+            return 0;
+        case WM_APP_INSTALL:
+            InvalidateRect(hwnd_, &status_, FALSE);
+            return 0;
+        case WM_APP_INSTALLED:
+            onInstalled();
+            return 0;
+        case WM_APP_FIRSTRUN:
+            for (const auto& p : cfg_.players)
+                if (p.install.enabled()) {
+                    offerInstall(p, true);
+                    break;
+                }
             return 0;
         case WM_APP_RELAY:
             layoutDetail();

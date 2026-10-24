@@ -45,7 +45,9 @@ Any path or argument can use these:
 | `windowTitle` | `"${TITLE} ${SUBTITLE}"` |
 | `theme` | `"dark"` (or `"light"`) |
 | `colors` | Overrides per role: `background`, `surface`, `surfaceHover`, `sidebar`, `sidebarText`, `sidebarTextMuted`, `primary`, `primaryHover`, `onPrimary`, `text`, `textMuted`, `border`, `focus`, `success`, `warning`, `error`, `online` (`"#RRGGBB"`). Keep text at 4.5:1 contrast or better. |
-| `font`, `fontSize` | `"Segoe UI"`, `10` (points) |
+| `font`, `fontSize` | `"Segoe UI"`, `10` (points): body text |
+| `displayFont` | `"Bahnschrift"`: titles, card names, buttons (falls back to `font`) |
+| `playerColors` | `["#E5484D", "#3E7BFA", "#2EBD6B", "#F5B83D"]`: P1-P4, used only to mark player slots |
 | `window` | `{ "width": 1180, "height": 720, "minWidth": 720, "minHeight": 520 }` (96-DPI units) |
 
 ### paths
@@ -71,9 +73,27 @@ Any path or argument can use these:
 |---|---|
 | `id` | Letters, digits, `-`, `_`, `.` |
 | `name` | Shown in the UI |
-| `website` | Opened by the *Get <player>* button |
+| `website` | Opened by the *Get <player>* button when the player can't be installed |
+| `install` | Optional: how to install the player when it's missing (see below) |
 | `paths` | Candidates, first existing wins. Absolute paths may use `*` in the file name (the highest version wins); a bare name like `ruffle.exe` is searched on PATH. |
 | `args` | Arguments before the game's own. `${SWF}` is added at the end unless an argument mentions it. |
+
+### players[].install
+
+The launcher offers to install a missing player (on first run, and with the
+*Install <player>* button or `--install-player <id>`). It unpacks the archive
+with Windows' own `tar.exe`, so `.zip` files work.
+
+| Key | |
+|---|---|
+| `github` | `"owner/repo"`: use the latest stable release of this repository |
+| `asset` | File name pattern of the release file, e.g. `"*windows-x86_64.zip"` |
+| `url`, `sha256` | Instead of `github`: a fixed `https://` download and its optional SHA-256 |
+| `dir` | Folder to unpack into (replaced on reinstall; the old copy is kept until the new one is in place) |
+| `exe` | The player inside the archive, e.g. `"ruffle.exe"` (found at the top or one folder down) |
+
+GitHub releases publish a SHA-256 for each file; the download is refused when it
+doesn't match.
 
 ## games[]
 
@@ -82,6 +102,7 @@ Any path or argument can use these:
 | `id` | Unique; also the key in settings |
 | `name`, `description`, `controls` | Shown in the details panel |
 | `players` | Player-count text, e.g. `"1-4 players"` |
+| `maxPlayers` | Player slots to show; default: the highest number in `players` |
 | `categories` | Category ids |
 | `color`, `colorEnd` | Gradient of the generated cover art |
 | `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute |
