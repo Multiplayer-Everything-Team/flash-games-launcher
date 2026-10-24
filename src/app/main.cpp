@@ -108,7 +108,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
-    bool cliMode = a.help || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
+    bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
                    !a.downloadGame.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
@@ -117,6 +117,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
     if (a.help) {
         out(usageText());
+        return 0;
+    }
+    if (a.version) {
+        out(std::wstring(L"Multiplayer Everything Flash Launcher ") + LAUNCHER_VERSION + L"\n");
         return 0;
     }
 

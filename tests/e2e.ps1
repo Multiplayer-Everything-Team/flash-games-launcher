@@ -102,6 +102,7 @@ $env:FL_FAKE_OUT = "$work\args.txt"
 
 # ---- command line ---------------------------------------------------------
 $r = Run @('--help'); Check ($r.Code -eq 0 -and $r.Out -match '--launch') '--help prints usage'
+$r = Run @('--version'); Check ($r.Code -eq 0 -and $r.Out -match 'Flash Launcher \d+\.\d+\.\d+') "--version prints the version ($($r.Out.Trim()))"
 $r = Run @('--bogus'); Check ($r.Code -eq 3) 'unknown option exits 3'
 $r = Run @('--validate', '--config', "`"$Root\launcher\launcher.json`""); Check ($r.Code -eq 0 -and $r.Out -match 'OK') 'shipped launcher.json validates'
 $r = Run @('--validate', '--config', "`"$work\launcher.json`""); Check ($r.Code -eq 0) 'test config validates'

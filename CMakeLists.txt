@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MultiplayerFlashLauncher LANGUAGES CXX RC)
+project(MultiplayerFlashLauncher VERSION 1.0.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,6 +39,9 @@ if(EXISTS "${LAUNCHER_ICON}")
 else()
   file(WRITE "${APP_RC}" "// no icon\n")
 endif()
+# Version shown in the exe's Properties > Details, and passed to the code.
+set(V "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+file(APPEND "${APP_RC}" "1 VERSIONINFO\nFILEVERSION ${V}\nPRODUCTVERSION ${V}\nBEGIN\n BLOCK \"StringFileInfo\"\n BEGIN\n  BLOCK \"040904B0\"\n  BEGIN\n   VALUE \"CompanyName\", \"Multiplayer Everything\"\n   VALUE \"FileDescription\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"FileVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"ProductName\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"ProductVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"OriginalFilename\", \"${LAUNCHER_NAME}.exe\"\n  END\n END\n BLOCK \"VarFileInfo\"\n BEGIN\n  VALUE \"Translation\", 0x409, 1200\n END\nEND\n")
 
 add_executable(launcher WIN32
   src/app/main.cpp
@@ -49,6 +52,7 @@ add_executable(launcher WIN32
   "${APP_RC}"
 )
 set_target_properties(launcher PROPERTIES OUTPUT_NAME "${LAUNCHER_NAME}")
+target_compile_definitions(launcher PRIVATE LAUNCHER_VERSION=L"${PROJECT_VERSION}")
 target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 uxtheme dwmapi gdi32)
 
 # ---- tests ----------------------------------------------------------------

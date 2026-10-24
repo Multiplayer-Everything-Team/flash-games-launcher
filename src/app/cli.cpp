@@ -40,6 +40,7 @@ Args parseArgs(int argc, wchar_t** argv) {
             if (a.relayPort < 1 || a.relayPort > 65535) a.error = L"--relay needs a port between 1 and 65535";
         } else if (k == L"--demo-host") a.demoHost = true;
         else if (k == L"--list") a.list = true;
+        else if (k == L"--version") a.version = true;
         else if (k == L"--validate") a.validate = true;
         else if (k == L"--help" || k == L"-h" || k == L"--?" || k == L"-?") a.help = true;
         else a.error = L"Unknown option: " + std::wstring(argv[i]);
@@ -70,6 +71,7 @@ launcher.json next to the exe.
     --select <game>      ...with this game selected
     --size <WxH>         ...at this window size in pixels
     --demo-host          ...with the selected game's relay running
+  --version              Print the launcher version
   --help                 Show this help
 
 Exit codes: 0 success, 1 failed, 3 bad configuration or arguments,
