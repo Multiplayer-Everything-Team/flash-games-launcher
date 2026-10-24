@@ -59,6 +59,11 @@ struct Paths {
     std::vector<std::wstring> flashpoint = {L"C:\\Flashpoint", L"D:\\Flashpoint", L"${folder:Profile}\\Flashpoint"};
 };
 
+struct Downloads {
+    // catalog.json of the flash-games repository; empty = no game downloads.
+    std::wstring catalog;
+};
+
 struct Behavior {
     bool minimizeOnLaunch = false;
     bool stopRelayWithGame = true;
@@ -126,6 +131,7 @@ struct Config {
     Branding branding;
     Paths paths;
     Behavior behavior;
+    Downloads downloads;
     std::vector<PlayerSpec> players;
     std::vector<Category> categories;
     std::vector<GameSpec> games;

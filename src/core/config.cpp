@@ -124,6 +124,13 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"button.folder", L"Open folder"},
         {"button.getPlayer", L"Get ${PLAYER}"},
         {"button.installPlayer", L"Install ${PLAYER}"},
+        {"button.downloadGame", L"Download game files (${SIZE})"},
+        {"download.title", L"Download ${GAME}?"},
+        {"download.body", L"The launcher downloads ${COUNT} file(s), ${SIZE} in total, from ${SOURCE}, checks each one against its published checksum, and saves them in ${DIR}."},
+        {"download.yes", L"Download"},
+        {"download.downloading", L"Downloading ${GAME}: ${DONE} of ${TOTAL}"},
+        {"download.done", L"${GAME} is downloaded and ready."},
+        {"download.failed", L"Couldn't download ${GAME}: ${ERROR}"},
         {"install.title", L"Install ${PLAYER}?"},
         {"install.firstRun", L"No Flash player was found on this PC, so games can't start yet."},
         {"install.body", L"The launcher downloads the latest ${PLAYER} release from ${SOURCE}, checks it, and puts it in ${DIR}. ${PLAYER} is free and open source."},
@@ -411,6 +418,13 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         s.boolean("minimizeOnLaunch", c.behavior.minimizeOnLaunch);
         s.boolean("stopRelayWithGame", c.behavior.stopRelayWithGame);
         s.integer("quickExitSeconds", c.behavior.quickExitSeconds, 0, 60);
+    }
+    {
+        Section s(top.get("downloads", Type::Object), L"downloads", issues);
+        s.str("catalog", c.downloads.catalog);
+        const std::wstring& u = c.downloads.catalog;
+        if (!u.empty() && !startsWithI(u, L"https://") && !startsWithI(u, L"http://127.0.0.1"))
+            s.error(L"catalog", L"must be an https:// address");
     }
     if (auto list = top.get("players", Type::Array)) {
         for (size_t i = 0; i < list->size(); ++i) {

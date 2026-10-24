@@ -29,6 +29,50 @@ function WaitFor([scriptblock]$cond, [int]$ms = 5000) {
   return $false
 }
 
+# MSAA access to the window's controls (the API screen readers use).
+Add-Type -ReferencedAssemblies Accessibility -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+using Accessibility;
+
+public class AccControl { public IntPtr Hwnd; public string Name; public string Class; }
+
+public static class Acc {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, string l);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+    [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid,
+        [MarshalAs(UnmanagedType.Interface)] out IAccessible acc);
+    static Guid IID = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
+
+    public static List<AccControl> Controls(IntPtr top) {
+        var list = new List<AccControl>();
+        EnumChildWindows(top, (h, l) => {
+            if (!IsWindowVisible(h)) return true;
+            IAccessible a;
+            if (AccessibleObjectFromWindow(h, 0xFFFFFFFC, ref IID, out a) != 0 || a == null) return true;
+            var c = new AccControl { Hwnd = h };
+            try { c.Name = a.get_accName(0) ?? ""; } catch { c.Name = ""; }
+            var sb = new StringBuilder(64); GetClassName(h, sb, 64); c.Class = sb.ToString();
+            list.Add(c);
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+    public static void Do(IntPtr h) {
+        IAccessible a;
+        AccessibleObjectFromWindow(h, 0xFFFFFFFC, ref IID, out a);
+        a.accDoDefaultAction(0);
+    }
+}
+'@
+
 $fake = Join-Path (Split-Path $Launcher) 'launcher_tests.exe'
 $work = Join-Path $env:TEMP "fl-e2e-$PID"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
@@ -97,16 +141,28 @@ Copy-Item $fake (Join-Path $pkg 'fakeplay.exe')
 Compress-Archive -Path $pkg -DestinationPath "$work\fake.zip"  # the archive wraps a top folder
 $sha = (Get-FileHash "$work\fake.zip" -Algorithm SHA256).Hash.ToLower()
 $httpPort = $port + 2
-$server = Start-Job -ArgumentList $httpPort, "$work\fake.zip" -ScriptBlock {
-  param($p, $file)
+# A tiny web server: GET /<path> answers with the file www\<path>.
+$www = Join-Path $work 'www'
+New-Item -ItemType Directory -Force $www | Out-Null
+Copy-Item "$work\fake.zip" $www
+$server = Start-Job -ArgumentList $httpPort, $www -ScriptBlock {
+  param($p, $root)
   $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
   $l.Start()
-  $bytes = [IO.File]::ReadAllBytes($file)
-  for ($i = 0; $i -lt 4; $i++) {
+  for ($i = 0; $i -lt 40; $i++) {
     $c = $l.AcceptTcpClient(); $s = $c.GetStream()
-    $buf = New-Object byte[] 8192; $null = $s.Read($buf, 0, $buf.Length)
-    $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $($bytes.Length)`r`nConnection: close`r`n`r`n")
-    $s.Write($h, 0, $h.Length); $s.Write($bytes, 0, $bytes.Length); $s.Flush(); $c.Close()
+    $buf = New-Object byte[] 8192; $n = $s.Read($buf, 0, $buf.Length)
+    $path = ([Text.Encoding]::ASCII.GetString($buf, 0, $n) -split ' ')[1].TrimStart('/') -replace '/', '\'
+    $file = Join-Path $root $path
+    if (Test-Path $file -PathType Leaf) {
+      $bytes = [IO.File]::ReadAllBytes($file)
+      $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $($bytes.Length)`r`nConnection: close`r`n`r`n")
+      $s.Write($h, 0, $h.Length); $s.Write($bytes, 0, $bytes.Length)
+    } else {
+      $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 404 Not Found`r`nContent-Length: 0`r`nConnection: close`r`n`r`n")
+      $s.Write($h, 0, $h.Length)
+    }
+    $s.Flush(); $c.Close()
   }
   $l.Stop()
 }
@@ -166,51 +222,59 @@ if ($dlg -ne [IntPtr]::Zero) {
   Check (WaitFor { Test-Path "$work\players\fake\fakeplay.exe" } 15000) 'accepting the prompt installs the player'
 }
 Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
+# ---- downloading missing game files from the catalog -----------------------
+New-Item -ItemType Directory -Force "$www\games\demo2" | Out-Null
+Set-Content "$www\games\demo2\dl.swf" 'pretend game file' -NoNewline
+$gsha = (Get-FileHash "$www\games\demo2\dl.swf" -Algorithm SHA256).Hash.ToLower()
+$gsize = (Get-Item "$www\games\demo2\dl.swf").Length
+function CatalogJson([string]$hash) {
+  "{ `"schemaVersion`": 1, `"files`": [ { `"name`": `"dl.swf`", `"game`": `"demo2`", `"path`": `"games/demo2/dl.swf`", `"size`": $gsize, `"sha256`": `"$hash`" } ] }"
+}
+Set-Content "$www\catalog.json" (CatalogJson $gsha) -Encoding ASCII
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\dlgames", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
+  "downloads": { "catalog": "http://127.0.0.1:$httpPort/catalog.json" },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"] } ],
+  "games": [ { "id": "demo2", "name": "Downloadable Game", "actions": [ { "id": "play", "label": "Play", "swf": "`${GAMES_DIR}\\dl.swf" } ] } ]
+}
+"@ | Set-Content "$work\dl.json" -Encoding UTF8
+$r = Run @('--list', '--config', "`"$work\dl.json`"")
+Check ($r.Out -match 'game file missing') 'downloadable game starts out missing'
+$r = Run @('--download-game', 'demo2', '--config', "`"$work\dl.json`"")
+Check ($r.Code -eq 0 -and (Test-Path "$work\dlgames\dl.swf")) '--download-game saves the file from the catalog'
+Check ((Get-FileHash "$work\dlgames\dl.swf" -Algorithm SHA256).Hash.ToLower() -eq $gsha) 'downloaded file matches the catalog checksum'
+$r = Run @('--list', '--config', "`"$work\dl.json`"")
+Check ($r.Out -match 'play \(Play\): ready') 'downloaded game is ready to play'
+Remove-Item "$work\dlgames\dl.swf"
+Set-Content "$www\catalog.json" (CatalogJson ('0' * 64)) -Encoding ASCII
+$r = Run @('--download-game', 'demo2', '--config', "`"$work\dl.json`"")
+Check ($r.Code -eq 1 -and -not (Test-Path "$work\dlgames\dl.swf") -and -not (Test-Path "$work\dlgames\dl.swf.part")) 'a file with the wrong checksum is not saved'
+$r = Run @('--download-game', 'nosuchgame', '--config', "`"$work\dl.json`"")
+Check ($r.Code -eq 3) 'unknown game id exits 3'
+
+# The window: the catalog arrives in the background, then Download game files,
+# accept the prompt, and the file lands in the games folder.
+Set-Content "$www\catalog.json" (CatalogJson $gsha) -Encoding ASCII
+$dlwin = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\dl.json`"") -PassThru
+$dlHwnd = [IntPtr]::Zero
+WaitFor { $dlwin.Refresh(); $dlwin.MainWindowHandle -ne 0 } 10000 | Out-Null
+$btn = $null
+if ($dlwin.MainWindowHandle -ne 0) {
+  WaitFor { $script:btn = [Acc]::Controls($dlwin.MainWindowHandle) | Where-Object { $_.Name -like 'Download game files*' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
+}
+Check ($null -ne $btn) "window offers Download game files ($($btn.Name))"
+if ($btn) {
+  [Acc]::Do($btn.Hwnd)
+  $dlg = [IntPtr]::Zero
+  WaitFor { $script:dlg = [Top]::Find([uint32]$dlwin.Id, '#32770'); $script:dlg -ne [IntPtr]::Zero } 10000 | Out-Null
+  if ($dlg -ne [IntPtr]::Zero) { [Top]::SendMessage($dlg, 0x0466, [IntPtr]6, [IntPtr]::Zero) | Out-Null }
+  Check (WaitFor { Test-Path "$work\dlgames\dl.swf" } 15000) 'accepting the prompt downloads the game file'
+}
+Stop-Process -Id $dlwin.Id -Force -ErrorAction SilentlyContinue
 Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
 
 # ---- window, through MSAA (the API screen readers use for Win32 controls) ----
-Add-Type -ReferencedAssemblies Accessibility -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-using Accessibility;
-
-public class AccControl { public IntPtr Hwnd; public string Name; public string Class; }
-
-public static class Acc {
-    delegate bool EnumProc(IntPtr h, IntPtr l);
-    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
-    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, string l);
-    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
-    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
-    [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid,
-        [MarshalAs(UnmanagedType.Interface)] out IAccessible acc);
-    static Guid IID = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
-
-    public static List<AccControl> Controls(IntPtr top) {
-        var list = new List<AccControl>();
-        EnumChildWindows(top, (h, l) => {
-            if (!IsWindowVisible(h)) return true;
-            IAccessible a;
-            if (AccessibleObjectFromWindow(h, 0xFFFFFFFC, ref IID, out a) != 0 || a == null) return true;
-            var c = new AccControl { Hwnd = h };
-            try { c.Name = a.get_accName(0) ?? ""; } catch { c.Name = ""; }
-            var sb = new StringBuilder(64); GetClassName(h, sb, 64); c.Class = sb.ToString();
-            list.Add(c);
-            return true;
-        }, IntPtr.Zero);
-        return list;
-    }
-    public static void Do(IntPtr h) {
-        IAccessible a;
-        AccessibleObjectFromWindow(h, 0xFFFFFFFC, ref IID, out a);
-        a.accDoDefaultAction(0);
-    }
-}
-'@
 function Ctl([IntPtr]$top, [string]$name) { [Acc]::Controls($top) | Where-Object { $_.Name -eq $name } | Select-Object -First 1 }
 function OfClass([IntPtr]$top, [string]$cls) { [Acc]::Controls($top) | Where-Object { $_.Class -eq $cls } | Select-Object -First 1 }
 function GridCount([IntPtr]$top) {

@@ -8,6 +8,7 @@ namespace fl {
 struct Args {
     std::wstring config, log, snapshot, launch;  // launch: "game" or "game:action"
     std::string installPlayer;                   // player id for --install-player
+    std::string downloadGame;                    // game id or "all" for --download-game
     std::string select;
     int width = 0, height = 0, relayPort = 0;
     bool list = false, validate = false, help = false, demoHost = false;

@@ -164,6 +164,42 @@ void removeTree(const std::wstring& dir) {
     std::filesystem::remove_all(fs::longPath(dir), ec);
 }
 
+// Downloads `url` to `dest`, adding to st.done as bytes arrive. Checks the size
+// and SHA-256 when known; on any failure `dest` is deleted.
+bool downloadVerified(const std::wstring& url, const std::wstring& dest, const std::wstring& sha256, uint64_t size,
+                      InstallStatus& st, const InstallProgress& progress, const std::atomic<bool>* cancel,
+                      std::wstring& error) {
+    FILE* f = _wfopen(fs::longPath(dest).c_str(), L"wb");
+    if (!f) {
+        error = L"Cannot write " + dest;
+        return false;
+    }
+    fs::Sha256 hash;
+    uint64_t got = 0, length = 0;
+    bool ok = httpGet(
+        url,
+        [&](const char* d, size_t n) {
+            hash.update(d, n);
+            got += n;
+            st.done += n;
+            if (!st.total && length) st.total = length;
+            if (progress) progress(st);
+            return fwrite(d, 1, n, f) == n;
+        },
+        &length, cancel, error);
+    fclose(f);
+    if (ok && size && got != size) {
+        error = L"The download is incomplete (" + formatBytes(got) + L" of " + formatBytes(size) + L")";
+        ok = false;
+    }
+    if (ok && !sha256.empty() && widen(hash.hex()) != toLower(sha256)) {
+        error = L"The download doesn't match its published checksum, so it was not installed.";
+        ok = false;
+    }
+    if (!ok) DeleteFileW(fs::longPath(dest).c_str());
+    return ok;
+}
+
 }  // namespace
 
 InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const InstallProgress& progress,
@@ -198,40 +234,11 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     removeTree(work);
     if (!fs::ensureDir(work, nullptr, nullptr)) return fail(L"Cannot create " + work);
     std::wstring archive = fs::join(work, asset.name.empty() ? L"download.zip" : asset.name);
-    FILE* f = _wfopen(fs::longPath(archive).c_str(), L"wb");
-    if (!f) {
-        removeTree(work);
-        return fail(L"Cannot write " + archive);
-    }
-    fs::Sha256 hash;
     st.total = asset.size;
     report(InstallStatus::Stage::Downloading);
-    uint64_t length = 0;
-    bool ok = httpGet(
-        asset.url,
-        [&](const char* d, size_t n) {
-            hash.update(d, n);
-            st.done += n;
-            if (!st.total && length) st.total = length;
-            if (progress) progress(st);
-            return fwrite(d, 1, n, f) == n;
-        },
-        &length, cancel, error);
-    fclose(f);
-    if (!ok) {
+    if (!downloadVerified(asset.url, archive, asset.sha256, asset.size, st, progress, cancel, error)) {
         removeTree(work);
         return fail(error);
-    }
-
-    report(InstallStatus::Stage::Verifying);
-    std::string digest = hash.hex();
-    if (asset.size && st.done != asset.size) {
-        removeTree(work);
-        return fail(L"The download is incomplete (" + formatBytes(st.done) + L" of " + formatBytes(asset.size) + L")");
-    }
-    if (!asset.sha256.empty() && widen(digest) != asset.sha256) {
-        removeTree(work);
-        return fail(L"The download doesn't match its published checksum, so it was not installed.");
     }
 
     report(InstallStatus::Stage::Unpacking);
@@ -275,6 +282,92 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     r.exe = fs::join(target, exe);
     logger().info(player.name + L" installed: " + r.exe);
     report(InstallStatus::Stage::Done);
+    return r;
+}
+
+bool parseCatalog(std::string_view text, const std::wstring& baseUrl, std::vector<CatalogFile>& out,
+                  std::wstring& error) {
+    std::string perr;
+    json::Value root = json::parse(text, &perr);
+    const json::Value* files = root.isObject() ? root.find("files") : nullptr;
+    if (!perr.empty() || !files || !files->isArray()) {
+        error = L"The game catalog is not valid" + (perr.empty() ? std::wstring() : L" (" + widen(perr) + L")");
+        return false;
+    }
+    std::wstring base = baseUrl.substr(0, baseUrl.rfind(L'/') + 1);
+    out.clear();
+    for (size_t i = 0; i < files->size(); ++i) {
+        const json::Value& f = files->at(i);
+        auto str = [&](const char* k) {
+            const json::Value* v = f.isObject() ? f.find(k) : nullptr;
+            return v && v->isString() ? v->str() : std::string();
+        };
+        CatalogFile c;
+        c.game = str("game");
+        c.name = widen(str("name"));
+        c.sha256 = toLower(widen(str("sha256")));
+        c.description = widen(str("description"));
+        std::string path = str("path");
+        if (const json::Value* sz = f.isObject() ? f.find("size") : nullptr; sz && sz->isNumber())
+            c.size = static_cast<uint64_t>(sz->number());
+        // A file name with a folder in it could write outside the games folder.
+        if (c.game.empty() || c.name.empty() || path.empty() || c.name.find_first_of(L"\\/:") != std::wstring::npos ||
+            c.name.find(L"..") != std::wstring::npos)
+            continue;
+        c.url = path.rfind("https://", 0) == 0 || path.rfind("http://", 0) == 0 ? widen(path) : base + widen(path);
+        out.push_back(std::move(c));
+    }
+    return true;
+}
+
+bool fetchCatalog(const std::wstring& url, std::vector<CatalogFile>& out, std::string& raw, std::wstring& error,
+                  const std::atomic<bool>* cancel) {
+    raw.clear();
+    if (!httpGet(url, [&](const char* d, size_t n) { raw.append(d, n); return raw.size() < 4 * 1024 * 1024; }, nullptr,
+                 cancel, error))
+        return false;
+    return parseCatalog(raw, url, out, error);
+}
+
+InstallResult downloadGameFiles(const std::vector<CatalogFile>& files, const std::wstring& dir,
+                                const InstallProgress& progress, const std::atomic<bool>* cancel) {
+    InstallResult r;
+    InstallStatus st;
+    std::vector<const CatalogFile*> todo;
+    for (const auto& f : files) {
+        std::wstring dest = fs::join(dir, f.name);
+        if (fs::isFile(dest) && !f.sha256.empty() && widen(fs::sha256File(dest)) == f.sha256) continue;
+        todo.push_back(&f);
+        st.total += f.size;
+    }
+    if (!fs::ensureDir(dir, nullptr, nullptr)) {
+        r.error = L"Cannot create " + dir;
+        return r;
+    }
+    st.stage = InstallStatus::Stage::Downloading;
+    if (progress) progress(st);
+    for (const CatalogFile* f : todo) {
+        std::wstring dest = fs::join(dir, f->name), part = dest + L".part";
+        logger().info(L"Downloading " + f->url + L" -> " + dest);
+        std::wstring error;
+        if (!downloadVerified(f->url, part, f->sha256, f->size, st, progress, cancel, error)) {
+            r.error = f->name + L": " + error;
+            logger().error(L"Download failed: " + r.error);
+            st.stage = InstallStatus::Stage::Failed;
+            if (progress) progress(st);
+            return r;
+        }
+        // Rename only after the checksum passed, so a half-written file never
+        // shows up as a playable game.
+        if (!MoveFileExW(fs::longPath(part).c_str(), fs::longPath(dest).c_str(), MOVEFILE_REPLACE_EXISTING)) {
+            r.error = lastError((L"Cannot save " + dest).c_str());
+            DeleteFileW(fs::longPath(part).c_str());
+            return r;
+        }
+    }
+    r.ok = true;
+    st.stage = InstallStatus::Stage::Done;
+    if (progress) progress(st);
     return r;
 }
 

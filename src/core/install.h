@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "config.h"
 #include "vars.h"
@@ -29,5 +31,25 @@ using InstallProgress = std::function<void(const InstallStatus&)>;
 // `vars` must hold PLAYERS_DIR and DATA_DIR. `cancel` may be null.
 InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const InstallProgress& progress,
                             const std::atomic<bool>* cancel);
+
+// One downloadable game file from the game catalog (catalog.json in the
+// flash-games repository): `name` is the file name in the games folder and
+// `game` the launcher's game id.
+struct CatalogFile {
+    std::string game;
+    std::wstring name, url, sha256, description;
+    uint64_t size = 0;
+};
+
+// `baseUrl` is the catalog's own address; file paths are relative to its folder.
+bool parseCatalog(std::string_view json, const std::wstring& baseUrl, std::vector<CatalogFile>& out,
+                  std::wstring& error);
+// Downloads and parses the catalog. `raw` receives the JSON for caching.
+bool fetchCatalog(const std::wstring& url, std::vector<CatalogFile>& out, std::string& raw, std::wstring& error,
+                  const std::atomic<bool>* cancel = nullptr);
+// Downloads `files` into `dir`, each checked against its SHA-256 and written
+// under a temporary name first. Files already there with the right checksum are kept.
+InstallResult downloadGameFiles(const std::vector<CatalogFile>& files, const std::wstring& dir,
+                                const InstallProgress& progress, const std::atomic<bool>* cancel);
 
 }  // namespace fl

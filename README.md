@@ -43,10 +43,14 @@ Native C++20/Win32, no dependencies, one small `.exe`.
 | Bad Ice-Cream | Play | Co-op on one keyboard. |
 | Boxhead: 2Play Rooms | Play | Co-op on one keyboard. |
 
-**No game files are included.** Put your own `.swf` files in the `games\`
-folder (names are listed in `games\README.txt`), point the launcher at them with
-*Locate game file...*, or install Flashpoint: its copies are picked up
-automatically.
+**Getting the games.** When a game file is missing, the game shows *Download game
+files*: the launcher fetches them from [multiplayereverything/flash-games](https://github.com/multiplayereverything/flash-games),
+checks each file against the SHA-256 in that repository's catalog, and saves it in
+`games\`. Right now that covers Gun Mayhem 2 (original and online) and the original
+Stealth Hunter 2; the Stealth Hunter 2 co-op build follows once its next release
+passes testing. You can also put your own `.swf` files in `games\` (names are in
+`games\README.txt`), use *Locate game file...*, or install Flashpoint, whose copies
+are picked up automatically.
 
 ## Install and play
 
@@ -78,6 +82,7 @@ FlashLauncher.exe --list                       every game and whether it can sta
 FlashLauncher.exe --launch gunmayhem2:host     start an action without the window
 FlashLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
 FlashLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
+FlashLauncher.exe --download-game all          download every game file the catalog has
 FlashLauncher.exe --validate                   check launcher.json
 ```
 
@@ -96,7 +101,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Dist
 `-Test` runs the C++ tests (config, file lookup, command lines, settings, and
 the relay against real sockets) and `tests\e2e.ps1`, which drives the real exe
 and its window through the accessibility API with a fake player, and installs a
-fake player from a local test server (checksum, failed reinstall, first-run prompt). `-Dist` makes
+fake player and fake game files from a local test server (checksums, failed
+reinstall, first-run prompt, the window's download button). `-Dist` makes
 `dist\MultiplayerFlashLauncher\` and its `.zip`, and refuses to package any
 `.swf` or player binary.
 

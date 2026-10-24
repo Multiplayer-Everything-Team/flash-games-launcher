@@ -198,12 +198,15 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
             c.state = ActionState::Ready;
             return c;
         }
-        if (!fallback.player || (hasExe && fallback.playerExe.empty()) || (!swf.empty() && fallback.swf.empty()))
+        // Prefer an installed player; among those (or with none installed), one that has the file.
+        if (!fallback.player || (hasExe && fallback.playerExe.empty()) ||
+            (!swf.empty() && fallback.swf.empty() && hasExe == !fallback.playerExe.empty()))
             fallback = c;
     }
-    // A found file with no usable player (or none that pairs with it) is a player problem.
-    fallback.state = anySwf ? ActionState::NoPlayer : ActionState::NoSwf;
-    (void)anyPlayer;
+    // An installed player without its file is a file problem (download or locate
+    // it), even when another player's copy "exists", such as a web address for a
+    // player that isn't installed. Only with no player at all is it a player problem.
+    fallback.state = !anyPlayer && anySwf ? ActionState::NoPlayer : ActionState::NoSwf;
     return fallback;
 }
 

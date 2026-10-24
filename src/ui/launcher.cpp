@@ -24,6 +24,7 @@ constexpr UINT WM_APP_RELAY = WM_APP + 2;  // relay peers changed
 constexpr UINT WM_APP_INSTALL = WM_APP + 3;   // player install progress
 constexpr UINT WM_APP_INSTALLED = WM_APP + 4; // player install finished
 constexpr UINT WM_APP_FIRSTRUN = WM_APP + 5;  // offer to install a player
+constexpr UINT WM_APP_CATALOG = WM_APP + 6;   // fresh game catalog downloaded
 constexpr UINT_PTR kTimer = 1;
 
 enum : int {
@@ -38,6 +39,7 @@ enum : int {
     kIdGetPlayer,
     kIdStopHost,
     kIdCopy,
+    kIdDownload,
     kIdAction0 = 200,
 };
 
@@ -108,6 +110,7 @@ Launcher::Launcher(const Config& cfg, Library& lib, UserData& user, std::wstring
 Launcher::~Launcher() {
     installCancel_ = true;
     if (installThread_.joinable()) installThread_.join();
+    if (catalogThread_.joinable()) catalogThread_.join();
     relay_.stop();
     watcher_.reset();
 }
@@ -260,6 +263,7 @@ void Launcher::create(const LauncherOptions& opt) {
         }
         if (!anyPlayer && installable) PostMessageW(hwnd_, WM_APP_FIRSTRUN, 0, 0);
     }
+    loadCatalog();
     SetFocus(grid_);
 }
 
@@ -290,6 +294,7 @@ void Launcher::createControls() {
     getPlayerBtn_ = makeButton(kIdGetPlayer, BtnStyle::Secondary);
     copyBtn_ = makeButton(kIdCopy, BtnStyle::Secondary);
     stopHostBtn_ = makeButton(kIdStopHost, BtnStyle::Danger);
+    downloadBtn_ = makeButton(kIdDownload, BtnStyle::Secondary);
     if (theme_.dark && !theme_.highContrast) {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
         for (HWND h : {navCombo_, playerCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
@@ -551,7 +556,8 @@ void Launcher::layoutGrid() {
 
 void Launcher::layoutDetail() {
     dl_ = {};
-    std::vector<HWND> all = {playerCombo_, favBtn_, locateBtn_, folderBtn_, getPlayerBtn_, stopHostBtn_, copyBtn_};
+    std::vector<HWND> all = {playerCombo_, favBtn_, locateBtn_, folderBtn_, getPlayerBtn_, stopHostBtn_, copyBtn_,
+                             downloadBtn_};
     all.insert(all.end(), actionBtns_.begin(), actionBtns_.end());
     if (selected_ < 0 || width(detail_) <= 0) {
         for (HWND h : all) ShowWindow(h, SW_HIDE);
@@ -591,7 +597,9 @@ void Launcher::layoutDetail() {
 
     // Short windows: thinner action buttons (no second line) and no player picker,
     // so the game's name and state stay visible above the buttons.
+    std::vector<CatalogFile> downloadable = missingSwf ? missingGameFiles(g) : std::vector<CatalogFile>{};
     int fixed = rowH + gap + (missingPlayer ? rowH + gap : 0) + (missingSwf ? rowH + gap : 0) +
+                (downloadable.empty() ? 0 : rowH + gap) +
                 (hosting ? hostBoxH + t.s(12) : 0);
     int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0);
     int actionsH = static_cast<int>(g.actions.size()) * (actionH + gap) + (picker ? comboH + t.s(16) : 0);
@@ -631,6 +639,14 @@ void Launcher::layoutDetail() {
                                                           : cfg_.t("button.locate"))
                                        .c_str());
     place(locateBtn_, missingSwf != nullptr);
+    if (!downloadable.empty()) {
+        uint64_t bytes = 0;
+        for (const auto& f : downloadable) bytes += f.size;
+        SetWindowTextW(downloadBtn_, cfg_.t("button.downloadGame", {{L"SIZE", formatBytes(bytes)}}).c_str());
+        btnInfo_[downloadBtn_].style = BtnStyle::Primary;  // the easiest fix, so it leads
+    }
+    EnableWindow(downloadBtn_, !installing_);
+    place(downloadBtn_, !downloadable.empty());
 
     // Hosting box: relay status, peers, this PC's addresses.
     ShowWindow(stopHostBtn_, hosting ? SW_SHOW : SW_HIDE);
@@ -1343,6 +1359,8 @@ void Launcher::offerInstall(const PlayerSpec& player, bool firstRun) {
     installing_ = true;
     installCancel_ = false;
     installPlayer_ = &player;
+    jobIsGame_ = false;
+    jobName_ = player.name;
     {
         std::lock_guard<std::mutex> lock(installMu_);
         installStatus_ = {};
@@ -1372,9 +1390,13 @@ void Launcher::offerInstall(const PlayerSpec& player, bool firstRun) {
 }
 
 std::wstring Launcher::installText() const {
-    if (!installing_ || !installPlayer_) return {};
+    if (!installing_) return {};
     std::lock_guard<std::mutex> lock(installMu_);
-    const std::wstring& name = installPlayer_->name;
+    const std::wstring& name = jobName_;
+    if (jobIsGame_)
+        return cfg_.t("download.downloading", {{L"GAME", name},
+                                               {L"DONE", formatBytes(installStatus_.done)},
+                                               {L"TOTAL", installStatus_.total ? formatBytes(installStatus_.total) : L"?"}});
     switch (installStatus_.stage) {
         case InstallStatus::Stage::Downloading:
             return cfg_.t("install.downloading", {{L"PLAYER", name},
@@ -1394,12 +1416,117 @@ void Launcher::onInstalled() {
         std::lock_guard<std::mutex> lock(installMu_);
         r = installResult_;
     }
-    std::wstring name = installPlayer_ ? installPlayer_->name : std::wstring();
+    std::wstring name = jobName_;
     refreshAll();
+    if (jobIsGame_) {
+        if (r.ok) notice(cfg_.t("download.done", {{L"GAME", name}}), theme_.c.success);
+        else notice(cfg_.t("download.failed", {{L"GAME", name}, {L"ERROR", r.error}}), theme_.c.error);
+        return;
+    }
     if (r.ok)
         notice(cfg_.t("install.done", {{L"PLAYER", r.version.empty() ? name : name + L" " + r.version}}), theme_.c.success);
     else
         notice(cfg_.t("install.failed", {{L"PLAYER", name}, {L"ERROR", r.error}}), theme_.c.error);
+}
+
+void Launcher::loadCatalog() {
+    if (cfg_.downloads.catalog.empty()) return;
+    // Show what the last session knew at once, then refresh in the background.
+    std::wstring cache = fs::join(lib_.dataDir(), L"catalog.json");
+    std::string text;
+    std::wstring err;
+    if (fs::readText(cache, text)) parseCatalog(text, cfg_.downloads.catalog, catalog_, err);
+    if (snapshot_) {
+        select(selected_);  // snapshots never touch the network
+        return;
+    }
+    std::wstring url = cfg_.downloads.catalog;
+    HWND wnd = hwnd_;
+    catalogThread_ = std::thread([this, url, wnd] {
+        std::vector<CatalogFile> files;
+        std::string raw;
+        std::wstring error;
+        if (fetchCatalog(url, files, raw, error, &installCancel_)) {
+            {
+                std::lock_guard<std::mutex> lock(installMu_);
+                catalogRaw_ = std::move(raw);
+            }
+            PostMessageW(wnd, WM_APP_CATALOG, 0, 0);
+        } else {
+            logger().warn(L"Game catalog not refreshed: " + error);
+        }
+    });
+}
+
+std::vector<CatalogFile> Launcher::missingGameFiles(const GameSpec& game) const {
+    std::vector<CatalogFile> out;
+    std::wstring dir = lib_.vars().get(L"GAMES_DIR");
+    for (const auto& f : catalog_)
+        if (f.game == game.id && !fs::isFile(fs::join(dir, f.name))) out.push_back(f);
+    return out;
+}
+
+void Launcher::offerGameDownload(const GameSpec& game) {
+    if (installing_ || snapshot_) return;
+    std::vector<CatalogFile> files = missingGameFiles(game);
+    if (files.empty()) return;
+    uint64_t bytes = 0;
+    for (const auto& f : files) bytes += f.size;
+    std::wstring dir = lib_.vars().get(L"GAMES_DIR");
+    std::wstring source = cfg_.downloads.catalog;
+    // Name the repository, not the raw file host, so people know where it comes from.
+    if (startsWithI(source, L"https://raw.githubusercontent.com/")) {
+        std::vector<std::wstring> parts = split(source.substr(34), L'/');
+        if (parts.size() >= 2) source = L"github.com/" + parts[0] + L"/" + parts[1];
+    }
+    std::wstring title = cfg_.t("download.title", {{L"GAME", game.name}});
+    std::wstring body = cfg_.t("download.body", {{L"COUNT", std::to_wstring(files.size())},
+                                                 {L"SIZE", formatBytes(bytes)},
+                                                 {L"SOURCE", source},
+                                                 {L"DIR", dir}});
+    std::wstring yes = cfg_.t("download.yes"), no = cfg_.t("install.no");
+    TASKDIALOG_BUTTON buttons[] = {{IDYES, yes.c_str()}, {IDNO, no.c_str()}};
+    TASKDIALOGCONFIG tdc{sizeof tdc};
+    tdc.hwndParent = hwnd_;
+    tdc.dwFlags = TDF_POSITION_RELATIVE_TO_WINDOW;
+    tdc.pszWindowTitle = cfg_.branding.subtitle.c_str();
+    tdc.pszMainInstruction = title.c_str();
+    tdc.pszContent = body.c_str();
+    tdc.cButtons = 2;
+    tdc.pButtons = buttons;
+    tdc.nDefaultButton = IDYES;
+    int choice = 0;
+    if (FAILED(TaskDialogIndirect(&tdc, &choice, nullptr, nullptr)) || choice != IDYES) return;
+
+    if (installThread_.joinable()) installThread_.join();
+    installing_ = true;
+    installCancel_ = false;
+    jobIsGame_ = true;
+    jobName_ = game.name;
+    {
+        std::lock_guard<std::mutex> lock(installMu_);
+        installStatus_ = {};
+    }
+    HWND wnd = hwnd_;
+    installThread_ = std::thread([this, files, dir, wnd] {
+        InstallResult r = downloadGameFiles(
+            files, dir,
+            [this, wnd](const InstallStatus& s) {
+                std::lock_guard<std::mutex> lock(installMu_);
+                bool post = s.stage != installStatus_.stage ||
+                            (s.total && s.done * 100 / s.total != installStatus_.done * 100 / std::max<uint64_t>(installStatus_.total, 1));
+                installStatus_ = s;
+                if (post) PostMessageW(wnd, WM_APP_INSTALL, 0, 0);
+            },
+            &installCancel_);
+        {
+            std::lock_guard<std::mutex> lock(installMu_);
+            installResult_ = r;
+        }
+        PostMessageW(wnd, WM_APP_INSTALLED, 0, 0);
+    });
+    layoutDetail();
+    InvalidateRect(hwnd_, &status_, FALSE);
 }
 
 void Launcher::copyAddress() {
@@ -1662,6 +1789,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 else if (id == kIdGetPlayer) getPlayer();
                 else if (id == kIdStopHost) stopRelay(true);
                 else if (id == kIdCopy) copyAddress();
+                else if (id == kIdDownload && selected_ >= 0) offerGameDownload(cfg_.games[selected_]);
                 else if (id == IDOK && selected_ >= 0) runAction(selected_, 0);  // Enter outside the grid
             }
             return 0;
@@ -1681,6 +1809,23 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_APP_INSTALLED:
             onInstalled();
             return 0;
+        case WM_APP_CATALOG: {
+            std::string raw;
+            {
+                std::lock_guard<std::mutex> lock(installMu_);
+                raw.swap(catalogRaw_);
+            }
+            std::vector<CatalogFile> files;
+            std::wstring err;
+            if (parseCatalog(raw, cfg_.downloads.catalog, files, err)) {
+                catalog_ = std::move(files);
+                std::wstring cache = fs::join(lib_.dataDir(), L"catalog.json");
+                fs::ensureDir(lib_.dataDir(), nullptr, nullptr);
+                fs::writeFile(cache, raw.data(), raw.size(), nullptr);
+                select(selected_);
+            }
+            return 0;
+        }
         case WM_APP_FIRSTRUN:
             for (const auto& p : cfg_.players)
                 if (p.install.enabled()) {

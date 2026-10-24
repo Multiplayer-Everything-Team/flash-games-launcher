@@ -107,6 +107,11 @@ private:
     // Asks, then downloads and unpacks `player` on a worker thread.
     void offerInstall(const PlayerSpec& player, bool firstRun);
     void onInstalled();
+    // Game files the catalog offers for this game that are not on disk yet.
+    std::vector<CatalogFile> missingGameFiles(const GameSpec& game) const;
+    void offerGameDownload(const GameSpec& game);
+    void loadCatalog();
+    HWND downloadBtn_ = nullptr;
     std::wstring installText() const;
     void copyAddress();
     void toggleFavorite();
@@ -164,6 +169,11 @@ private:
     mutable std::mutex installMu_;
     InstallStatus installStatus_;
     InstallResult installResult_;
+    bool jobIsGame_ = false;  // the running job downloads game files, not a player
+    std::wstring jobName_;
+    std::vector<CatalogFile> catalog_;
+    std::thread catalogThread_;
+    std::string catalogRaw_;  // fetched by catalogThread_, handed over in WM_APP_CATALOG
 };
 
 }  // namespace fl::ui

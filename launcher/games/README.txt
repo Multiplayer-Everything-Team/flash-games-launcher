@@ -14,4 +14,7 @@ Any other name works too: select the game in the launcher and press
 "Locate game file...". With Flashpoint installed, Gun Mayhem 2 and
 Stealth Hunter 2 are found in your Flashpoint folder automatically.
 
-Game files are not included with the launcher.
+Missing files can be downloaded from inside the launcher: select the game and
+press "Download game files". They come from
+https://github.com/multiplayereverything/flash-games and are checked before
+they are saved here.

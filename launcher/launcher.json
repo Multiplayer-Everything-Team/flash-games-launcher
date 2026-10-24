@@ -17,6 +17,12 @@
     "flashpoint": ["C:\\Flashpoint", "D:\\Flashpoint", "E:\\Flashpoint", "${folder:Profile}\\Flashpoint", "${folder:Desktop}\\Flashpoint"]
   },
 
+  // Missing game files can be downloaded from the Multiplayer Everything games
+  // repository; every file is checked against the SHA-256 in its catalog.
+  "downloads": {
+    "catalog": "https://raw.githubusercontent.com/multiplayereverything/flash-games/main/catalog.json"
+  },
+
   "behavior": {
     // Flash slows down windows that are minimized, so the launcher stays put by default.
     "minimizeOnLaunch": false,
@@ -73,7 +79,7 @@
       "color": "#FF6A3D",
       "colorEnd": "#B4234E",
       "description": "Knock each other off floating platforms with guns, in free-for-all or team matches against friends and bots. The online mod adds internet play: the host is Player 1 and friends join as Players 2, 3 and 4.",
-      "controls": "Player 1: arrows to move, Z shoot, X jump (default). F9 opens the online panel (HOST / JOIN, effects quality).",
+      "controls": "Player 1: arrow keys, Z shoot, X throw bomb. Player 2: WASD, T shoot, Y throw bomb. Keys can be changed in the game's options. F9 opens the online panel.",
       "actions": [
         {
           "id": "play",

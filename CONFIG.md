@@ -31,6 +31,7 @@ Any path or argument can use these:
 | `branding` | | See below |
 | `paths` | | See below |
 | `behavior` | | See below |
+| `downloads` | | See below |
 | `players` | required | Flash players, tried in this order |
 | `categories` | `[]` | Sidebar groups: `{ "id", "name" }` |
 | `games` | required | The library |
@@ -66,6 +67,19 @@ Any path or argument can use these:
 | `minimizeOnLaunch` | `false` | Flash slows down minimized windows, but the launcher's own window doesn't matter; turn on if you like a clean desktop. |
 | `stopRelayWithGame` | `true` | Stop the relay when the hosting game closes. |
 | `quickExitSeconds` | `4` | A player that exits with an error faster than this is reported. |
+
+### downloads
+
+| Key | Default | |
+|---|---|---|
+| `catalog` | none | Address of a game catalog (`catalog.json` in the flash-games repository). Games with missing files then offer *Download game files*. Must be `https://`. |
+
+The catalog lists files as `{ "name", "game", "path", "size", "sha256" }`: `game` is
+the game `id` here, `name` the file name saved in `paths.games` (it must match one
+of the game's `${GAMES_DIR}` candidates), and `path` is relative to the catalog's
+folder. Every download is checked against its SHA-256 and saved under a temporary
+name until the check passes. The launcher keeps the last catalog it read in
+`paths.data` and refreshes it in the background when it starts.
 
 ## players[]
 

@@ -1,5 +1,6 @@
 // Config parsing/validation, file and player lookup, command lines, settings.
 #include "core/config.h"
+#include "core/install.h"
 #include "core/library.h"
 #include "core/process.h"
 #include "core/settings.h"
@@ -222,4 +223,38 @@ TEST(settings_round_trip_and_damaged_file) {
     UserData fresh = loadUserData(path);
     CHECK(fresh.games.empty());
     CHECK(exists(path + L".bad"));  // kept for inspection, not overwritten
+}
+
+TEST(catalog_parsing_and_unsafe_names) {
+    std::string json = R"({ "schemaVersion": 1, "files": [
+        { "name": "gm2.swf", "game": "gunmayhem2", "path": "games/gunmayhem2/gm2.swf", "size": 10, "sha256": "ABCDEF" },
+        { "name": "../evil.swf", "game": "x", "path": "games/x/evil.swf", "size": 1, "sha256": "00" },
+        { "name": "sub/evil.swf", "game": "x", "path": "games/x/evil.swf", "size": 1, "sha256": "00" },
+        { "name": "abs.swf", "game": "y", "path": "https://example.org/abs.swf", "size": 2, "sha256": "11" }
+    ] })";
+    std::vector<CatalogFile> files;
+    std::wstring err;
+    REQUIRE(parseCatalog(json, L"https://raw.githubusercontent.com/o/r/main/catalog.json", files, err));
+    REQUIRE(files.size() == 2);  // names that could escape the games folder are dropped
+    CHECK(files[0].url == L"https://raw.githubusercontent.com/o/r/main/games/gunmayhem2/gm2.swf");
+    CHECK(files[0].sha256 == L"abcdef");
+    CHECK(files[0].size == 10);
+    CHECK(files[1].url == L"https://example.org/abs.swf");
+    CHECK(!parseCatalog("{ nope", L"https://x/catalog.json", files, err));
+}
+
+TEST(library_blames_the_missing_file_when_a_player_is_installed) {
+    // Ruffle is installed but its file is missing; Flash Player's copy is a web
+    // address. The fix is the file, so the state must say so.
+    TempDir dir("lib-blame");
+    writeText(dir / L"players\\ruffle.exe", "x");
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "g", "actions": [{ "id": "p", "swf": "${GAMES_DIR}\\g.swf",
+        "overrides": { "flash": { "swf": ["http://localflash/g.swf"] } } }] }])"),
+                              dir.path());
+    REQUIRE(r.ok());
+    Library lib(r.config, baseVars(dir));
+    UserData user;
+    ResolvedAction a = lib.resolve(r.config.games[0], r.config.games[0].actions[0], user);
+    CHECK(a.state == ActionState::NoSwf);
+    CHECK(a.player && a.player->id == "ruffle");
 }

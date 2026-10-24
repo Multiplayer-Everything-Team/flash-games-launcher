@@ -109,7 +109,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
     bool cliMode = a.help || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
-                   !a.error.empty();
+                   !a.downloadGame.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
         fail(a.error + L"\n\n" + usageText());
@@ -167,6 +167,33 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return 1;
         }
         out(cfg.t("install.done", {{L"PLAYER", r.version.empty() ? p->name : p->name + L" " + r.version}}) + L"\n" + r.exe + L"\n");
+        return 0;
+    }
+
+    if (!a.downloadGame.empty()) {
+        if (cfg.downloads.catalog.empty()) {
+            fail(L"launcher.json has no downloads.catalog");
+            return 3;
+        }
+        std::vector<CatalogFile> files, wanted;
+        std::string raw;
+        std::wstring err;
+        if (!fetchCatalog(cfg.downloads.catalog, files, raw, err)) {
+            fail(L"Cannot read the game catalog: " + err);
+            return 1;
+        }
+        for (const auto& f : files)
+            if (a.downloadGame == "all" || f.game == a.downloadGame) wanted.push_back(f);
+        if (wanted.empty()) {
+            fail(L"The catalog has no files for \"" + widen(a.downloadGame) + L"\"");
+            return 3;
+        }
+        InstallResult r = downloadGameFiles(wanted, lib.vars().get(L"GAMES_DIR"), nullptr, nullptr);
+        if (!r.ok) {
+            fail(L"Download failed: " + r.error);
+            return 1;
+        }
+        for (const auto& f : wanted) out(fs::join(lib.vars().get(L"GAMES_DIR"), f.name) + L"\n");
         return 0;
     }
 

@@ -24,6 +24,9 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--install-player") {
             value(tmp);
             a.installPlayer = narrow(tmp);
+        } else if (k == L"--download-game") {
+            value(tmp);
+            a.downloadGame = narrow(tmp);
         } else if (k == L"--select") {
             value(tmp);
             a.select = narrow(tmp);
@@ -59,6 +62,8 @@ launcher.json next to the exe.
   --relay <port>         Run only the netplay relay (a dedicated relay PC); Ctrl+C stops
   --install-player <id>  Download and install a player that has an "install" entry
                          (e.g. ruffle) into its folder, then exit
+  --download-game <id|all>
+                         Download a game's files from the game catalog into the games folder
   --validate             Check launcher.json, print problems, exit
   --log <file>           Write the log here instead of the data folder
   --snapshot <png>       Render the window to a PNG and exit (visual checks)
