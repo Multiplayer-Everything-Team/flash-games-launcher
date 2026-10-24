@@ -1,0 +1,6 @@
+build/
+dist/
+# Never commit game files or player binaries.
+*.swf
+launcher/players/**/*.exe
+*.log

@@ -1,0 +1,228 @@
+{
+  // Multiplayer Everything - Flash Launcher configuration. Every game, player,
+  // color and text lives here; see CONFIG.md for every option.
+  // Paths are tried in order and the first one that exists wins. A path that
+  // uses ${FLASHPOINT} is skipped on PCs without Flashpoint.
+  "schemaVersion": 1,
+
+  "branding": {
+    "title": "Multiplayer Everything",
+    "subtitle": "Flash Launcher",
+    "theme": "dark"
+  },
+
+  "paths": {
+    "games": "${LAUNCHER_DIR}\\games",
+    "players": "${LAUNCHER_DIR}\\players",
+    "flashpoint": ["C:\\Flashpoint", "D:\\Flashpoint", "E:\\Flashpoint", "${folder:Profile}\\Flashpoint", "${folder:Desktop}\\Flashpoint"]
+  },
+
+  "behavior": {
+    // Flash slows down windows that are minimized, so the launcher stays put by default.
+    "minimizeOnLaunch": false,
+    "stopRelayWithGame": true
+  },
+
+  "players": [
+    {
+      "id": "ruffle",
+      "name": "Ruffle",
+      "website": "https://ruffle.rs/downloads",
+      "paths": [
+        "${PLAYERS_DIR}\\ruffle\\ruffle.exe",
+        "${PLAYERS_DIR}\\ruffle.exe",
+        "${env:ProgramFiles}\\ruffle\\bin\\ruffle.exe",
+        "${env:LOCALAPPDATA}\\Programs\\ruffle\\ruffle.exe",
+        "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\ruffle\\ruffle.exe",
+        "ruffle.exe"
+      ]
+    },
+    {
+      "id": "flash",
+      "name": "Flash Player",
+      "website": "https://flashpointarchive.org/downloads",
+      "paths": [
+        "${PLAYERS_DIR}\\flashplayer\\flashplayer_32_sa.exe",
+        "${PLAYERS_DIR}\\flashplayer_32_sa.exe",
+        "${FLASHPOINT}\\FPSoftware\\Flash\\flashplayer_32_sa.exe"
+      ]
+    }
+  ],
+
+  "categories": [
+    { "id": "online", "name": "Online multiplayer" },
+    { "id": "local", "name": "Local multiplayer" },
+    { "id": "coop", "name": "Co-op" },
+    { "id": "versus", "name": "Versus" }
+  ],
+
+  "games": [
+    {
+      "id": "gunmayhem2",
+      "name": "Gun Mayhem 2: More Mayhem",
+      "players": "1-4 players",
+      "categories": ["online", "local", "versus"],
+      "color": "#FF6A3D",
+      "colorEnd": "#B4234E",
+      "description": "Knock each other off floating platforms with guns, in free-for-all or team matches against friends and bots. The online mod adds internet play: the host is Player 1 and friends join as Players 2, 3 and 4.",
+      "controls": "Player 1: arrows to move, Z shoot, X jump (default). F9 opens the online panel (HOST / JOIN, effects quality).",
+      "actions": [
+        {
+          "id": "play",
+          "label": "Play",
+          "description": "Local multiplayer on one keyboard",
+          "swf": [
+            "${GAMES_DIR}\\gunmayhem2.swf",
+            "${FLASHPOINT}\\Data\\Games\\gunmayhem2\\content\\cache.armorgames.com\\files\\games\\gun-mayhem-2-more-ma-13824.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\work\\gm2_orig.swf"
+          ]
+        },
+        {
+          "id": "host",
+          "label": "Host online",
+          "description": "Starts the relay on port 7777",
+          "hint": "In the game press F9 and click HOST. Friends join with the address shown under Hosting.",
+          "swf": [
+            "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
+            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+          },
+          "relay": { "port": 7777 }
+        },
+        {
+          "id": "join",
+          "label": "Join online",
+          "description": "Connect to a friend's game",
+          "hint": "In the game press F9, type the host's address (for example 192.168.1.20:7777) and click JOIN.",
+          "swf": [
+            "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+          }
+        }
+      ]
+    },
+    {
+      "id": "stealthhunter2",
+      "name": "Stealth Hunter 2",
+      "players": "1-4 players (online co-op)",
+      "categories": ["online", "coop"],
+      "color": "#2BD4C5",
+      "colorEnd": "#1B3A6B",
+      "description": "Sneak through guarded bases, pick locks and take out guards without raising the alarm. The co-op mod lets up to four players play the campaign together: the host runs the world, everyone goes through doors together, and if anyone dies the team restarts the mission.",
+      "controls": "Arrows/WASD move, Shift sneak, Space action, C secondary, 1-6 weapons, Z quick weapon, X inventory. F9 opens the online panel.",
+      "actions": [
+        {
+          "id": "play",
+          "label": "Play",
+          "description": "The original single-player campaign",
+          "swf": [
+            "${GAMES_DIR}\\stealth_hunter_2.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\stealth_hunter_2.swf"
+          ]
+        },
+        {
+          "id": "host",
+          "label": "Host co-op",
+          "description": "Starts the relay on port 7778",
+          "hint": "Press F9 (or ONLINE CO-OP on the title screen), type a name and press HOST. Then start a level.",
+          "swf": [
+            "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // Flash Player needs the build with the network flag set.
+            "flash": {
+              "swf": [
+                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
+                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
+              ]
+            }
+          },
+          "relay": { "port": 7778 }
+        },
+        {
+          "id": "join",
+          "label": "Join co-op",
+          "description": "Connect to a friend's game",
+          "hint": "Press F9, type a name and the host's address (IP or IP:7778), then press JOIN.",
+          "swf": [
+            "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            "flash": {
+              "swf": [
+                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
+                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "gunmayhem",
+      "name": "Gun Mayhem",
+      "players": "1-2 players",
+      "categories": ["local", "versus"],
+      "color": "#F2B544",
+      "colorEnd": "#C2410C",
+      "description": "The original platform shoot-out: grab a gun and knock your friend off the map.",
+      "controls": "Shown on the game's title screen.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Local multiplayer on one keyboard", "swf": ["${GAMES_DIR}\\gunmayhem.swf"] }
+      ]
+    },
+    {
+      "id": "fireboywatergirl",
+      "name": "Fireboy and Watergirl in the Forest Temple",
+      "players": "2 players",
+      "categories": ["local", "coop"],
+      "color": "#FF4D4D",
+      "colorEnd": "#2F6FEB",
+      "description": "Two players share one keyboard and solve temple puzzles together: fire and water must each reach their own door.",
+      "controls": "Fireboy: arrow keys. Watergirl: W, A, D.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\fireboywatergirl.swf"] }
+      ]
+    },
+    {
+      "id": "badicecream",
+      "name": "Bad Ice-Cream",
+      "players": "1-2 players",
+      "categories": ["local", "coop"],
+      "color": "#B983FF",
+      "colorEnd": "#3CCB7F",
+      "description": "Collect all the fruit in each maze while building and breaking ice walls to stay away from the monsters. Better with a friend.",
+      "controls": "Shown on the game's title screen.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\badicecream.swf"] }
+      ]
+    },
+    {
+      "id": "boxhead2play",
+      "name": "Boxhead: 2Play Rooms",
+      "players": "1-2 players",
+      "categories": ["local", "coop"],
+      "color": "#9AA1AC",
+      "colorEnd": "#3A2A1E",
+      "description": "Two players fight off waves of zombies together on one keyboard.",
+      "controls": "Shown on the game's title screen.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Two players on one keyboard", "swf": ["${GAMES_DIR}\\boxhead2play.swf"] }
+      ]
+    }
+  ]
+}
