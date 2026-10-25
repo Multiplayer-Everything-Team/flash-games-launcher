@@ -51,5 +51,11 @@ bool fetchCatalog(const std::wstring& url, std::vector<CatalogFile>& out, std::s
 // under a temporary name first. Files already there with the right checksum are kept.
 InstallResult downloadGameFiles(const std::vector<CatalogFile>& files, const std::wstring& dir,
                                 const InstallProgress& progress, const std::atomic<bool>* cancel);
+// Catalog files that exist in `dir` with a different SHA-256: newer builds are
+// published. Reads every such file, so call it off the UI thread.
+std::vector<CatalogFile> outdatedGameFiles(const std::vector<CatalogFile>& catalog, const std::wstring& dir);
+
+// Small text download (JSON); false with `error` set on failure.
+bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error);
 
 }  // namespace fl

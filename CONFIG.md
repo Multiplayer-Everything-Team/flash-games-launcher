@@ -32,6 +32,7 @@ Any path or argument can use these:
 | `paths` | | See below |
 | `behavior` | | See below |
 | `downloads` | | See below |
+| `rooms` | | See below |
 | `players` | required | Flash players, tried in this order |
 | `categories` | `[]` | Sidebar groups: `{ "id", "name" }` |
 | `games` | required | The library |
@@ -42,6 +43,7 @@ Any path or argument can use these:
 | Key | Default |
 |---|---|
 | `title` | `"Multiplayer Everything"` |
+| `website` | the launcher's GitHub page: opened by *Project page* in Settings |
 | `subtitle` | `"Flash Launcher"` |
 | `windowTitle` | `"${TITLE} ${SUBTITLE}"` |
 | `theme` | `"dark"` (or `"light"`) |
@@ -68,6 +70,18 @@ Any path or argument can use these:
 | `stopRelayWithGame` | `true` | Stop the relay when the hosting game closes. |
 | `quickExitSeconds` | `4` | A player that exits with an error faster than this is reported. |
 
+### rooms
+
+| Key | Default | |
+|---|---|---|
+| `servers` | none | mods-info `servers.json`: the first server with status `online` is asked for rooms (the mods use the same file) |
+| `server` | none | `host:port` used when `servers.json` can't be read |
+| `refreshSeconds` | `30` | How often the room list refreshes |
+
+A game takes part with `"online": { "id": "<mod id on the server>", "join": "<action id>" }`.
+*Join* runs that action and passes the room code as `join=<code>` through the
+player's `flashvarArg`.
+
 ### downloads
 
 | Key | Default | |
@@ -91,6 +105,7 @@ name until the check passes. The launcher keeps the last catalog it read in
 | `install` | Optional: how to install the player when it's missing (see below) |
 | `paths` | Candidates, first existing wins. Absolute paths may use `*` in the file name (the highest version wins); a bare name like `ruffle.exe` is searched on PATH. |
 | `args` | Arguments before the game's own. `${SWF}` is added at the end unless an argument mentions it. |
+| `flashvarArg` | How the player passes a value into the game, e.g. `"-P${KEY}=${VALUE}"` for Ruffle. Players without it can't receive room codes. |
 
 ### players[].install
 
@@ -117,6 +132,7 @@ doesn't match.
 | `name`, `description`, `controls` | Shown in the details panel |
 | `players` | Player-count text, e.g. `"1-4 players"` |
 | `maxPlayers` | Player slots to show; default: the highest number in `players` |
+| `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room |
 | `categories` | Category ids |
 | `color`, `colorEnd` | Gradient of the generated cover art |
 | `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute |

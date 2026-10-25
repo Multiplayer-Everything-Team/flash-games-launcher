@@ -24,6 +24,9 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--install-player") {
             value(tmp);
             a.installPlayer = narrow(tmp);
+        } else if (k == L"--rooms") {
+            value(tmp);
+            a.rooms = narrow(tmp);
         } else if (k == L"--download-game") {
             value(tmp);
             a.downloadGame = narrow(tmp);
@@ -71,6 +74,7 @@ launcher.json next to the exe.
     --select <game>      ...with this game selected
     --size <WxH>         ...at this window size in pixels
     --demo-host          ...with the selected game's relay running
+  --rooms <game>         List the open rooms for a game on the central server
   --version              Print the launcher version
   --help                 Show this help
 

@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <set>
 #include <thread>
 
 #include "core/config.h"
@@ -17,6 +18,7 @@
 #include "core/library.h"
 #include "core/process.h"
 #include "core/relay.h"
+#include "core/rooms.h"
 #include "core/settings.h"
 #include "theme.h"
 
@@ -54,27 +56,31 @@ private:
         ULONGLONG started = 0;
         bool host = false;
     };
-    enum class BtnStyle { Primary, Secondary, Ghost, Danger };
+    enum class BtnStyle { Primary, Secondary, Ghost, Danger, Check };
     struct BtnInfo {
         BtnStyle style = BtnStyle::Secondary;
-        std::wstring sub;  // second, smaller line
+        std::wstring sub;    // second, smaller line
+        std::wstring label;  // drawn text when shorter than the accessible name ("Join")
         bool ready = true;
     };
     struct DetailLayout {
         RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
         std::vector<RECT> hostLines;
+        RECT rooms{}, roomsTitle{};
+        std::vector<RECT> roomRows;
     };
 
     static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l);
     static LRESULT CALLBACK gridProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
     static LRESULT CALLBACK searchProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
     static LRESULT CALLBACK buttonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
+    static LRESULT CALLBACK settingsProc(HWND h, UINT m, WPARAM w, LPARAM l);
     LRESULT handle(UINT m, WPARAM w, LPARAM l);
 
     void create(const LauncherOptions& opt);
     void createControls();
     void applyFonts();
-    HWND makeButton(int id, BtnStyle style);
+    HWND makeButton(int id, BtnStyle style, HWND parent = nullptr);
     void relayout();
     void layoutGrid();
     void layoutDetail();
@@ -98,7 +104,23 @@ private:
     std::wstring statsText(const GameStats* st) const;
     Gdiplus::Bitmap* art(int gameIndex, int w, int h, bool detail);
 
-    void runAction(int gameIndex, size_t actionIndex);
+    // `flashvars` are handed to the game when the player supports it (flashvarArg).
+    bool runAction(int gameIndex, size_t actionIndex,
+                   const std::vector<std::pair<std::wstring, std::wstring>>& flashvars = {});
+    bool minimizeOnLaunch() const;
+
+    // Rooms on the central server, polled on a worker thread.
+    void startRoomPolling();
+    void onRooms();
+    void joinRoom(size_t index);
+    // Downloaded game files with a newer build in the catalog.
+    std::vector<CatalogFile> outdatedFor(const GameSpec& game) const;
+    void checkOutdated();
+
+    // The Settings window (settings.cpp). Modal; changes apply at once.
+    void openSettings();
+    LRESULT settingsHandle(HWND h, UINT m, WPARAM w, LPARAM l);
+    void layoutSettings();
     void onProcessExit(DWORD pid, DWORD code);
     void stopRelay(bool announce);
     void locateFile();
@@ -111,9 +133,12 @@ private:
     std::vector<CatalogFile> missingGameFiles(const GameSpec& game) const;
     void offerGameDownload(const GameSpec& game);
     void loadCatalog();
-    HWND downloadBtn_ = nullptr;
+    HWND downloadBtn_ = nullptr, settingsBtn_ = nullptr;
+    std::vector<HWND> roomBtns_;
     std::wstring installText() const;
     void copyAddress();
+    void copyText(const std::wstring& text);
+    std::wstring roomCountText(const std::string& gameId) const;
     void toggleFavorite();
     void onPlayerChoice();
     void notice(const std::wstring& text, const Color& color);
@@ -172,6 +197,20 @@ private:
     bool jobIsGame_ = false;  // the running job downloads game files, not a player
     std::wstring jobName_;
     std::vector<CatalogFile> catalog_;
+    std::set<std::wstring> outdated_;  // file names; filled by the catalog thread
+    std::set<std::wstring> pendingOutdated_;
+    bool pendingOutdatedReady_ = false;
+
+    std::map<std::string, std::vector<RoomInfo>> rooms_, pendingRooms_;  // by game id
+    bool roomsKnown_ = false, pendingRoomsOk_ = false;
+    std::thread roomsThread_;
+    HANDLE roomsWake_ = nullptr;
+    std::atomic<bool> roomsStop_{false}, onlineOn_{true};
+
+    HWND settingsWnd_ = nullptr;
+    HWND setMinimize_ = nullptr, setPlayer_ = nullptr, setOnline_ = nullptr, setDirText_ = nullptr,
+         setReset_ = nullptr;
+    std::vector<HWND> setLabels_;  // static texts, for fonts and colors
     std::thread catalogThread_;
     std::string catalogRaw_;  // fetched by catalogThread_, handed over in WM_APP_CATALOG
 };

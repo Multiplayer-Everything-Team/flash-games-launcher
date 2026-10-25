@@ -25,6 +25,7 @@ constexpr UINT WM_APP_INSTALL = WM_APP + 3;   // player install progress
 constexpr UINT WM_APP_INSTALLED = WM_APP + 4; // player install finished
 constexpr UINT WM_APP_FIRSTRUN = WM_APP + 5;  // offer to install a player
 constexpr UINT WM_APP_CATALOG = WM_APP + 6;   // fresh game catalog downloaded
+constexpr UINT WM_APP_ROOMS = WM_APP + 7;     // fresh room list from the central server
 constexpr UINT_PTR kTimer = 1;
 
 enum : int {
@@ -40,6 +41,8 @@ enum : int {
     kIdStopHost,
     kIdCopy,
     kIdDownload,
+    kIdSettings,
+    kIdRoom0 = 300,
     kIdAction0 = 200,
 };
 
@@ -111,6 +114,10 @@ Launcher::~Launcher() {
     installCancel_ = true;
     if (installThread_.joinable()) installThread_.join();
     if (catalogThread_.joinable()) catalogThread_.join();
+    roomsStop_ = true;
+    if (roomsWake_) SetEvent(roomsWake_);
+    if (roomsThread_.joinable()) roomsThread_.join();
+    if (roomsWake_) CloseHandle(roomsWake_);
     relay_.stop();
     watcher_.reset();
 }
@@ -135,6 +142,26 @@ int Launcher::run(const LauncherOptions& opt) {
         layoutDetail();
     }
 
+    if (snapshot_ && user_.online) {
+        // Snapshots have no worker threads: fetch the room list once, directly.
+        std::wstring server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
+        bool ok = false;
+        std::map<std::string, std::vector<RoomInfo>> found;
+        for (const auto& g : cfg_.games) {
+            std::vector<RoomInfo> list;
+            std::wstring err;
+            if (!g.onlineId.empty() && !server.empty() && listRooms(server, g.onlineId, list, err, 2000)) {
+                ok = true;
+                found[g.id] = std::move(list);
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(installMu_);
+            pendingRooms_ = std::move(found);
+            pendingRoomsOk_ = ok;
+        }
+        onRooms();
+    }
     if (snapshot_) {
         auto pump = [] {
             for (int i = 0; i < 15; ++i) {
@@ -174,6 +201,10 @@ int Launcher::run(const LauncherOptions& opt) {
             if (ctrl && msg.wParam == 'F') {
                 SetFocus(search_);
                 SendMessageW(search_, EM_SETSEL, 0, -1);
+                continue;
+            }
+            if (ctrl && msg.wParam == VK_OEM_COMMA) {
+                openSettings();
                 continue;
             }
             if (msg.wParam == VK_F5) {
@@ -262,6 +293,8 @@ void Launcher::create(const LauncherOptions& opt) {
             installable = installable || p.spec->install.enabled();
         }
         if (!anyPlayer && installable) PostMessageW(hwnd_, WM_APP_FIRSTRUN, 0, 0);
+        onlineOn_ = user_.online;
+        startRoomPolling();
     }
     loadCatalog();
     SetFocus(grid_);
@@ -295,6 +328,9 @@ void Launcher::createControls() {
     copyBtn_ = makeButton(kIdCopy, BtnStyle::Secondary);
     stopHostBtn_ = makeButton(kIdStopHost, BtnStyle::Danger);
     downloadBtn_ = makeButton(kIdDownload, BtnStyle::Secondary);
+    settingsBtn_ = makeButton(kIdSettings, BtnStyle::Ghost);
+    SetWindowTextW(settingsBtn_, cfg_.t("button.settings").c_str());
+    ShowWindow(settingsBtn_, SW_SHOW);
     if (theme_.dark && !theme_.highContrast) {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
         for (HWND h : {navCombo_, playerCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
@@ -302,10 +338,11 @@ void Launcher::createControls() {
     applyFonts();
 }
 
-HWND Launcher::makeButton(int id, BtnStyle style) {
+HWND Launcher::makeButton(int id, BtnStyle style, HWND parent) {
     // A real push button painted in NM_CUSTOMDRAW (not BS_OWNERDRAW) keeps the
     // Button role and Invoke action that screen readers and UI Automation use.
-    HWND b = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10, hwnd_,
+    DWORD kind = style == BtnStyle::Check ? BS_AUTOCHECKBOX : BS_PUSHBUTTON;
+    HWND b = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_TABSTOP | kind, 0, 0, 10, 10, parent ? parent : hwnd_,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
     SetWindowSubclass(b, buttonProc, 2, reinterpret_cast<DWORD_PTR>(this));
     btnInfo_[b].style = style;
@@ -506,16 +543,25 @@ void Launcher::relayout() {
 
     ShowWindow(nav_, narrowMode ? SW_HIDE : SW_SHOW);
     ShowWindow(navCombo_, narrowMode ? SW_SHOW : SW_HIDE);
-    int brandH = t.s(86);
-    MoveWindow(nav_, t.s(12), brandH, sw - t.s(24), sidebar_.bottom - brandH - t.s(12), TRUE);
+    int brandH = t.s(86), setH = t.s(36);
+    int setTop = sidebar_.bottom - t.s(12) - setH;
+    MoveWindow(nav_, t.s(12), brandH, sw - t.s(24), setTop - t.s(8) - brandH, TRUE);
 
     int x = top_.left + t.s(kPad), boxH = t.s(36), y = (height(top_) - boxH) / 2;
+    int searchRight = top_.right - t.s(kPad);
+    if (narrowMode) {  // no sidebar: Settings moves to the end of the top bar
+        int bw = t.s(96);
+        MoveWindow(settingsBtn_, searchRight - bw, y, bw, boxH, TRUE);
+        searchRight -= bw + t.s(10);
+    } else {
+        MoveWindow(settingsBtn_, t.s(12), setTop, sw - t.s(24), setH, TRUE);
+    }
     if (narrowMode) {
         int cw = t.s(170);
         MoveWindow(navCombo_, x, y + (boxH - t.s(28)) / 2, cw, t.s(300), TRUE);
         x += cw + t.s(10);
     }
-    searchBox_ = {x, y, std::max<LONG>(x + t.s(120), static_cast<LONG>(top_.right - t.s(kPad))), y + boxH};
+    searchBox_ = {x, y, std::max<LONG>(x + t.s(120), static_cast<LONG>(searchRight)), y + boxH};
     // The edit sits inside a painted rounded box; center its single text line.
     HDC dc = GetDC(hwnd_);
     int lineH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE);
@@ -558,6 +604,7 @@ void Launcher::layoutDetail() {
     dl_ = {};
     std::vector<HWND> all = {playerCombo_, favBtn_, locateBtn_, folderBtn_, getPlayerBtn_, stopHostBtn_, copyBtn_,
                              downloadBtn_};
+    all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
     all.insert(all.end(), actionBtns_.begin(), actionBtns_.end());
     if (selected_ < 0 || width(detail_) <= 0) {
         for (HWND h : all) ShowWindow(h, SW_HIDE);
@@ -598,8 +645,20 @@ void Launcher::layoutDetail() {
     // Short windows: thinner action buttons (no second line) and no player picker,
     // so the game's name and state stay visible above the buttons.
     std::vector<CatalogFile> downloadable = missingSwf ? missingGameFiles(g) : std::vector<CatalogFile>{};
+    bool isUpdate = downloadable.empty();
+    if (isUpdate) downloadable = outdatedFor(g);
+    // Open rooms: a title, then up to three rows with a Join button, or one line
+    // saying there are none.
+    bool showRooms = !g.onlineId.empty() && onlineOn_ && roomsKnown_;
+    std::vector<RoomInfo> roomList;
+    if (showRooms)
+        if (auto it = rooms_.find(g.id); it != rooms_.end()) roomList = it->second;
+    size_t roomRowsN = std::min<size_t>(roomList.size(), 3);
+    int roomRowH = t.s(34), roomTitleH = textHeight(dc, t.strong, L"Ag", 100, DT_SINGLELINE) + t.s(6);
+    int noneH = textHeight(dc, t.caption, cfg_.t("rooms.none"), w);
+    int roomsBoxH = !showRooms ? 0 : roomTitleH + (roomRowsN ? static_cast<int>(roomRowsN) * roomRowH : noneH + t.s(4));
     int fixed = rowH + gap + (missingPlayer ? rowH + gap : 0) + (missingSwf ? rowH + gap : 0) +
-                (downloadable.empty() ? 0 : rowH + gap) +
+                (downloadable.empty() ? 0 : rowH + gap) + (roomsBoxH ? roomsBoxH + t.s(12) : 0) +
                 (hosting ? hostBoxH + t.s(12) : 0);
     int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0);
     int actionsH = static_cast<int>(g.actions.size()) * (actionH + gap) + (picker ? comboH + t.s(16) : 0);
@@ -642,8 +701,10 @@ void Launcher::layoutDetail() {
     if (!downloadable.empty()) {
         uint64_t bytes = 0;
         for (const auto& f : downloadable) bytes += f.size;
-        SetWindowTextW(downloadBtn_, cfg_.t("button.downloadGame", {{L"SIZE", formatBytes(bytes)}}).c_str());
-        btnInfo_[downloadBtn_].style = BtnStyle::Primary;  // the easiest fix, so it leads
+        SetWindowTextW(downloadBtn_,
+                       cfg_.t(isUpdate ? "button.updateGame" : "button.downloadGame", {{L"SIZE", formatBytes(bytes)}}).c_str());
+        // Missing files block play, so that fix leads; an update is optional.
+        btnInfo_[downloadBtn_].style = isUpdate ? BtnStyle::Secondary : BtnStyle::Primary;
     }
     EnableWindow(downloadBtn_, !installing_);
     place(downloadBtn_, !downloadable.empty());
@@ -663,6 +724,30 @@ void Launcher::layoutDetail() {
         SetWindowTextW(copyBtn_, cfg_.t("button.copyAddress").c_str());
         SetWindowTextW(stopHostBtn_, cfg_.t("button.stopHost").c_str());
         bottom = dl_.host.top - t.s(12);
+    }
+
+    // Open rooms, right under the action buttons (Join belongs with them).
+    for (size_t i = 0; i < roomBtns_.size(); ++i) ShowWindow(roomBtns_[i], SW_HIDE);
+    if (roomsBoxH) {
+        dl_.rooms = {x, bottom - roomsBoxH, x + w, bottom};
+        dl_.roomsTitle = {x, dl_.rooms.top, x + w, dl_.rooms.top + roomTitleH};
+        int ry = dl_.roomsTitle.bottom;
+        while (roomBtns_.size() < roomRowsN) {
+            HWND b = makeButton(kIdRoom0 + static_cast<int>(roomBtns_.size()), BtnStyle::Secondary);
+            btnInfo_[b].label = cfg_.t("rooms.join");
+            roomBtns_.push_back(b);
+        }
+        for (size_t i = 0; i < roomRowsN; ++i, ry += roomRowH) {
+            RECT row{x, ry, x + w, ry + roomRowH};
+            dl_.roomRows.push_back(row);
+            int bw = t.s(64);
+            MoveWindow(roomBtns_[i], row.right - bw, row.top + t.s(3), bw, roomRowH - t.s(6), TRUE);
+            // The accessible name says which room; the button itself just reads "Join".
+            SetWindowTextW(roomBtns_[i], cfg_.t("rooms.joinName", {{L"CODE", roomList[i].code}}).c_str());
+            EnableWindow(roomBtns_[i], roomList[i].max <= 0 || roomList[i].players < roomList[i].max);
+            ShowWindow(roomBtns_[i], SW_SHOW);
+        }
+        bottom = dl_.rooms.top - t.s(12);
     }
 
     // Action buttons, last one at the bottom.
@@ -751,7 +836,13 @@ std::wstring Launcher::stateText(int gi, Color& color) const {
         return cfg_.t("status.playing");
     }
     switch (lib_.gameState(cfg_.games[gi], user_)) {
-        case ActionState::Ready: color = theme_.c.success; return cfg_.t("status.ready");
+        case ActionState::Ready:
+            if (!outdatedFor(cfg_.games[gi]).empty()) {
+                color = theme_.c.online;
+                return cfg_.t("status.update");
+            }
+            color = theme_.c.success;
+            return cfg_.t("status.ready");
         case ActionState::NoPlayer: color = theme_.c.error; return cfg_.t("status.noPlayer");
         case ActionState::NoSwf: break;
     }
@@ -879,6 +970,30 @@ void Launcher::paintDetail(Graphics& g, HDC) {
     if (width(dl_.playerLabel) > 0)
         drawText(g, cfg_.t("detail.player"), dl_.playerLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
 
+    if (height(dl_.rooms) > 0) {
+        drawText(g, cfg_.t("rooms.title"), dl_.roomsTitle, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
+        std::vector<RoomInfo> list;
+        if (auto it = rooms_.find(game.id); it != rooms_.end()) list = it->second;
+        Pen line(gc(t.c.border), 1);
+        if (dl_.roomRows.empty()) {
+            RECT nr{dl_.rooms.left, dl_.roomsTitle.bottom, dl_.rooms.right, dl_.rooms.bottom};
+            drawText(g, cfg_.t("rooms.none"), nr, t.caption, t.c.textMuted, DT_WORDBREAK);
+        }
+        for (size_t i = 0; i < dl_.roomRows.size() && i < list.size(); ++i) {
+            const RECT& row = dl_.roomRows[i];
+            g.DrawLine(&line, static_cast<REAL>(row.left), static_cast<REAL>(row.top), static_cast<REAL>(row.right),
+                       static_cast<REAL>(row.top));
+            std::wstring players = cfg_.t("rooms.players", {{L"N", std::to_wstring(list[i].players)},
+                                                            {L"MAX", std::to_wstring(list[i].max)}});
+            RECT pr{row.right - t.s(64) - t.s(52), row.top, row.right - t.s(64) - t.s(8), row.bottom};
+            drawText(g, players, pr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+            RECT cr{row.left, row.top, row.left + t.s(64), row.bottom};
+            drawText(g, list[i].code, cr, t.button, t.c.text, DT_SINGLELINE | DT_VCENTER);
+            RECT nr{cr.right + t.s(6), row.top, pr.left - t.s(6), row.bottom};
+            drawText(g, list[i].name, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        }
+    }
+
     if (height(dl_.host) > 0 && !dl_.hostLines.empty()) {
         fillRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.10f));
         strokeRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.55f), t.sf(1));
@@ -947,7 +1062,9 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     Graphics g(dc);
     g.SetSmoothingMode(SmoothingModeAntiAlias);
     SolidBrush bg(gc(t.c.background));
+    g.SetSmoothingMode(SmoothingModeNone);  // see drawButton
     g.FillRectangle(&bg, rf(tile));
+    g.SetSmoothingMode(SmoothingModeAntiAlias);
     int half = t.s(kGap) / 2;
     RECT c{tile.left + half, tile.top + half, tile.right - half, tile.bottom - half};
     bool hover = hoverItem_ >= 0 && hoverItem_ < static_cast<int>(visible_.size()) && visible_[hoverItem_] == gi;
@@ -993,6 +1110,16 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     Color sc;
     std::wstring status = stateText(gi, sc);
     RECT sr{x, y, x + w, y + t.s(20)};
+    // Live rooms on the central server, shown only when there are some.
+    std::wstring roomsText = roomCountText(game.id);
+    if (!roomsText.empty()) {
+        HDC mdc = g.GetHDC();
+        int rw = textWidth(mdc, t.caption, roomsText);
+        g.ReleaseHDC(mdc);
+        RECT rr{std::max<LONG>(x, x + w - rw), y, x + w, y + t.s(20)};
+        drawText(g, roomsText, rr, t.caption, t.c.online, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+        sr.right = rr.left - t.s(8);
+    }
     drawText(g, status, sr, t.caption, sc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     // Selection is a neutral outline: red means "start", blue means keyboard focus.
@@ -1004,6 +1131,9 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
 }
 
 void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
+    // Custom draw can report a rectangle smaller than the control, which leaves a
+    // line of the default look along an edge; always cover the whole client area.
+    GetClientRect(button, &r);
     const Theme& t = theme_;
     const BtnInfo& info = btnInfo_[button];
     Buffer buf(hdc, width(r), height(r));
@@ -1015,9 +1145,18 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
         GetWindowRect(button, &onScreen);
         MapWindowPoints(nullptr, hwnd_, reinterpret_cast<POINT*>(&onScreen), 2);
         POINT mid{(onScreen.left + onScreen.right) / 2, (onScreen.top + onScreen.bottom) / 2};
-        Color under = PtInRect(&dl_.host, mid) ? mix(t.c.surface, t.c.online, 0.10f) : t.c.surface;
+        Color under = t.c.surface;  // the details panel and the Settings window
+        if (GetParent(button) == hwnd_) {
+            if (PtInRect(&dl_.host, mid)) under = mix(t.c.surface, t.c.online, 0.10f);
+            else if (PtInRect(&sidebar_, mid)) under = t.c.sidebar;
+            else if (!PtInRect(&detail_, mid)) under = t.c.background;
+        }
         SolidBrush ub(gc(under));
+        // Flat fills of the whole buffer must not be anti-aliased: half-covered edge
+        // pixels would mix with the blank (black) buffer into a dark line.
+        g.SetSmoothingMode(SmoothingModeNone);
         g.FillRectangle(&ub, 0, 0, width(r), height(r));
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
 
         bool hover = hoverBtn_ == button, pressed = (state & CDIS_SELECTED) != 0;
         Color fill = t.c.surfaceHover, text = t.c.text, border = t.c.border;
@@ -1044,12 +1183,37 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
                 border = mix(t.c.surfaceHover, t.c.error, 0.4f);
                 break;
         }
+        if (info.style == BtnStyle::Check) {
+            // A checkbox: box on the left, label beside it. Checked fills with the
+            // focus blue and a check mark in the background color.
+            bool checked = SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            int bs = t.s(18), by = (height(r) - bs) / 2;
+            RectF cb(t.sf(1), static_cast<REAL>(by), static_cast<REAL>(bs), static_cast<REAL>(bs));
+            if (checked) {
+                fillRound(g, cb, t.sf(4), hover ? mix(t.c.focus, t.c.text, 0.25f) : t.c.focus);
+                Pen mark(gc(t.c.background), t.sf(2.2));
+                mark.SetStartCap(LineCapRound);
+                mark.SetEndCap(LineCapRound);
+                PointF pts[] = {PointF(cb.X + bs * 0.24f, cb.Y + bs * 0.52f), PointF(cb.X + bs * 0.43f, cb.Y + bs * 0.7f),
+                                PointF(cb.X + bs * 0.77f, cb.Y + bs * 0.3f)};
+                g.DrawLines(&mark, pts, 3);
+            } else {
+                strokeRound(g, cb, t.sf(4), hover ? t.c.text : t.c.textMuted, t.sf(1.5));
+            }
+            RECT lr{bs + t.s(10), 0, width(r), height(r)};
+            drawText(g, windowText(button), lr, t.body, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+            if ((state & CDIS_FOCUS) && !(SendMessageW(button, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
+                RectF f(0.5f, 0.5f, static_cast<REAL>(width(r)) - 1, static_cast<REAL>(height(r)) - 1);
+                strokeRound(g, f, t.sf(6), t.c.focus, t.sf(1.5));
+            }
+        } else {
         if (pressed) fill = mix(fill, Color{0, 0, 0, 255}, 0.15f);
         RectF box(0.5f, 0.5f, static_cast<REAL>(width(r)) - 1, static_cast<REAL>(height(r)) - 1);
         fillRound(g, box, t.sf(9), fill);
         strokeRound(g, box, t.sf(9), border, t.sf(1));
 
-        std::wstring label = windowText(button);
+        std::wstring label = info.label.empty() ? windowText(button) : info.label;
+        if (!IsWindowEnabled(button)) text = t.c.textMuted;
         RECT tr{t.s(14), 0, width(r) - t.s(14), height(r)};
         if (!info.sub.empty() && height(r) >= t.s(48)) {
             RECT top{tr.left, t.s(8), tr.right, height(r) / 2 + t.s(2)};
@@ -1070,6 +1234,7 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
             RectF f(t.sf(2), t.sf(2), static_cast<REAL>(width(r)) - t.sf(4), static_cast<REAL>(height(r)) - t.sf(4));
             strokeRound(g, f, t.sf(7), t.c.focus, t.sf(1.5));
         }
+        }
     }
     BitBlt(hdc, r.left, r.top, width(r), height(r), buf.dc, 0, 0, SRCCOPY);
 }
@@ -1084,7 +1249,9 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
         Graphics g(buf.dc);
         g.SetSmoothingMode(SmoothingModeAntiAlias);
         SolidBrush bg(gc(t.c.sidebar));
+        g.SetSmoothingMode(SmoothingModeNone);  // see drawButton
         g.FillRectangle(&bg, 0, 0, width(r), height(r));
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
         bool sel = (d.itemState & ODS_SELECTED) != 0;
         RectF box(0, t.sf(2), static_cast<REAL>(width(r)), static_cast<REAL>(height(r)) - t.sf(4));
         if (sel) fillRound(g, box, t.sf(8), mix(t.c.sidebar, t.c.sidebarText, 0.10f));
@@ -1177,16 +1344,30 @@ bool Launcher::isPlaying(int gi) const {
     return false;
 }
 
-void Launcher::runAction(int gi, size_t ai) {
-    if (gi < 0 || ai >= cfg_.games[gi].actions.size()) return;
+bool Launcher::minimizeOnLaunch() const {
+    return user_.minimize >= 0 ? user_.minimize != 0 : cfg_.behavior.minimizeOnLaunch;
+}
+
+bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wstring, std::wstring>>& flashvars) {
+    if (gi < 0 || ai >= cfg_.games[gi].actions.size()) return false;
     const GameSpec& g = cfg_.games[gi];
     const ActionSpec& a = g.actions[ai];
     ResolvedAction r = lib_.resolve(g, a, user_);
     if (r.state != ActionState::Ready) {
         notice(cfg_.t("notice.notReady", {{L"GAME", g.name}, {L"REASON", stateReason(cfg_, r)}}), theme_.c.warning);
-        if (r.state == ActionState::NoSwf) SetFocus(locateBtn_);
+        if (r.state == ActionState::NoSwf) SetFocus(IsWindowVisible(downloadBtn_) ? downloadBtn_ : locateBtn_);
         else if (r.state == ActionState::NoPlayer) SetFocus(getPlayerBtn_);
-        return;
+        return false;
+    }
+    // Values for the game (a room code) go in before the game file, the way the
+    // player expects options; players without flashvarArg can't take them.
+    if (!flashvars.empty() && !r.player->flashvarArg.empty()) {
+        auto at = std::find(r.args.rbegin(), r.args.rend(), r.swf);
+        auto pos = at == r.args.rend() ? r.args.end() : std::prev(at.base());
+        std::vector<std::wstring> extra;
+        for (const auto& [key, value] : flashvars)
+            extra.push_back(replaceAll(replaceAll(r.player->flashvarArg, L"${KEY}", key), L"${VALUE}", value));
+        r.args.insert(pos, extra.begin(), extra.end());
     }
     bool startedRelay = false;
     std::wstring warning;
@@ -1202,7 +1383,7 @@ void Launcher::runAction(int gi, size_t ai) {
             warning = cfg_.t("host.portInUse", {{L"PORT", std::to_wstring(a.relay.port)}});
         } else {
             notice(cfg_.t("host.failed", {{L"PORT", std::to_wstring(a.relay.port)}, {L"ERROR", err}}), theme_.c.error);
-            return;
+            return false;
         }
     } else if (a.relay.enabled) {
         relayGame_ = gi;
@@ -1213,7 +1394,7 @@ void Launcher::runAction(int gi, size_t ai) {
     if (!sys::startProcess(r.playerExe, r.args, r.workDir, p, err)) {
         if (startedRelay) stopRelay(false);
         notice(cfg_.t("notice.launchFailed", {{L"PLAYER", r.player->name}, {L"ERROR", err}}), theme_.c.error);
-        return;
+        return false;
     }
     Session s;
     s.pid = p.pid;
@@ -1235,7 +1416,8 @@ void Launcher::runAction(int gi, size_t ai) {
     buildNav();
     select(selected_);
     InvalidateRect(grid_, nullptr, FALSE);
-    if (cfg_.behavior.minimizeOnLaunch) ShowWindow(hwnd_, SW_MINIMIZE);
+    if (minimizeOnLaunch()) ShowWindow(hwnd_, SW_MINIMIZE);
+    return true;
 }
 
 void Launcher::onProcessExit(DWORD pid, DWORD code) {
@@ -1255,7 +1437,7 @@ void Launcher::onProcessExit(DWORD pid, DWORD code) {
         bool otherHost = std::any_of(sessions_.begin(), sessions_.end(), [](const Session& x) { return x.host; });
         if (!otherHost) stopRelay(true);
     }
-    if (sessions_.empty() && IsIconic(hwnd_) && cfg_.behavior.minimizeOnLaunch) ShowWindow(hwnd_, SW_RESTORE);
+    if (sessions_.empty() && IsIconic(hwnd_) && minimizeOnLaunch()) ShowWindow(hwnd_, SW_RESTORE);
     select(selected_);
     InvalidateRect(grid_, nullptr, FALSE);
     InvalidateRect(hwnd_, &status_, FALSE);
@@ -1419,6 +1601,9 @@ void Launcher::onInstalled() {
     std::wstring name = jobName_;
     refreshAll();
     if (jobIsGame_) {
+        checkOutdated();
+        select(selected_);
+        InvalidateRect(grid_, nullptr, FALSE);
         if (r.ok) notice(cfg_.t("download.done", {{L"GAME", name}}), theme_.c.success);
         else notice(cfg_.t("download.failed", {{L"GAME", name}, {L"ERROR", r.error}}), theme_.c.error);
         return;
@@ -1436,17 +1621,32 @@ void Launcher::loadCatalog() {
     std::string text;
     std::wstring err;
     if (fs::readText(cache, text)) parseCatalog(text, cfg_.downloads.catalog, catalog_, err);
-    if (snapshot_) {
-        select(selected_);  // snapshots never touch the network
+    if (snapshot_ || !user_.online) {
+        checkOutdated();  // the network stays off: compare against the cached list
+        select(selected_);
         return;
     }
     std::wstring url = cfg_.downloads.catalog;
     HWND wnd = hwnd_;
-    catalogThread_ = std::thread([this, url, wnd] {
+    std::vector<CatalogFile> cached = catalog_;
+    std::wstring gamesDir = lib_.vars().get(L"GAMES_DIR");
+    catalogThread_ = std::thread([this, url, wnd, cached, gamesDir] {
+        // Hashing the downloaded files takes a moment, so it happens here too:
+        // first against the cached list, then against the fresh one.
+        auto publishOutdated = [&](const std::vector<CatalogFile>& list) {
+            std::set<std::wstring> names;
+            for (const auto& f : outdatedGameFiles(list, gamesDir)) names.insert(f.name);
+            std::lock_guard<std::mutex> lock(installMu_);
+            pendingOutdated_ = std::move(names);
+            pendingOutdatedReady_ = true;
+        };
+        publishOutdated(cached);
+        PostMessageW(wnd, WM_APP_CATALOG, 0, 0);
         std::vector<CatalogFile> files;
         std::string raw;
         std::wstring error;
         if (fetchCatalog(url, files, raw, error, &installCancel_)) {
+            publishOutdated(files);
             {
                 std::lock_guard<std::mutex> lock(installMu_);
                 catalogRaw_ = std::move(raw);
@@ -1469,6 +1669,7 @@ std::vector<CatalogFile> Launcher::missingGameFiles(const GameSpec& game) const 
 void Launcher::offerGameDownload(const GameSpec& game) {
     if (installing_ || snapshot_) return;
     std::vector<CatalogFile> files = missingGameFiles(game);
+    if (files.empty()) files = outdatedFor(game);
     if (files.empty()) return;
     uint64_t bytes = 0;
     for (const auto& f : files) bytes += f.size;
@@ -1527,6 +1728,118 @@ void Launcher::offerGameDownload(const GameSpec& game) {
     });
     layoutDetail();
     InvalidateRect(hwnd_, &status_, FALSE);
+}
+
+void Launcher::copyText(const std::wstring& text) {
+    if (!OpenClipboard(hwnd_)) return;
+    EmptyClipboard();
+    size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+        memcpy(GlobalLock(mem), text.c_str(), bytes);
+        GlobalUnlock(mem);
+        if (!SetClipboardData(CF_UNICODETEXT, mem)) GlobalFree(mem);
+    }
+    CloseClipboard();
+}
+
+std::wstring Launcher::roomCountText(const std::string& gameId) const {
+    if (!onlineOn_ || !roomsKnown_) return {};
+    auto it = rooms_.find(gameId);
+    if (it == rooms_.end() || it->second.empty()) return {};
+    return it->second.size() == 1 ? cfg_.t("rooms.one") : cfg_.t("rooms.count", {{L"N", std::to_wstring(it->second.size())}});
+}
+
+void Launcher::startRoomPolling() {
+    bool any = false;
+    for (const auto& g : cfg_.games) any = any || !g.onlineId.empty();
+    if (!any || (cfg_.rooms.servers.empty() && cfg_.rooms.server.empty())) return;
+    roomsWake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    HWND wnd = hwnd_;
+    roomsThread_ = std::thread([this, wnd] {
+        std::wstring server;
+        while (!roomsStop_) {
+            if (onlineOn_) {
+                if (server.empty()) server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
+                std::map<std::string, std::vector<RoomInfo>> found;
+                bool ok = false;
+                for (const auto& g : cfg_.games) {
+                    if (g.onlineId.empty() || roomsStop_) continue;
+                    std::vector<RoomInfo> list;
+                    std::wstring err;
+                    if (listRooms(server, g.onlineId, list, err)) {
+                        ok = true;
+                        found[g.id] = std::move(list);
+                    } else {
+                        logger().debug(L"Rooms: " + err);
+                    }
+                }
+                if (!ok) server.clear();  // ask mods-info again next time; the server may have moved
+                {
+                    std::lock_guard<std::mutex> lock(installMu_);
+                    pendingRooms_ = std::move(found);
+                    pendingRoomsOk_ = ok;
+                }
+                PostMessageW(wnd, WM_APP_ROOMS, 0, 0);
+            }
+            WaitForSingleObject(roomsWake_, static_cast<DWORD>(cfg_.rooms.refreshSeconds) * 1000);
+        }
+    });
+}
+
+void Launcher::onRooms() {
+    std::map<std::string, std::vector<RoomInfo>> found;
+    bool ok;
+    {
+        std::lock_guard<std::mutex> lock(installMu_);
+        found.swap(pendingRooms_);
+        ok = pendingRoomsOk_;
+    }
+    auto same = [](const std::vector<RoomInfo>& a, const std::vector<RoomInfo>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (a[i].code != b[i].code || a[i].players != b[i].players || a[i].name != b[i].name) return false;
+        return true;
+    };
+    bool changed = ok != roomsKnown_ || found.size() != rooms_.size();
+    for (const auto& [id, list] : found)
+        if (!changed) changed = !rooms_.count(id) || !same(rooms_[id], list);
+    if (!changed) return;  // nothing new: no repaint, no flicker
+    rooms_ = std::move(found);
+    roomsKnown_ = ok;
+    InvalidateRect(grid_, nullptr, FALSE);
+    layoutDetail();
+}
+
+void Launcher::joinRoom(size_t index) {
+    if (selected_ < 0) return;
+    const GameSpec& g = cfg_.games[selected_];
+    auto it = rooms_.find(g.id);
+    if (it == rooms_.end() || index >= it->second.size()) return;
+    const RoomInfo room = it->second[index];
+    if (room.max > 0 && room.players >= room.max) {
+        notice(cfg_.t("rooms.full", {{L"CODE", room.code}}), theme_.c.warning);
+        return;
+    }
+    size_t action = 0;
+    for (size_t i = 0; i < g.actions.size(); ++i)
+        if (g.actions[i].id == g.joinAction) action = i;
+    copyText(room.code);
+    // The code goes to the game as a FlashVar too, so a mod that reads it can join
+    // by itself; until then the player pastes it into the F9 panel.
+    if (runAction(selected_, action, {{L"join", room.code}}))
+        notice(cfg_.t("rooms.copied", {{L"CODE", room.code}}), theme_.c.success);
+}
+
+std::vector<CatalogFile> Launcher::outdatedFor(const GameSpec& game) const {
+    std::vector<CatalogFile> out;
+    for (const auto& f : catalog_)
+        if (f.game == game.id && outdated_.count(f.name)) out.push_back(f);
+    return out;
+}
+
+void Launcher::checkOutdated() {
+    outdated_.clear();
+    for (const auto& f : outdatedGameFiles(catalog_, lib_.vars().get(L"GAMES_DIR"))) outdated_.insert(f.name);
 }
 
 void Launcher::copyAddress() {
@@ -1782,7 +2095,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             } else if (id == kIdPlayer && code == CBN_SELCHANGE) {
                 onPlayerChoice();
             } else if (code == BN_CLICKED) {
-                if (id >= kIdAction0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
+                if (id >= kIdAction0 && id < kIdRoom0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
@@ -1790,6 +2103,8 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 else if (id == kIdStopHost) stopRelay(true);
                 else if (id == kIdCopy) copyAddress();
                 else if (id == kIdDownload && selected_ >= 0) offerGameDownload(cfg_.games[selected_]);
+                else if (id == kIdSettings) openSettings();
+                else if (id >= kIdRoom0 && id < kIdRoom0 + 3) joinRoom(static_cast<size_t>(id - kIdRoom0));
                 else if (id == IDOK && selected_ >= 0) runAction(selected_, 0);  // Enter outside the grid
             }
             return 0;
@@ -1809,15 +2124,26 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_APP_INSTALLED:
             onInstalled();
             return 0;
+        case WM_APP_ROOMS:
+            onRooms();
+            return 0;
         case WM_APP_CATALOG: {
             std::string raw;
             {
                 std::lock_guard<std::mutex> lock(installMu_);
                 raw.swap(catalogRaw_);
+                if (pendingOutdatedReady_) {
+                    outdated_ = std::move(pendingOutdated_);
+                    pendingOutdated_.clear();
+                    pendingOutdatedReady_ = false;
+                }
             }
             std::vector<CatalogFile> files;
             std::wstring err;
-            if (parseCatalog(raw, cfg_.downloads.catalog, files, err)) {
+            if (raw.empty()) {
+                InvalidateRect(grid_, nullptr, FALSE);
+                select(selected_);
+            } else if (parseCatalog(raw, cfg_.downloads.catalog, files, err)) {
                 catalog_ = std::move(files);
                 std::wstring cache = fs::join(lib_.dataDir(), L"catalog.json");
                 fs::ensureDir(lib_.dataDir(), nullptr, nullptr);

@@ -3,6 +3,7 @@
 #include "core/install.h"
 #include "core/library.h"
 #include "core/process.h"
+#include "core/rooms.h"
 #include "core/settings.h"
 #include "test.h"
 
@@ -257,4 +258,15 @@ TEST(library_blames_the_missing_file_when_a_player_is_installed) {
     ResolvedAction a = lib.resolve(r.config.games[0], r.config.games[0].actions[0], user);
     CHECK(a.state == ActionState::NoSwf);
     CHECK(a.player && a.player->id == "ruffle");
+}
+
+TEST(room_list_parsing) {
+    std::vector<RoomInfo> rooms;
+    REQUIRE(parseRoomList("LIST|VK7Q2,2,4,Liam's room;M2NN5,4,4,Friday, late;bad;QX3TB,1,4,", rooms));
+    REQUIRE(rooms.size() == 3);  // the malformed "bad" row is skipped
+    CHECK(rooms[0].code == L"VK7Q2" && rooms[0].players == 2 && rooms[0].max == 4 && rooms[0].name == L"Liam's room");
+    CHECK(rooms[1].name == L"Friday, late");  // the name is the last field and may contain commas
+    CHECK(rooms[2].code == L"QX3TB" && rooms[2].name.empty());
+    CHECK(parseRoomList("LIST|", rooms) && rooms.empty());  // no rooms open
+    CHECK(!parseRoomList("E|unknown game", rooms));
 }

@@ -273,6 +273,85 @@ if ($btn) {
   Check (WaitFor { Test-Path "$work\dlgames\dl.swf" } 15000) 'accepting the prompt downloads the game file'
 }
 Stop-Process -Id $dlwin.Id -Force -ErrorAction SilentlyContinue
+# ---- open rooms, game updates and Settings --------------------------------
+$centralPort = $port + 3
+$central = Start-Job -ArgumentList $centralPort -ScriptBlock {
+  param($p)
+  $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
+  $l.Start()
+  for ($i = 0; $i -lt 30; $i++) {
+    $c = $l.AcceptTcpClient(); $s = $c.GetStream()
+    $buf = New-Object byte[] 1024; $null = $s.Read($buf, 0, $buf.Length)
+    $bytes = [Text.Encoding]::UTF8.GetBytes("LIST|ABCDE,1,4,Test room;FULL1,4,4,Full room" + [char]0)
+    $s.Write($bytes, 0, $bytes.Length); $s.Flush(); $c.Close()
+  }
+  $l.Stop()
+}
+Start-Sleep -Milliseconds 800
+# The catalog now claims a different build of dl.swf, which is already downloaded.
+Set-Content "$www\catalog.json" (CatalogJson ('1' * 64)) -Encoding ASCII
+Remove-Item -Recurse -Force "$work\rdata" -ErrorAction SilentlyContinue
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\dlgames", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\rdata", "flashpoint": [] },
+  "downloads": { "catalog": "http://127.0.0.1:$httpPort/catalog.json" },
+  "rooms": { "server": "127.0.0.1:$centralPort", "refreshSeconds": 10 },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"], "args": ["--fake-player"], "flashvarArg": "-P`${KEY}=`${VALUE}" } ],
+  "games": [ { "id": "demo2", "name": "Downloadable Game", "online": { "id": "demo2", "join": "play" },
+               "actions": [ { "id": "play", "label": "Play", "swf": "`${GAMES_DIR}\\dl.swf" } ] } ]
+}
+"@ | Set-Content "$work\rooms.json" -Encoding UTF8
+$r = Run @('--rooms', 'demo2', '--config', "`"$work\rooms.json`"")
+Check ($r.Code -eq 0 -and $r.Out -match '2 open' -and $r.Out -match 'ABCDE\s+1/4\s+Test room') "--rooms lists the central server's rooms"
+
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class Win2 {
+    [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+}
+'@
+$env:FL_FAKE_MS = '500'
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$rw = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\rooms.json`"") -PassThru
+try {
+  WaitFor { $rw.Refresh(); $rw.MainWindowHandle -ne 0 } 10000 | Out-Null
+  $h = $rw.MainWindowHandle
+  $join = $null; $full = $null
+  WaitFor { $script:join = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room ABCDE' } | Select-Object -First 1; $null -ne $script:join } 10000 | Out-Null
+  $full = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room FULL1' } | Select-Object -First 1
+  Check ($null -ne $join) 'the details panel lists open rooms with Join buttons'
+  Check ($null -ne $full -and -not [Win2]::IsWindowEnabled($full.Hwnd)) "a full room's Join button is disabled"
+  $upd = [Acc]::Controls($h) | Where-Object { $_.Name -like 'Update game files*' } | Select-Object -First 1
+  Check ($null -ne $upd) 'a newer build in the catalog shows Update game files'
+  if ($join) {
+    [Acc]::Do($join.Hwnd)
+    Check (WaitFor { (Test-Path "$work\args.txt") -and ((Get-Content "$work\args.txt") -contains '-Pjoin=ABCDE') }) 'Join passes the room code to the player (-Pjoin=ABCDE)'
+    $args3 = @(Get-Content "$work\args.txt" -ErrorAction SilentlyContinue)
+    Check ($args3.Count -ge 2 -and $args3[-1] -like '*dl.swf') "the game file stays last ($($args3 -join ' | '))"
+    Check ((Get-Clipboard) -eq 'ABCDE') 'Join copies the room code'
+  }
+  $setBtn = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Settings' } | Select-Object -First 1
+  if ($setBtn) {
+    [Acc]::Do($setBtn.Hwnd)
+    $setWnd = [IntPtr]::Zero
+    WaitFor { $script:setWnd = [Top]::Find([uint32]$rw.Id, 'MultiplayerFlashLauncherSettings'); $script:setWnd -ne [IntPtr]::Zero } 5000 | Out-Null
+    Check ($setWnd -ne [IntPtr]::Zero) 'Settings opens'
+    if ($setWnd -ne [IntPtr]::Zero) {
+      # The window exists a moment before its controls do.
+      $min = $null
+      WaitFor { $script:min = [Acc]::Controls($setWnd) | Where-Object { $_.Name -eq 'Minimize the launcher while a game runs' } | Select-Object -First 1; $null -ne $script:min } 5000 | Out-Null
+      if ($min) { [Acc]::Do($min.Hwnd) }
+      Check (WaitFor { (Get-Content "$work\rdata\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"minimize": 1' }) 'a Settings checkbox applies and saves at once'
+      [Win2]::PostMessage($setWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
+      Check (WaitFor { [Top]::Find([uint32]$rw.Id, 'MultiplayerFlashLauncherSettings') -eq [IntPtr]::Zero } 5000) 'Settings closes'
+      Check ([Win2]::IsWindowEnabled($h)) 'the library is usable again after Settings closes'
+    }
+  } else { Check $false 'Settings button found' }
+} finally {
+  Stop-Process -Id $rw.Id -Force -ErrorAction SilentlyContinue
+  Stop-Job $central -ErrorAction SilentlyContinue; Remove-Job $central -Force -ErrorAction SilentlyContinue
+}
 Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
 
 # ---- window, through MSAA (the API screen readers use for Win32 controls) ----

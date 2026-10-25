@@ -37,6 +37,7 @@ struct WindowSpec {
 struct Branding {
     std::wstring title = L"Multiplayer Everything";
     std::wstring subtitle = L"Flash Launcher";
+    std::wstring website = L"https://github.com/multiplayereverything/flash-games-launcher";
     std::wstring windowTitle = L"${TITLE} ${SUBTITLE}";
     std::wstring theme = L"dark";  // dark | light
     ThemeColors colors;            // palette for `theme` with overrides applied
@@ -57,6 +58,13 @@ struct Paths {
     std::wstring data = L"${env:LOCALAPPDATA}\\MultiplayerEverything\\FlashLauncher";
     // First folder that contains FPSoftware becomes ${FLASHPOINT}.
     std::vector<std::wstring> flashpoint = {L"C:\\Flashpoint", L"D:\\Flashpoint", L"${folder:Profile}\\Flashpoint"};
+};
+
+struct Rooms {
+    // mods-info servers.json: the central server's current address.
+    std::wstring servers;
+    std::wstring server;  // "host:port" used when servers.json can't be read
+    int refreshSeconds = 30;
 };
 
 struct Downloads {
@@ -89,6 +97,9 @@ struct PlayerSpec {
     // name), or a bare file name looked up on PATH.
     std::vector<std::wstring> paths;
     std::vector<std::wstring> args;  // ${SWF} is appended when no arg mentions it
+    // How this player passes a value into the game, e.g. "-P${KEY}=${VALUE}"
+    // (Ruffle's FlashVars). Empty: the player can't, and the value is skipped.
+    std::wstring flashvarArg;
 };
 
 struct PlayerOverride {
@@ -116,6 +127,9 @@ struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
     int maxPlayers = 0;  // player slots to light; 0 = highest number in playerCount
+    // Rooms on the central server: the mod's id there ("gm2") and the action
+    // that joins a room. Empty id: the game has no online rooms.
+    std::string onlineId, joinAction;
     std::vector<std::string> categories;
     Color color{0x4F, 0x8B, 0xFF, 255}, colorEnd{0x9C, 0x6B, 0xFF, 255};
     std::vector<ActionSpec> actions;
@@ -132,6 +146,7 @@ struct Config {
     Paths paths;
     Behavior behavior;
     Downloads downloads;
+    Rooms rooms;
     std::vector<PlayerSpec> players;
     std::vector<Category> categories;
     std::vector<GameSpec> games;

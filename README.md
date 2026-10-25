@@ -20,6 +20,16 @@ Native C++20/Win32, no dependencies, one small `.exe`.
 - **Player slots.** Every game shows how many players it takes, in the players'
   own colors (P1 red, P2 blue, P3 green, P4 yellow). While you host, the slots fill
   with the names of the people who joined.
+- **Open rooms.** Online games show how many rooms are open on the Multiplayer
+  Everything central server ("2 rooms open"), and the details panel lists them
+  with a *Join* button. Join copies the room code and starts the game; paste the
+  code in the game's F9 panel. (The code is also passed to the game, ready for mods
+  that read it.) The list refreshes every 30 seconds.
+- **Game updates.** When a newer build of a downloaded game file is published, the
+  card says *Update available* and the details panel offers *Update game files*.
+- **Settings.** Minimize while playing, default player, online features on or off,
+  where game files are kept, and the log folder (button at the bottom of the sidebar,
+  or Ctrl+,).
 - **Hosting without extra windows.** *Host online* starts a built-in relay (the
   same protocol as the mods' `gm2_relay.py` / `sh2_relay.py`, so no Python is
   needed) and shows who is connected plus the addresses friends should type,
@@ -72,7 +82,8 @@ or friends can't connect. Over the internet, everyone joins the same virtual LAN
 address and click **JOIN**.
 
 Keyboard: arrow keys move through the grid, **Enter** plays, **Ctrl+F**
-searches, **F5** rescans for players and game files, **Tab** reaches every button.
+searches, **Ctrl+,** opens Settings, **F5** rescans for players and game files,
+**Tab** reaches every button.
 
 ## Command line
 
@@ -82,6 +93,7 @@ FlashLauncher.exe --launch gunmayhem2:host     start an action without the windo
 FlashLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
 FlashLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
 FlashLauncher.exe --download-game all          download every game file the catalog has
+FlashLauncher.exe --rooms gunmayhem2           list the open rooms on the central server
 FlashLauncher.exe --validate                   check launcher.json
 ```
 

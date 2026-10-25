@@ -20,6 +20,11 @@ struct GameStats {
 struct UserData {
     std::map<std::string, GameStats> games;
     std::string selectedGame, category;
+    // Settings window. minimize: -1 = launcher.json's behavior.minimizeOnLaunch.
+    int minimize = -1;
+    bool online = true;          // room list and update checks
+    std::string defaultPlayer;   // empty = automatic (config order)
+    std::wstring gamesDir;       // empty = paths.games
     int x = 0, y = 0, width = 0, height = 0;  // 0 = default placement
     bool maximized = false;
 

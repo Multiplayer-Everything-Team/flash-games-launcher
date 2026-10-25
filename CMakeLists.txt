@@ -24,6 +24,7 @@ add_library(launcher_core STATIC
   src/core/log.cpp
   src/core/process.cpp
   src/core/relay.cpp
+  src/core/rooms.cpp
   src/core/settings.cpp
   src/core/strings.cpp
   src/core/vars.cpp
@@ -48,6 +49,7 @@ add_executable(launcher WIN32
   src/app/cli.cpp
   src/ui/theme.cpp
   src/ui/launcher.cpp
+  src/ui/settings.cpp
   src/app/app.manifest
   "${APP_RC}"
 )

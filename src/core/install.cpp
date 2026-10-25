@@ -320,6 +320,21 @@ bool parseCatalog(std::string_view text, const std::wstring& baseUrl, std::vecto
     return true;
 }
 
+std::vector<CatalogFile> outdatedGameFiles(const std::vector<CatalogFile>& catalog, const std::wstring& dir) {
+    std::vector<CatalogFile> out;
+    for (const auto& f : catalog) {
+        std::wstring path = fs::join(dir, f.name);
+        if (!f.sha256.empty() && fs::isFile(path) && widen(fs::sha256File(path)) != f.sha256) out.push_back(f);
+    }
+    return out;
+}
+
+bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error) {
+    out.clear();
+    return httpGet(url, [&](const char* d, size_t n) { out.append(d, n); return out.size() < 4 * 1024 * 1024; },
+                   nullptr, nullptr, error);
+}
+
 bool fetchCatalog(const std::wstring& url, std::vector<CatalogFile>& out, std::string& raw, std::wstring& error,
                   const std::atomic<bool>* cancel) {
     raw.clear();

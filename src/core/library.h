@@ -37,6 +37,8 @@ public:
     Library(const Config& cfg, Vars base);
 
     void refresh();
+    // A games folder chosen in Settings; empty = paths.games. Call refresh() after.
+    void setGamesDirOverride(const std::wstring& dir) { gamesOverride_ = dir; }
     const Vars& vars() const { return vars_; }
     const std::vector<PlayerStatus>& players() const { return players_; }
     const PlayerStatus* player(const std::string& id) const;
@@ -58,6 +60,7 @@ private:
     const Config& cfg_;
     Vars vars_;
     std::vector<PlayerStatus> players_;
+    std::wstring gamesOverride_;
 };
 
 }  // namespace fl

@@ -103,7 +103,7 @@ std::wstring Library::findFirst(const std::vector<std::wstring>& candidates, con
 }
 
 void Library::refresh() {
-    vars_.set(L"GAMES_DIR", fs::normalize(vars_.expand(cfg_.paths.games)));
+    vars_.set(L"GAMES_DIR", fs::normalize(gamesOverride_.empty() ? vars_.expand(cfg_.paths.games) : gamesOverride_));
     vars_.set(L"PLAYERS_DIR", fs::normalize(vars_.expand(cfg_.paths.players)));
     vars_.set(L"DATA_DIR", fs::normalize(vars_.expand(cfg_.paths.data)));
     std::wstring flashpoint;
@@ -163,7 +163,8 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
 
     bool anyPlayer = false, anySwf = false;
     ResolvedAction fallback;  // best partial match, reported when nothing is ready
-    for (const PlayerSpec* p : allowedPlayers(a, stats ? stats->player : std::string())) {
+    std::string preferred = stats && !stats->player.empty() ? stats->player : user.defaultPlayer;
+    for (const PlayerSpec* p : allowedPlayers(a, preferred)) {
         const PlayerStatus* st = player(p->id);
         auto o = a.overrides.find(p->id);
         const PlayerOverride* ov = o == a.overrides.end() ? nullptr : &o->second;

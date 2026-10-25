@@ -125,6 +125,36 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"button.getPlayer", L"Get ${PLAYER}"},
         {"button.installPlayer", L"Install ${PLAYER}"},
         {"button.downloadGame", L"Download game files (${SIZE})"},
+        {"button.updateGame", L"Update game files (${SIZE})"},
+        {"status.update", L"Update available"},
+        {"rooms.count", L"${N} rooms open"},
+        {"rooms.one", L"1 room open"},
+        {"rooms.title", L"Open rooms"},
+        {"rooms.none", L"No open rooms right now. Host one and friends will see it here."},
+        {"rooms.row", L"${CODE}  ${NAME}"},
+        {"rooms.players", L"${N}/${MAX}"},
+        {"rooms.join", L"Join"},
+        {"rooms.joinName", L"Join room ${CODE}"},
+        {"rooms.copied", L"Room ${CODE} copied. In the game press F9, choose ONLINE, paste the code and press JOIN."},
+        {"rooms.full", L"Room ${CODE} is full."},
+        {"button.settings", L"Settings"},
+        {"settings.title", L"Settings"},
+        {"settings.playing", L"Playing"},
+        {"settings.minimize", L"Minimize the launcher while a game runs"},
+        {"settings.player", L"Default player"},
+        {"settings.online", L"Online"},
+        {"settings.onlineToggle", L"Show open rooms and check for game updates"},
+        {"settings.onlineNote", L"Uses the internet: the room list from the central server, the game list from GitHub."},
+        {"settings.folders", L"Folders"},
+        {"settings.gamesDir", L"Game files"},
+        {"settings.change", L"Change\u2026"},
+        {"settings.open", L"Open"},
+        {"settings.reset", L"Use default"},
+        {"settings.log", L"Open log folder"},
+        {"settings.about", L"Flash Launcher ${VERSION}"},
+        {"settings.github", L"Project page"},
+        {"settings.close", L"Close"},
+        {"settings.pickFolder", L"Choose the folder for game files"},
         {"download.title", L"Download ${GAME}?"},
         {"download.body", L"The launcher downloads ${COUNT} file(s), ${SIZE} in total, from ${SOURCE}, checks each one against its published checksum, and saves them in ${DIR}."},
         {"download.yes", L"Download"},
@@ -378,6 +408,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         Branding& b = c.branding;
         s.str("title", b.title);
         s.str("subtitle", b.subtitle);
+        s.str("website", b.website);
         s.str("windowTitle", b.windowTitle);
         s.str("theme", b.theme);
         if (!iequals(b.theme, L"dark") && !iequals(b.theme, L"light")) s.error(L"theme", L"must be \"dark\" or \"light\"");
@@ -420,6 +451,15 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         s.integer("quickExitSeconds", c.behavior.quickExitSeconds, 0, 60);
     }
     {
+        Section rs(top.get("rooms", Type::Object), L"rooms", issues);
+        rs.str("servers", c.rooms.servers);
+        rs.str("server", c.rooms.server);
+        rs.integer("refreshSeconds", c.rooms.refreshSeconds, 10, 3600);
+        if (!c.rooms.servers.empty() && !startsWithI(c.rooms.servers, L"https://") &&
+            !startsWithI(c.rooms.servers, L"http://127.0.0.1"))
+            rs.error(L"servers", L"must be an https:// address");
+    }
+    {
         Section s(top.get("downloads", Type::Object), L"downloads", issues);
         s.str("catalog", c.downloads.catalog);
         const std::wstring& u = c.downloads.catalog;
@@ -435,6 +475,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("website", p.website);
             s.strList("paths", p.paths);
             s.strList("args", p.args);
+            s.str("flashvarArg", p.flashvarArg);
             if (auto inst = s.get("install", Type::Object)) {
                 Section is(inst, s.child("install"), issues);
                 is.str("github", p.install.github);
@@ -468,6 +509,11 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("description", g.description);
             s.str("players", g.playerCount);
             s.integer("maxPlayers", g.maxPlayers, 0, 16);
+            if (auto on = s.get("online", Type::Object)) {
+                Section os(on, s.child("online"), issues);
+                os.str("id", g.onlineId);
+                os.str("join", g.joinAction);
+            }
             if (!g.maxPlayers)
                 for (size_t k = 0; k < g.playerCount.size(); ++k)  // "1-4 players" -> 4
                     if (iswdigit(g.playerCount[k]))
@@ -580,6 +626,9 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
         else if (!ids.insert(g.id).second) err(where + L".id", L"duplicate game id \"" + widen(g.id) + L"\"");
         for (const auto& c : g.categories)
             if (!cfg.findCategory(c)) err(where + L".categories", L"unknown category \"" + widen(c) + L"\"");
+        if (!g.joinAction.empty() &&
+            std::none_of(g.actions.begin(), g.actions.end(), [&](const ActionSpec& a) { return a.id == g.joinAction; }))
+            err(where + L".online.join", L"no action with id \"" + widen(g.joinAction) + L"\"");
         checkVars(g.image, where + L".image", issues);
         if (g.actions.empty()) err(where + L".actions", L"add at least one action (e.g. \"Play\")");
         std::set<std::string> actionIds;

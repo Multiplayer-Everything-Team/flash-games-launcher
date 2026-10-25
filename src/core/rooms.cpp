@@ -1,0 +1,121 @@
+#include "rooms.h"
+
+#include "install.h"
+#include "json.h"
+#include "log.h"
+#include "strings.h"
+#include "win.h"
+// win.h first (WIN32_LEAN_AND_MEAN keeps the old winsock.h out).
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+namespace fl {
+
+bool parseRoomList(std::string_view reply, std::vector<RoomInfo>& out) {
+    out.clear();
+    if (reply.rfind("LIST|", 0) != 0) return false;
+    std::string body(reply.substr(5));
+    size_t start = 0;
+    while (start < body.size()) {
+        size_t end = body.find(';', start);
+        std::string row = body.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        start = end == std::string::npos ? body.size() : end + 1;
+        size_t a = row.find(','), b = a == std::string::npos ? a : row.find(',', a + 1),
+               c = b == std::string::npos ? b : row.find(',', b + 1);
+        if (c == std::string::npos) continue;
+        RoomInfo r;
+        r.code = widen(row.substr(0, a));
+        r.players = atoi(row.substr(a + 1, b - a - 1).c_str());
+        r.max = atoi(row.substr(b + 1, c - b - 1).c_str());
+        r.name = widen(row.substr(c + 1));
+        if (!r.code.empty()) out.push_back(std::move(r));
+    }
+    return true;
+}
+
+bool listRooms(const std::wstring& server, const std::string& gameId, std::vector<RoomInfo>& out, std::wstring& error,
+               int timeoutMs) {
+    size_t colon = server.rfind(L':');
+    if (colon == std::wstring::npos) {
+        error = L"Server address needs a port: " + server;
+        return false;
+    }
+    std::string host = narrow(server.substr(0, colon)), port = narrow(server.substr(colon + 1));
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        error = L"Networking is not available";
+        return false;
+    }
+    addrinfo hints{}, *res = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    bool ok = false;
+    if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0 || !res) {
+        error = L"Cannot find the server " + server;
+    } else {
+        SOCKET s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        DWORD t = static_cast<DWORD>(timeoutMs);
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&t), sizeof t);
+        setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&t), sizeof t);
+        // A non-blocking connect with select() bounds the wait when the server is down.
+        u_long nb = 1;
+        ioctlsocket(s, FIONBIO, &nb);
+        connect(s, res->ai_addr, static_cast<int>(res->ai_addrlen));
+        fd_set w;
+        FD_ZERO(&w);
+        FD_SET(s, &w);
+        timeval tv{timeoutMs / 1000, (timeoutMs % 1000) * 1000};
+        if (select(0, nullptr, &w, nullptr, &tv) == 1) {
+            nb = 0;
+            ioctlsocket(s, FIONBIO, &nb);
+            std::string req = "RELAY|1|LIST|" + gameId + std::string(1, '\0');
+            send(s, req.data(), static_cast<int>(req.size()), 0);
+            std::string reply;
+            char buf[4096];
+            for (;;) {
+                int n = recv(s, buf, sizeof buf, 0);
+                if (n <= 0) break;
+                reply.append(buf, n);
+                size_t nul = reply.find('\0');
+                if (nul != std::string::npos) {
+                    reply.resize(nul);
+                    break;
+                }
+                if (reply.size() > 256 * 1024) break;
+            }
+            ok = parseRoomList(reply, out);
+            if (!ok) error = reply.empty() ? L"No answer from " + server : L"Unexpected answer from " + server;
+        } else {
+            error = L"Cannot reach " + server;
+        }
+        closesocket(s);
+        freeaddrinfo(res);
+    }
+    WSACleanup();
+    return ok;
+}
+
+std::wstring resolveRoomServer(const std::wstring& serversUrl, const std::wstring& fallback, std::wstring* error) {
+    if (!serversUrl.empty()) {
+        std::string text;
+        std::wstring err;
+        if (httpGetText(serversUrl, text, err)) {
+            std::string perr;
+            json::Value root = json::parse(text, &perr);
+            const json::Value* list = root.isObject() ? root.find("servers") : nullptr;
+            if (list && list->isArray())
+                for (size_t i = 0; i < list->size(); ++i) {
+                    const json::Value& sv = list->at(i);
+                    const json::Value* addr = sv.find("address");
+                    const json::Value* status = sv.find("status");
+                    if (addr && addr->isString() && (!status || !status->isString() || status->str() == "online"))
+                        return widen(addr->str());
+                }
+        } else if (error) {
+            *error = err;
+        }
+    }
+    return fallback;
+}
+
+}  // namespace fl

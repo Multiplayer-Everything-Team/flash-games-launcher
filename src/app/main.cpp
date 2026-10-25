@@ -8,6 +8,7 @@
 #include "core/library.h"
 #include "core/log.h"
 #include "core/relay.h"
+#include "core/rooms.h"
 #include "core/settings.h"
 #include "core/strings.h"
 #include "ui/launcher.h"
@@ -109,7 +110,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
     bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
-                   !a.downloadGame.empty() || !a.error.empty();
+                   !a.downloadGame.empty() || !a.rooms.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
         fail(a.error + L"\n\n" + usageText());
@@ -152,6 +153,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     Library lib(cfg, base);
     std::wstring userPath = fs::join(lib.dataDir(), L"settings.json");
     UserData user = loadUserData(userPath);
+    if (!user.gamesDir.empty()) {
+        lib.setGamesDirOverride(user.gamesDir);
+        lib.refresh();
+    }
+
+    if (!a.rooms.empty()) {
+        const GameSpec* g = cfg.findGame(a.rooms);
+        if (!g || g->onlineId.empty()) {
+            fail(L"No online game with id \"" + widen(a.rooms) + L"\"");
+            return 3;
+        }
+        std::wstring err;
+        std::wstring server = resolveRoomServer(cfg.rooms.servers, cfg.rooms.server, &err);
+        std::vector<RoomInfo> rooms;
+        if (server.empty() || !listRooms(server, g->onlineId, rooms, err)) {
+            fail(L"Cannot list rooms: " + err);
+            return 1;
+        }
+        out(server + L": " + std::to_wstring(rooms.size()) + L" open\n");
+        for (const auto& r : rooms)
+            out(r.code + L"  " + std::to_wstring(r.players) + L"/" + std::to_wstring(r.max) + L"  " + r.name + L"\n");
+        return 0;
+    }
 
     if (!a.installPlayer.empty()) {
         const PlayerSpec* p = cfg.findPlayer(a.installPlayer);
