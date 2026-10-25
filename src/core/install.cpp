@@ -1,5 +1,7 @@
 #include "install.h"
 
+#include <algorithm>
+#include <cwctype>
 #include <filesystem>
 #include <vector>
 
@@ -120,7 +122,8 @@ bool findAsset(const InstallSpec& spec, Asset& out, const std::atomic<bool>* can
         return true;
     }
     std::string body;
-    std::wstring api = L"https://api.github.com/repos/" + widen(spec.github) + L"/releases/latest";
+    std::wstring base = spec.api.empty() ? std::wstring(L"https://api.github.com") : spec.api;
+    std::wstring api = base + L"/repos/" + widen(spec.github) + L"/releases/latest";
     if (!httpGet(api, [&](const char* d, size_t n) { body.append(d, n); return body.size() < 8 * 1024 * 1024; },
                  nullptr, cancel, error))
         return false;
@@ -327,6 +330,56 @@ std::vector<CatalogFile> outdatedGameFiles(const std::vector<CatalogFile>& catal
         if (!f.sha256.empty() && fs::isFile(path) && widen(fs::sha256File(path)) != f.sha256) out.push_back(f);
     }
     return out;
+}
+
+namespace {
+// Release tags are "v1.2.0"; the shared version compare wants "1.2.0".
+std::wstring_view bareVersion(std::wstring_view v) {
+    if (!v.empty() && (v[0] == L'v' || v[0] == L'V')) v.remove_prefix(1);
+    return v;
+}
+}  // namespace
+
+std::wstring oldExePath(const std::wstring& exePath) { return exePath + L".old"; }
+
+void removeOldUpdate(const std::wstring& exePath) { DeleteFileW(fs::longPath(oldExePath(exePath)).c_str()); }
+
+UpdateResult updateSelf(const InstallSpec& source, const std::wstring& currentVersion, const std::wstring& exePath,
+                        const std::atomic<bool>* cancel) {
+    UpdateResult r;
+    Asset asset;
+    if (!findAsset(source, asset, cancel, r.error)) return r;
+    r.version = asset.version;
+    if (compareVersions(bareVersion(asset.version), bareVersion(currentVersion)) <= 0) {
+        r.ok = true;  // up to date
+        return r;
+    }
+    // Never replace the launcher with a file nobody can vouch for.
+    if (asset.sha256.empty()) {
+        r.error = L"The " + asset.version + L" release publishes no SHA-256 for " + asset.name + L"; not installed.";
+        return r;
+    }
+    std::wstring fresh = exePath + L".new";
+    InstallStatus st;
+    st.stage = InstallStatus::Stage::Downloading;
+    st.total = asset.size;
+    if (!downloadVerified(asset.url, fresh, asset.sha256, asset.size, st, nullptr, cancel, r.error)) return r;
+    // A running exe can be renamed but not overwritten: move it aside first.
+    std::wstring old = oldExePath(exePath);
+    DeleteFileW(fs::longPath(old).c_str());
+    if (!MoveFileExW(fs::longPath(exePath).c_str(), fs::longPath(old).c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        r.error = lastError(L"Can't replace the launcher (is its folder read-only?)");
+        DeleteFileW(fs::longPath(fresh).c_str());
+        return r;
+    }
+    if (!MoveFileExW(fs::longPath(fresh).c_str(), fs::longPath(exePath).c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        r.error = lastError(L"Can't put the new launcher in place");
+        MoveFileExW(fs::longPath(old).c_str(), fs::longPath(exePath).c_str(), MOVEFILE_REPLACE_EXISTING);
+        DeleteFileW(fs::longPath(fresh).c_str());
+        return r;
+    }
+    r.ok = r.updated = true;
+    return r;
 }
 
 bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error) {

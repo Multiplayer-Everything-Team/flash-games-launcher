@@ -24,6 +24,8 @@ bool startProcess(const std::wstring& exe, const std::vector<std::wstring>& args
                   Started& out, std::wstring& error, bool hidden = false);
 
 bool openPath(const std::wstring& pathOrUrl);
+// True when a process with one of these executable names is running (`which` gets its name).
+bool isProcessRunning(const std::vector<std::wstring>& exeNames, std::wstring* which = nullptr);
 // Opens Explorer with `file` selected (or the folder itself).
 bool revealInExplorer(const std::wstring& file);
 

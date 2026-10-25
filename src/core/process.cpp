@@ -11,6 +11,7 @@
 #include <iphlpapi.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <tlhelp32.h>
 
 namespace fl::sys {
 
@@ -278,6 +279,26 @@ void ProcessWatcher::loop() {
         CloseHandle(done.h);
         if (onExit_) onExit_(done.pid, code);
     }
+}
+
+bool isProcessRunning(const std::vector<std::wstring>& exeNames, std::wstring* which) {
+    if (exeNames.empty()) return false;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    PROCESSENTRY32W pe{};
+    pe.dwSize = sizeof pe;
+    bool found = false;
+    for (BOOL ok = Process32FirstW(snap, &pe); ok && !found; ok = Process32NextW(snap, &pe)) {
+        for (const auto& name : exeNames) {
+            if (iequals(pe.szExeFile, name)) {
+                found = true;
+                if (which) *which = pe.szExeFile;
+                break;
+            }
+        }
+    }
+    CloseHandle(snap);
+    return found;
 }
 
 }  // namespace fl::sys

@@ -45,6 +45,8 @@ UserData loadUserData(const std::wstring& path) {
     d.gamesDir = widen(str(root, "gamesDir"));
     d.playerName = widen(str(root, "playerName"));
     if (const json::Value* o = root.find("showOriginals"); o && o->isBool()) d.showOriginals = o->boolean();
+    if (const json::Value* o = root.find("autoUpdate"); o && o->isBool()) d.autoUpdate = o->boolean();
+    if (const json::Value* o = root.find("showOffline"); o && o->isBool()) d.showOffline = o->boolean();
     if (const json::Value* w = root.find("window"); w && w->isObject()) {
         d.x = static_cast<int>(num(*w, "x"));
         d.y = static_cast<int>(num(*w, "y"));
@@ -64,6 +66,7 @@ UserData loadUserData(const std::wstring& path) {
             s.seconds = static_cast<int64_t>(num(g, "seconds"));
             s.lastPlayed = static_cast<int64_t>(num(g, "lastPlayed"));
             s.player = str(g, "player");
+            s.gameDir = widen(str(g, "gameDir"));
             if (const json::Value* swf = g.find("swf"); swf && swf->isObject())
                 for (size_t j = 0; j < swf->size(); ++j)
                     if (swf->at(j).isString()) s.swf[swf->keyAt(j)] = widen(swf->at(j).str());
@@ -83,6 +86,8 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
     root.set("gamesDir", narrow(d.gamesDir));
     root.set("playerName", narrow(d.playerName));
     root.set("showOriginals", d.showOriginals);
+    root.set("autoUpdate", d.autoUpdate);
+    root.set("showOffline", d.showOffline);
     json::Value w = json::Value::object();
     w.set("x", d.x);
     w.set("y", d.y);
@@ -98,6 +103,7 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
         g.set("seconds", static_cast<int64_t>(s.seconds));
         g.set("lastPlayed", static_cast<int64_t>(s.lastPlayed));
         if (!s.player.empty()) g.set("player", s.player);
+        if (!s.gameDir.empty()) g.set("gameDir", narrow(s.gameDir));
         if (!s.swf.empty()) {
             json::Value swf = json::Value::object();
             for (const auto& [action, file] : s.swf) swf.set(action, narrow(file));

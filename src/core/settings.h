@@ -15,6 +15,7 @@ struct GameStats {
     int64_t lastPlayed = 0;  // unix time, 0 = never
     std::string player;      // preferred player id, empty = config order
     std::map<std::string, std::wstring> swf;  // action id -> file chosen with "Locate"
+    std::wstring gameDir;                     // PC mods: the game folder the player chose
 };
 
 struct UserData {
@@ -27,6 +28,8 @@ struct UserData {
     std::wstring gamesDir;       // empty = paths.games
     std::wstring playerName;     // passed to games as ${PLAYER_NAME}
     bool showOriginals = false;  // list "edition": "original" actions
+    bool autoUpdate = true;      // install new launcher releases by itself
+    bool showOffline = false;    // list "offline" actions (solo, one keyboard)
     int x = 0, y = 0, width = 0, height = 0;  // 0 = default placement
     bool maximized = false;
 

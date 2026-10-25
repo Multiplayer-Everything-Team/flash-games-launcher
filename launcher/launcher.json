@@ -7,7 +7,7 @@
 
   "branding": {
     "title": "Multiplayer Everything",
-    "subtitle": "Flash Launcher",
+    "subtitle": "Mods and Flash games",
     "theme": "dark"
   },
 
@@ -25,6 +25,10 @@
     "servers": "https://raw.githubusercontent.com/multiplayereverything/mods-info/main/servers.json",
     "server": "195.60.166.57:25569"
   },
+
+  // The launcher updates itself from the newest release of its repository
+  // (the file is checked against the SHA-256 GitHub publishes for it).
+  "updates": { "github": "multiplayereverything/multiplayer-mods-launcher", "asset": "FlashLauncher.exe" },
 
   // Discord shows "Playing <game>" while a game runs. Put the application id
   // from discord.com/developers here; empty turns it off.
@@ -78,6 +82,7 @@
 
   "categories": [
     // "icon": a Segoe Fluent Icons glyph for the sidebar.
+    { "id": "pc", "name": "PC game mods", "icon": "E7F4" },
     { "id": "online", "name": "Online multiplayer", "icon": "E774" },
     { "id": "local", "name": "Local multiplayer", "icon": "E765" },
     { "id": "coop", "name": "Co-op", "icon": "E716" },
@@ -100,10 +105,12 @@
         {
           "id": "online",
           "label": "Play online",
+          "icon": "E774",
           "description": "Host or join a room, no IP needed",
           "hint": "In the game press F9 and set MODE to ONLINE: HOST gives you a room code, or type a friend's code and press JOIN.",
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
@@ -118,9 +125,12 @@
         {
           "id": "local",
           "label": "Play on one keyboard",
+          "icon": "E765",
+          "offline": true,
           "description": "Up to 4 players on this PC",
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ]
@@ -133,6 +143,7 @@
           "more": true,
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
@@ -151,6 +162,7 @@
           "more": true,
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
@@ -167,6 +179,7 @@
           "edition": "original",
           "swf": [
             "${GAMES_DIR}\\gunmayhem2.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\gunmayhem2\\content\\cache.armorgames.com\\files\\games\\gun-mayhem-2-more-ma-13824.swf",
             "${FLASHPOINT}\\Data\\Games\\gunmayhem2\\content\\cache.armorgames.com\\files\\games\\gun-mayhem-2-more-ma-13824.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\work\\gm2_orig.swf"
           ]
@@ -174,6 +187,8 @@
       ]
     },
     {
+      // Stealth Hunter 2 runs only in Ruffle: the mod's network code and its
+      // fixes are built for it, so Flash Player is never offered.
       "id": "stealthhunter2",
       "name": "Stealth Hunter 2",
       "players": "1-4 players (online co-op)",
@@ -187,112 +202,80 @@
       "actions": [
         {
           "id": "online",
+          "players": ["ruffle"],
           "label": "Play online",
+          "icon": "E774",
           "description": "Host or join a co-op room, no IP needed",
           "hint": "Press F9 (or ONLINE CO-OP on the title screen) and set MODE to ONLINE: HOST gives you a room code, or type a friend's code and press JOIN.",
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // Flash Player needs the build with the network flag set.
-            "flash": {
-              "swf": [
-                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
-                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
-              ]
-            }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           },
           // Handed to the game at start ("join" is added when you pick a room).
           "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
         },
         {
           "id": "solo",
+          "players": ["ruffle"],
           "label": "Play solo",
+          "icon": "E77B",
+          "offline": true,
           "description": "The campaign on your own",
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ]
         },
         {
           "id": "host",
+          "players": ["ruffle"],
           "label": "Host with your IP",
           "description": "Direct connect: starts the relay on port 7778",
           "hint": "Press F9, set MODE to DIRECT, type a name and press HOST. Then start a level.",
           "more": true,
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // Flash Player needs the build with the network flag set.
-            "flash": {
-              "swf": [
-                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
-                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
-              ]
-            }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           },
           "relay": { "port": 7778 }
         },
         {
           "id": "join",
+          "players": ["ruffle"],
           "label": "Join by IP",
           "description": "Direct connect to a friend's address",
           "hint": "Press F9, set MODE to DIRECT, type a name and the host's address (IP or IP:7778), then press JOIN.",
           "more": true,
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // Flash Player needs the build with the network flag set.
-            "flash": {
-              "swf": [
-                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
-                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
-              ]
-            }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           }
         },
         {
           "id": "play",
+          "players": ["ruffle"],
           "label": "Play the original",
           "description": "The single-player game, without the co-op mod",
           "edition": "original",
           "swf": [
             "${GAMES_DIR}\\stealth_hunter_2.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\stealth_hunter_2.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\stealth_hunter_2.swf"
           ]
         }
-      ]
-    },
-    {
-      "id": "gunmayhem",
-      "name": "Gun Mayhem",
-      "players": "1-2 players",
-      "categories": ["local", "versus"],
-      "color": "#F2B544",
-      "colorEnd": "#C2410C",
-      "description": "The original platform shoot-out: grab a gun and knock your friend off the map.",
-      "actions": [
-        { "id": "play", "label": "Play", "description": "Local multiplayer on one keyboard", "swf": ["${GAMES_DIR}\\gunmayhem.swf"] }
-      ]
-    },
-    {
-      "id": "fireboywatergirl",
-      "name": "Fireboy and Watergirl in the Forest Temple",
-      "players": "2 players",
-      "categories": ["local", "coop"],
-      "color": "#FF4D4D",
-      "colorEnd": "#2F6FEB",
-      "description": "Two players share one keyboard and solve temple puzzles together: fire and water must each reach their own door.",
-      "actions": [
-        { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\fireboywatergirl.swf"] }
       ]
     },
     {
@@ -310,6 +293,7 @@
         {
           "id": "online",
           "label": "Play online",
+          "icon": "E774",
           "description": "Host or join a room, no IP needed",
           "hint": "In the game press F9: HOST gives you a room code, or type a friend's code and press JOIN. Move with arrows or WASD, ice with Space or F.",
           "swf": [
@@ -325,6 +309,8 @@
         {
           "id": "local",
           "label": "Play on one keyboard",
+          "icon": "E765",
+          "offline": true,
           "description": "Co-op for two on this PC",
           "swf": [
             "${GAMES_DIR}\\BadIceCream_online.swf",
@@ -334,16 +320,331 @@
       ]
     },
     {
-      "id": "boxhead2play",
-      "name": "Boxhead: 2Play Rooms",
-      "players": "1-2 players",
-      "categories": ["local", "coop"],
-      "color": "#9AA1AC",
-      "colorEnd": "#3A2A1E",
-      "description": "Two players fight off waves of zombies together on one keyboard.",
+      "id": "territorywar",
+      "name": "Territory War",
+      "players": "2-4 players (online)",
+      "maxPlayers": 4,
+      "online": { "id": "tw", "join": "online" },
+      "categories": ["online", "versus"],
+      "color": "#6BA539",
+      "colorEnd": "#2C4A1E",
+      "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. The online mod puts red against blue on up to four PCs; each team's sticks are shared out between its players.",
       "actions": [
-        { "id": "play", "label": "Play", "description": "Two players on one keyboard", "swf": ["${GAMES_DIR}\\boxhead2play.swf"] }
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host or join a room, no IP needed",
+          "hint": "Click PLAY, then ONLINE PLAY (or press F9): HOST A ROOM gives you a room code; friends type it and press JOIN. Then start a Custom Battle.",
+          // The online mods run in Ruffle: it lets a local file use the network.
+          "players": ["ruffle"],
+          "swf": [
+            "${GAMES_DIR}\\TerritoryWar_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Territory War\\mod\\dist\\TerritoryWar_online.swf"
+          ],
+          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "offline",
+          "label": "Play offline",
+          "icon": "E77B",
+          "offline": true,
+          "description": "Campaign, challenges and battles on this PC",
+          "swf": [
+            "${GAMES_DIR}\\TerritoryWar_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Territory War\\mod\\dist\\TerritoryWar_online.swf"
+          ]
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "Without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\territory-war-279.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Territory War\\territory-war-279.swf"
+          ]
+        }
       ]
+    },
+    {
+      "id": "bowman",
+      "name": "Bow Man",
+      "players": "2 players (online)",
+      "maxPlayers": 2,
+      "online": { "id": "bowman", "join": "online" },
+      "categories": ["online", "versus"],
+      "color": "#C98A4B",
+      "colorEnd": "#3B2A1A",
+      "description": "Two archers take turns: drag to aim, release to shoot, mind the wind. The online mod puts each archer on their own PC.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host or join a room, no IP needed",
+          "hint": "On the title menu click VS Online: Host a room gives you a room code; your friend types it and clicks Join. Then pick VS Human.",
+          // The online mods run in Ruffle: it lets a local file use the network.
+          "players": ["ruffle"],
+          "swf": [
+            "${GAMES_DIR}\\BowMan_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Bow Man\\mod\\dist\\BowMan_online.swf"
+          ],
+          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "offline",
+          "label": "Play offline",
+          "icon": "E77B",
+          "offline": true,
+          "description": "VS Computer, practice and bird hunting",
+          "swf": [
+            "${GAMES_DIR}\\BowMan_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Bow Man\\mod\\dist\\BowMan_online.swf"
+          ]
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "Without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\bowmandash.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Bow Man\\bowmandash.swf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ultimatecrabbattle",
+      "name": "Ultimate Crab Battle",
+      "players": "1-4 players (online co-op)",
+      "maxPlayers": 4,
+      "online": { "id": "ucb", "join": "online" },
+      "categories": ["online", "coop"],
+      "color": "#E8603C",
+      "colorEnd": "#1D3C6E",
+      "description": "One giant crab, up to four ships. The online co-op mod gives every player their own ship on their own PC; the team shares one HP bar.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host or join a room, no IP needed",
+          "hint": "On the difficulty menu press ONLINE (or F9): HOST gives you a room code; friends type it and press JOIN. Arrows fly, A fires.",
+          // The online mods run in Ruffle: it lets a local file use the network.
+          "players": ["ruffle"],
+          "swf": [
+            "${GAMES_DIR}\\UltimateCrabBattle_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Ultimate Crab Battle\\mod\\dist\\UltimateCrabBattle_online.swf"
+          ],
+          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "offline",
+          "label": "Play offline",
+          "icon": "E77B",
+          "offline": true,
+          "description": "The fight on your own",
+          "swf": [
+            "${GAMES_DIR}\\UltimateCrabBattle_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Ultimate Crab Battle\\mod\\dist\\UltimateCrabBattle_online.swf"
+          ]
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "Without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\483854_ucb.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Ultimate Crab Battle\\483854_ucb.swf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "airbattle",
+      "name": "Air Battle",
+      "players": "1-4 players (online co-op)",
+      "maxPlayers": 4,
+      "online": { "id": "airbattle", "join": "online" },
+      "categories": ["online", "coop"],
+      "color": "#5AB4E6",
+      "colorEnd": "#B4621E",
+      "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host or join a room, no IP needed",
+          "hint": "On the main menu click ONLINE CO-OP (or F9): HOST A ROOM gives you a room code; friends type it and click JOIN. Then press PLAY and pick a level.",
+          // The online mods run in Ruffle: it lets a local file use the network.
+          "players": ["ruffle"],
+          "swf": [
+            "${GAMES_DIR}\\AirBattle_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Air Battle\\mod\\dist\\AirBattle_online.swf"
+          ],
+          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "offline",
+          "label": "Play offline",
+          "icon": "E77B",
+          "offline": true,
+          "description": "The levels on your own",
+          "swf": [
+            "${GAMES_DIR}\\AirBattle_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Air Battle\\mod\\dist\\AirBattle_online.swf"
+          ]
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "Without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\airbattle.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Air Battle\\airbattle.swf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "raftwars",
+      "name": "Raft Wars",
+      "players": "1-4 players (online co-op)",
+      "maxPlayers": 4,
+      "online": { "id": "raftwars", "join": "online" },
+      "categories": ["online", "coop"],
+      "color": "#2E9CCA",
+      "colorEnd": "#8A4A22",
+      "description": "The brothers defend their treasure from the raft, taking turns at the bazooka. The online co-op mod gives up to four players a turn each; the team shares the credits in the shop.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host or join a room, no IP needed",
+          "hint": "On the main menu press PLAY ONLINE (or F9): HOST A ROOM gives you a room code; friends type it and press JOIN. Then the host presses PLAY.",
+          // The online mods run in Ruffle: it lets a local file use the network.
+          "players": ["ruffle"],
+          "swf": [
+            "${GAMES_DIR}\\RaftWars_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Raft Wars\\mod\\dist\\RaftWars_online.swf"
+          ],
+          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "offline",
+          "label": "Play offline",
+          "icon": "E77B",
+          "offline": true,
+          "description": "The battles on your own",
+          "swf": [
+            "${GAMES_DIR}\\RaftWars_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Raft Wars\\mod\\dist\\RaftWars_online.swf"
+          ]
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "Without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\raftwars.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Raft Wars\\raftwars.swf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "intrusion",
+      "name": "Intrusion",
+      "players": "Online mod in progress",
+      "online": { "id": "intrusion" },
+      "categories": ["online"],
+      "comingSoon": true,
+      "color": "#7C8591",
+      "colorEnd": "#24282E",
+      "description": "Side-scrolling shooter. Its online mod is still being built."
+    },
+    {
+      "id": "intrusion2",
+      "name": "Intrusion 2",
+      "players": "Online mod in progress",
+      "online": { "id": "intrusion2" },
+      "categories": ["online"],
+      "comingSoon": true,
+      "color": "#B0453A",
+      "colorEnd": "#1E2228",
+      "description": "The sequel, with its own online mod in the works."
+    },
+    {
+      // A PC game mod: the launcher finds the game, installs the mod into it (every
+      // file it replaces is backed up and put back on uninstall) and starts the game.
+      // The package is a .zip with "loader" and "mod" folders at its top level; where it
+      // is downloaded from comes from mods-info (download_url) for the id below.
+      "id": "spooky-together",
+      "name": "Spooky Together",
+      "players": "2-4 players (co-op)",
+      "online": { "id": "spooky" },
+      "categories": ["pc", "online", "coop"],
+      "color": "#D6264F",
+      "colorEnd": "#2A0A16",
+      "description": "Co-op for Spooky's Jump Scare Mansion: HD Renovation (Steam). Play the mansion with up to four friends: shared rooms, keys, items, specimens, the axe and endings, with a LAN server list. Everyone needs the same version.",
+      "mod": {
+        "id": "spooky-together",
+        "game": {
+          "name": "Spooky's Jump Scare Mansion",
+          "executable": "SpookyUnity.exe",
+          "steamAppId": "577690",
+          "validationFiles": ["${GAME_EXE}", "SpookyUnity_Data", "UnityPlayer.dll"],
+          "processNames": ["SpookyUnity.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\Spooky's Jump Scare Mansion HD Renovation" },
+            { "type": "steam", "appId": "577690", "installDir": "Spooky's Jump Scare Mansion HD Renovation" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\SpookyTogether",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/patchers/**",
+            "BepInEx/config/BepInEx.cfg",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        "components": [
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader", "target": "${GAME_DIR}", "required": true },
+          { "id": "mod", "name": "Spooky Together", "source": "mod", "required": true }
+        ],
+        "launch": {
+          // The game has to be started through Steam.
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "Press F5 in the game to open the multiplayer panel, then Host or pick a game from the list."
+        },
+        "package": { "modsInfo": "spooky" }
+      }
+    },
+    {
+      "id": "baldi-together",
+      "name": "Baldi Together",
+      "players": "Online mod in testing",
+      "online": { "id": "baldi" },
+      "categories": ["pc", "online"],
+      "comingSoon": true,
+      "color": "#3C9B45",
+      "colorEnd": "#12331A",
+      "description": "Co-op for Baldi's Basics Plus (Steam), up to four players. Its installer isn't in the launcher yet."
     }
   ]
 }

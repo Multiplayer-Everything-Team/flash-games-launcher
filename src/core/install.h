@@ -55,6 +55,20 @@ InstallResult downloadGameFiles(const std::vector<CatalogFile>& files, const std
 // published. Reads every such file, so call it off the UI thread.
 std::vector<CatalogFile> outdatedGameFiles(const std::vector<CatalogFile>& catalog, const std::wstring& dir);
 
+// The launcher updating itself.
+struct UpdateResult {
+    bool ok = false;       // checked (and installed, if there was something newer)
+    bool updated = false;  // a newer exe is now in place; it runs from the next start
+    std::wstring version;  // the newest release's tag
+    std::wstring error;
+};
+// Downloads the newest release's `source.asset` when it is newer than
+// `currentVersion`, checks its SHA-256 (required) and swaps it in for
+// `exePath`; the running exe is kept as `exePath`.old until removeOldUpdate.
+UpdateResult updateSelf(const InstallSpec& source, const std::wstring& currentVersion, const std::wstring& exePath,
+                        const std::atomic<bool>* cancel);
+void removeOldUpdate(const std::wstring& exePath);
+
 // Small text download (JSON); false with `error` set on failure.
 bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error);
 

@@ -3,6 +3,7 @@
 #include "launcher.h"
 
 #include "core/fs.h"
+#include "dialogs.h"
 #include "core/log.h"
 #include "core/strings.h"
 // win.h (via theme.h) first: these need the full Windows types.
@@ -29,39 +30,13 @@ enum : int {
     kSetClose,
     kSetOriginals,
     kSetName,
+    kSetAutoUpdate,
+    kSetOffline,
 };
 
 // Static text roles, kept in the control's user data so WM_CTLCOLORSTATIC knows
 // which color to use.
 enum TextRole : LONG_PTR { kRoleText = 1, kRoleMuted, kRoleHeading };
-
-std::wstring pickFolder(HWND owner, const std::wstring& title, const std::wstring& start) {
-    IFileOpenDialog* dlg = nullptr;
-    std::wstring out;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return out;
-    DWORD opts = 0;
-    dlg->GetOptions(&opts);
-    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-    dlg->SetTitle(title.c_str());
-    IShellItem* folder = nullptr;
-    if (!start.empty() && SUCCEEDED(SHCreateItemFromParsingName(start.c_str(), nullptr, IID_PPV_ARGS(&folder)))) {
-        dlg->SetFolder(folder);
-        folder->Release();
-    }
-    if (SUCCEEDED(dlg->Show(owner))) {
-        IShellItem* item = nullptr;
-        if (SUCCEEDED(dlg->GetResult(&item))) {
-            PWSTR path = nullptr;
-            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                out = path;
-                CoTaskMemFree(path);
-            }
-            item->Release();
-        }
-    }
-    dlg->Release();
-    return out;
-}
 
 }  // namespace
 
@@ -129,6 +104,8 @@ void Launcher::openSettings() {
         if (cfg_.players[i].id == user_.defaultPlayer) sel = static_cast<int>(i) + 1;
     }
     SendMessageW(setPlayer_, CB_SETCURSEL, sel, 0);
+    setOffline_ = button(kSetOffline, BtnStyle::Check, cfg_.t("settings.offline"));
+    SendMessageW(setOffline_, BM_SETCHECK, user_.showOffline ? BST_CHECKED : BST_UNCHECKED, 0);
     setOriginals_ = button(kSetOriginals, BtnStyle::Check, cfg_.t("settings.originals"));
     SendMessageW(setOriginals_, BM_SETCHECK, user_.showOriginals ? BST_CHECKED : BST_UNCHECKED, 0);
 
@@ -136,6 +113,8 @@ void Launcher::openSettings() {
     setOnline_ = button(kSetOnline, BtnStyle::Check, cfg_.t("settings.onlineToggle"));
     SendMessageW(setOnline_, BM_SETCHECK, user_.online ? BST_CHECKED : BST_UNCHECKED, 0);
     label(cfg_.t("settings.onlineNote"), kRoleMuted);
+    setAutoUpdate_ = button(kSetAutoUpdate, BtnStyle::Check, cfg_.t("settings.autoUpdate"));
+    SendMessageW(setAutoUpdate_, BM_SETCHECK, user_.autoUpdate ? BST_CHECKED : BST_UNCHECKED, 0);
     label(cfg_.t("settings.name"), kRoleText);  // the field's accessible name comes from this label
     setName_ = CreateWindowExW(0, L"EDIT", user_.playerName.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0,
                                10, 10, w, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSetName)), inst, nullptr);
@@ -186,6 +165,8 @@ void Launcher::layoutSettings() {
     place(nextLabel(), pad, y + t.s(5), lw, t.s(22));  // Default player
     place(setPlayer_, pad + lw, y, inner - lw, t.s(240));
     y += t.s(44);
+    place(setOffline_, pad, y, inner, t.s(32));
+    y += t.s(36);
     place(setOriginals_, pad, y, inner, t.s(32));
     y += t.s(48);
 
@@ -197,7 +178,9 @@ void Launcher::layoutSettings() {
     GetWindowTextW(note, buf, 512);
     int noteH = textHeight(dc, t.caption, buf, inner - t.s(28));
     place(note, pad + t.s(28), y, inner - t.s(28), noteH);  // lined up with the checkbox label
-    y += noteH + t.s(14);
+    y += noteH + t.s(10);
+    place(setAutoUpdate_, pad, y, inner, t.s(32));
+    y += t.s(42);
     place(nextLabel(), pad, y + t.s(6), lw, t.s(22));  // Your name
     int fieldH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE) + t.s(10);
     place(setName_, pad + lw, y, inner - lw, fieldH);
@@ -340,6 +323,15 @@ LRESULT Launcher::settingsHandle(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             if (code != BN_CLICKED) break;
             switch (id) {
+                case kSetAutoUpdate:
+                    user_.autoUpdate = checked(setAutoUpdate_);
+                    save();
+                    return 0;
+                case kSetOffline:
+                    user_.showOffline = checked(setOffline_);
+                    save();
+                    refreshAll();
+                    return 0;
                 case kSetOriginals:
                     user_.showOriginals = checked(setOriginals_);
                     save();

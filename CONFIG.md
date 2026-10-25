@@ -38,6 +38,7 @@ Any path or argument can use these:
 | `downloads` | | See below |
 | `rooms` | | See below |
 | `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
+| `updates` | | `{ "github": "owner/repo", "asset": "FlashLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. |
 | `players` | required | Flash players, tried in this order |
 | `categories` | `[]` | Sidebar groups: `{ "id", "name", "icon" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe) |
 | `games` | required | The library |
@@ -84,6 +85,8 @@ Any path or argument can use these:
 | `refreshSeconds` | `30` | How often the room list refreshes |
 
 A game takes part with `"online": { "id": "<mod id on the server>", "join": "<action id>" }`.
+When the server answers that it doesn't know the id, the game shows *Not on the server
+yet* instead of a room count.
 *Join* runs that action and passes the room code as `join=<code>` through the
 player's `flashvarArg`.
 
@@ -91,6 +94,7 @@ player's `flashvarArg`.
 
 | Key | Default | |
 |---|---|---|
+| `modsInfo` | folder of `rooms.servers` | Folder of mods-info: `mods/<id>.json` gives each PC mod's newest version and download. Must be `https://`. |
 | `catalog` | none | Address of a game catalog (`catalog.json` in the flash-games repository). Games with missing files then offer *Download game files*. Must be `https://`. |
 
 The catalog lists files as `{ "name", "game", "path", "size", "sha256" }`: `game` is
@@ -126,6 +130,7 @@ with Windows' own `tar.exe`, so `.zip` files work.
 | `url`, `sha256` | Instead of `github`: a fixed `https://` download and its optional SHA-256 |
 | `dir` | Folder to unpack into (replaced on reinstall; the old copy is kept until the new one is in place) |
 | `exe` | The player inside the archive, e.g. `"ruffle.exe"` (found at the top or one folder down) |
+| `api` | GitHub API address, default `https://api.github.com` (tests point it at a local server; also accepted in `updates`) |
 
 GitHub releases publish a SHA-256 for each file; the download is refused when it
 doesn't match.
@@ -136,6 +141,7 @@ doesn't match.
 |---|---|
 | `id` | Unique; also the key in settings |
 | `name`, `description` | Shown in the details panel (`controls` is accepted but no longer shown) |
+| `mod` | Makes this a **PC game mod** instead of a Flash game: see "PC game mods" below. Such a game has no `actions` (the launcher makes Install, Update, Launch, Repair and Uninstall itself). |
 | `players` | Player-count text, e.g. `"1-4 players"` |
 | `maxPlayers` | Player slots to show; default: the highest number in `players` |
 | `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room. Gives the game a *Rooms* tab and *Quick play*. |
@@ -144,6 +150,7 @@ doesn't match.
 | `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute. Images in `launcher/covers` are built into the exe. |
 | `imageFocus` | `0`-`1`, default `0.5`: which part of the cover stays in view when it is cropped (0 top, 1 bottom) |
 | `actions` | Buttons; the first shown is the primary one (Enter / double-click) |
+| `comingSoon` | `true`: listed with *Coming soon* and no buttons; `actions` may be left out |
 
 ### actions[]
 
@@ -154,11 +161,13 @@ doesn't match.
 | `hint` | Shown in the status bar after starting (e.g. "press F9, click HOST") |
 | `swf` | Candidate files (string or list); `http(s)://` URLs are passed through as-is |
 | `args` | Extra player arguments for this action |
-| `players` | Allowed player ids, in order; default all |
+| `players` | Allowed player ids, in order; default all. `["ruffle"]` keeps a game on Ruffle. |
 | `overrides` | Per player id: `{ "swf": [...], "args": [...] }` replacing the action's own |
 | `relay` | `{ "port": 7777 }` makes this a host action: the built-in relay starts first |
 | `flashvars` | Values passed into the game through the player's `flashvarArg`, e.g. `{ "online": "1", "name": "${PLAYER_NAME}" }`. Empty values are left out; *Join* adds `join=<code>`, *Quick play* with no room open adds `host=1`. |
 | `more` | `true`: listed under *Other ways to connect* (direct IP, LAN) |
+| `offline` | `true`: solo or one-keyboard play, hidden unless Settings shows offline play (off by default). Give the game an online action too, or it shows no buttons. |
+| `icon` | A Segoe Fluent Icons code drawn before the label, e.g. `"E774"` (globe) |
 | `edition` | `"original"`: the unmodded game, shown only when Settings asks for originals |
 
 HTML5 actions open a page in a browser player (`players[].kind` = `"browser"`)
@@ -193,3 +202,51 @@ every guest unchanged, guest messages reach the host as `G|<id>|<msg>`; the rela
 sends `W|<id>` welcome, `J|<id>|<name>` / `L|<id>` to the host and `X` to guests
 when the host leaves; `D|text` lines go to the log. It answers Flash's
 `<policy-file-request/>` on the game port and on 843 when free.
+
+## PC game mods
+
+A game with a `mod` object installs files into another game's folder. The shape follows
+the installer template (`installer.json`), so a mod installed by its stand-alone setup is
+adopted: use the same `mod.id` and `install` layout and the launcher sees it as installed.
+
+```jsonc
+{
+  "id": "spooky-together", "name": "Spooky Together",
+  "online": { "id": "spooky" },                      // optional: its rooms on the server
+  "mod": {
+    "id": "spooky-together",                         // default: the game's id; keep a setup's id to adopt its installs
+    "game": {
+      "name": "Spooky's Jump Scare Mansion", "executable": "SpookyUnity.exe", "steamAppId": "577690",
+      "validationFiles": ["${GAME_EXE}", "SpookyUnity_Data"],   // what only the real game folder has
+      "processNames": ["SpookyUnity.exe"],                       // the game must be closed to install
+      "detection": [ { "type": "steam", "appId": "577690", "installDir": "..." },
+                     { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\..." } ]
+    },
+    "install": {
+      "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\SpookyTogether",
+      "preserve": ["config/*.ini"],                  // user-edited files kept on update and uninstall
+      "uninstallCleanup": ["BepInEx/cache/**"]       // files the game creates; removed unless they were there before
+    },
+    "components": [
+      { "id": "loader", "name": "BepInEx", "source": "loader", "target": "${GAME_DIR}", "required": true },
+      { "id": "mod", "name": "Spooky Together", "source": "mod", "required": true }
+    ],
+    "launch": { "uri": "steam://rungameid/${STEAM_APP_ID}", "hint": "Press F5 in the game." },
+    "package": { "modsInfo": "spooky" }              // or "url" (+ "sha256") to pin a download
+  }
+}
+```
+
+| Key | |
+|---|---|
+| `game.detection` | Rules tried in order: `steam` (`appId`, `installDir`), `epic` (`appName`), `registry` (`key`, `value`, `subPath`), `path`. A folder the player chooses wins when it holds the `validationFiles`. |
+| `install.targetDir` | Where the mod's own files go (default `${GAME_DIR}\Mods\${MOD_ID}`). Only the game folder and `allowedRoots` can be written. |
+| `install.stateDir` | The install record and backups (default `${INSTALL_DIR}\.installer`). |
+| `components[]` | `source` is a folder inside the package, `target` where it goes (default `${INSTALL_DIR}`). `required` ones are always installed. |
+| `launch` | `uri` is opened (a `steam://` address), else `executable` with `arguments`. |
+| `package.modsInfo` | The mod's id in mods-info. `latest_version`, `download_url` and `download_sha256` come from `mods/<id>.json`. |
+| `package.url`, `sha256` | A package pinned in `launcher.json` instead. |
+
+A package is a `.zip` laid out as the `components[].source` folders expect. It is downloaded
+only over `https://`, and **only installed when its SHA-256 is known**: from `download_sha256`,
+from the `sha256` pin, or from GitHub for a release asset. See [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md).

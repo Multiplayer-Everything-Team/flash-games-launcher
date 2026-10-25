@@ -34,7 +34,8 @@ bool parseRoomList(std::string_view reply, std::vector<RoomInfo>& out) {
 }
 
 bool listRooms(const std::wstring& server, const std::string& gameId, std::vector<RoomInfo>& out, std::wstring& error,
-               int timeoutMs) {
+               int timeoutMs, bool* rejected) {
+    if (rejected) *rejected = false;
     size_t colon = server.rfind(L':');
     if (colon == std::wstring::npos) {
         error = L"Server address needs a port: " + server;
@@ -84,7 +85,12 @@ bool listRooms(const std::wstring& server, const std::string& gameId, std::vecto
                 if (reply.size() > 256 * 1024) break;
             }
             ok = parseRoomList(reply, out);
-            if (!ok) error = reply.empty() ? L"No answer from " + server : L"Unexpected answer from " + server;
+            if (!ok && reply.rfind("E|", 0) == 0) {
+                if (rejected) *rejected = true;
+                error = widen(reply.substr(2));
+            } else if (!ok) {
+                error = reply.empty() ? L"No answer from " + server : L"Unexpected answer from " + server;
+            }
         } else {
             error = L"Cannot reach " + server;
         }

@@ -17,6 +17,7 @@
 #include "core/discord.h"
 #include "core/install.h"
 #include "core/library.h"
+#include "core/mod/manager.h"
 #include "core/process.h"
 #include "core/relay.h"
 #include "core/rooms.h"
@@ -25,6 +26,8 @@
 #include "theme.h"
 
 namespace fl::ui {
+
+struct ModDone;
 
 struct LauncherOptions {
     std::wstring snapshot;   // render the window to this PNG and exit
@@ -83,6 +86,7 @@ private:
         bool ready = true;
         bool selected = false;  // Tab: the open tab
         bool busy = false;      // a light runs around the border while its work runs
+        bool progress = false;  // ...and a line along the bottom shows how far a mod job is
     };
     struct DetailLayout {
         RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
@@ -233,6 +237,41 @@ private:
     void updatePresence();
     bool actionShown(const ActionSpec& a) const;
 
+    // PC game mods (launcher_mods.cpp).
+    struct ModView {
+        mod::Status status;       // the game, what is installed, whether the game runs
+        mod::Source source;       // the newest version, from mods-info
+        bool sourceKnown = false; // mods-info has answered
+    };
+    struct ModSource {
+        mod::Source source;
+        bool known = false;
+    };
+    mod::Spec modSpec(int gi) const;
+    const ModView* modView(int gi) const;
+    bool gameReady(int gi) const;  // playable: a Flash game that can start, or an installed mod
+    void refreshMods();
+    void startModsFetch();
+    void onModsFetched();
+    bool modUpdateAvailable(int gi) const;
+    std::wstring modStateText(int gi, Color& color) const;
+    bool modActionVisible(int gi, const ActionSpec& a) const;
+    bool actionVisible(int gi, const ActionSpec& a) const;
+    void applyModAction(int gi, const ActionSpec& a, HWND b);
+    bool runModAction(int gi, const ActionSpec& a);
+    void onModDone(ModDone* done);
+    void chooseGameFolder();
+    std::wstring modJobText() const;
+    std::map<int, ModView> mods_;  // by game index
+    std::thread modsThread_;
+    std::map<std::string, ModSource> pendingSources_;  // handed over in WM_APP_MODS (under installMu_)
+    // The running mod job (the install thread is shared with player and game downloads).
+    mod::CancelToken modCancel_;
+    int modJobGame_ = -1;
+    std::string modJobOp_;
+    std::wstring modPhase_, modItem_;
+    double modFraction_ = 0;
+
     HWND tabPlayBtn_ = nullptr, tabRoomsBtn_ = nullptr, moreBtn_ = nullptr, quickBtn_ = nullptr;
     HWND tabCodeEdit_ = nullptr, tabCodeBtn_ = nullptr;
     HWND pageGameCombo_ = nullptr, pageHideFull_ = nullptr, pageCodeEdit_ = nullptr, pageCodeBtn_ = nullptr;
@@ -311,16 +350,24 @@ private:
 
     std::map<std::string, std::vector<RoomInfo>> rooms_, pendingRooms_;  // by game id
     bool roomsKnown_ = false, pendingRoomsOk_ = false;
+    // Game ids the server answered "Unknown game" for: not on the server yet.
+    std::set<std::string> rejected_, pendingRejected_;
+    bool notOnServer(const GameSpec& g) const;
     std::thread roomsThread_;
     HANDLE roomsWake_ = nullptr;
     std::atomic<bool> roomsStop_{false}, onlineOn_{true};
 
     HWND settingsWnd_ = nullptr;
-    HWND setOriginals_ = nullptr, setName_ = nullptr;
+    HWND setOriginals_ = nullptr, setName_ = nullptr, setOffline_ = nullptr;
     HWND setMinimize_ = nullptr, setPlayer_ = nullptr, setOnline_ = nullptr, setDirText_ = nullptr,
          setReset_ = nullptr;
     std::vector<HWND> setLabels_;  // static texts, for fonts and colors
     std::thread catalogThread_;
+    // Self-update: checked once at start on a worker thread (core/install.h).
+    std::thread updateThread_;
+    void startUpdateCheck();
+    void onUpdated(const std::wstring& version);
+    HWND setAutoUpdate_ = nullptr;
     std::string catalogRaw_;  // fetched by catalogThread_, handed over in WM_APP_CATALOG
 };
 

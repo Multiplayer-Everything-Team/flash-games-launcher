@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include "core/mod/resources.h"
+
 #include <algorithm>
 #include <regex>
 #include <set>
@@ -135,8 +137,85 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"settings.name", L"Your name"},
         {"settings.nameNote", L"Shown to other players in online rooms."},
         {"settings.originals", L"Show the original versions of modded games"},
+        {"settings.offline", L"Show offline play (solo and one keyboard)"},
         {"toast.joined", L"Joining room ${CODE}"},
         {"discord.playing", L"Playing ${GAME}"},
+        // PC game mods: what the install engine and detection say (see core/mod).
+        {"path.empty", L"Choose the folder where ${GAME_NAME} is installed."},
+        {"path.invalidChars", L"The path contains characters that aren't allowed in folder names."},
+        {"path.notAbsolute", L"Enter a full folder path, for example C:\\Games\\${GAME_NAME}."},
+        {"path.isFile", L"That path points to a file. Choose a folder instead."},
+        {"path.notFound", L"That folder doesn't exist."},
+        {"path.unsafe", L"Choose the game's own folder, not a drive root or a Windows system folder."},
+        {"path.ok", L"${GAME_NAME} found."},
+        {"path.unvalidated", L"${FILE} wasn't found here. Make sure this is the ${GAME_NAME} folder."},
+        {"path.missingFile", L"This doesn't look like the ${GAME_NAME} folder: ${FILE} is missing."},
+        {"path.suggest", L"${GAME_NAME} was found in ${SUGGESTION}."},
+        {"path.targetOutside", L"The install folder ${INSTALL_DIR} is outside the game folder. Check install.targetDir."},
+        {"path.noSpace", L"Not enough free space: ${REQUIRED} needed, ${AVAILABLE} available."},
+        {"error.foreign", L"Another mod (${OTHER}) owns this install folder."},
+        {"error.recordElsewhere", L"The install record in ${FILE} belongs to another game folder (${OTHER}). It looks copied or moved, so nothing was changed."},
+        {"error.payloadMissing", L"The mod package is missing a file: ${FILE}. Try again to download it afresh."},
+        {"error.payloadCorrupt", L"The package file ${FILE} is damaged. Try again to download it afresh."},
+        {"error.writeFailed", L"Couldn't write ${FILE}."},
+        {"error.fileInUse", L"${FILE} is in use by another program. Close ${GAME_NAME} and try again."},
+        {"error.accessDenied", L"The launcher isn't allowed to change ${FILE}. Try running it as administrator."},
+        {"error.diskFull", L"The disk is full. Free up some space and try again."},
+        {"error.cancelledBody", L"Nothing was changed."},
+        {"error.unexpected", L"Something unexpected went wrong."},
+        {"uninstall.notInstalled", L"${MOD_NAME} isn't installed here, or its install record is missing."},
+        // PC game mods in the window.
+        {"mod.update", L"Update to ${VERSION}"},
+        {"mod.update.sub", L"You have ${INSTALLED}"},
+        {"mod.install", L"Install ${MOD_NAME}"},
+        {"mod.install.sub", L"Version ${VERSION}, into your ${GAME_NAME} folder"},
+        {"mod.install.subUnknown", L"Into your ${GAME_NAME} folder"},
+        {"mod.launch", L"Launch game"},
+        {"mod.repair.subOffline", L"Needs the download, which isn't published yet"},
+        {"badge.pc", L"PC"},
+        {"mod.launch.sub", L"${MOD_NAME} ${INSTALLED} is installed"},
+        {"mod.repair", L"Repair"},
+        {"mod.repair.sub", L"Put back missing or damaged files"},
+        {"mod.uninstall", L"Uninstall"},
+        {"mod.uninstall.sub", L"Restore the files the mod replaced"},
+        {"mod.status.notInstalled", L"Not installed"},
+        {"mod.status.installed", L"Installed ${INSTALLED}"},
+        {"mod.status.update", L"Update ${VERSION} available"},
+        {"mod.status.noGame", L"${GAME_NAME} not found"},
+        {"mod.status.notPublished", L"Not published yet"},
+        {"mod.status.running", L"Close ${GAME_NAME} first"},
+        {"mod.status.problem", L"Install record problem"},
+        {"mod.chooseFolder", L"Choose the ${GAME_NAME} folder…"},
+        {"mod.pickFolder", L"Choose the folder that contains ${GAME_NAME}"},
+        {"mod.busy", L"Another install or download is running; wait for it to finish."},
+        {"mod.launched", L"Started ${GAME_NAME}."},
+        {"mod.done.install", L"${MOD_NAME} ${VERSION} is installed."},
+        {"mod.done.update", L"${MOD_NAME} is updated to ${VERSION}."},
+        {"mod.done.repair", L"${MOD_NAME} is repaired."},
+        {"mod.done.uninstall", L"${MOD_NAME} is removed and the game's files are put back."},
+        {"mod.failed", L"${MOD_NAME}: ${ERROR}"},
+        {"mod.rollbackIncomplete", L"Not everything could be undone; details are in the log."},
+        {"mod.uninstall.title", L"Remove ${MOD_NAME}?"},
+        {"mod.uninstall.body", L"The files it added are deleted and the game files it replaced are put back. ${GAME_NAME} itself isn't touched."},
+        {"mod.uninstall.yes", L"Uninstall"},
+        {"mod.uninstall.no", L"Cancel"},
+        {"mod.joinNeedsMod", L"Room ${CODE} is copied. Install ${MOD_NAME} first, then start ${GAME_NAME} and paste it in."},
+        {"mod.joinCopied", L"Room ${CODE} is copied. In the game, open the multiplayer panel and paste it."},
+        {"mod.notPublished", L"${MOD_NAME} isn't published yet, so there is nothing to install."},
+        {"mod.phase.downloading", L"Downloading ${MOD_NAME}"},
+        {"phase.preparing", L"Preparing\u2026"},
+        {"phase.checking", L"Checking files"},
+        {"phase.copying", L"Copying files"},
+        {"phase.removing", L"Removing files"},
+        {"phase.shortcuts", L"Removing shortcuts"},
+        {"phase.finishing", L"Finishing up"},
+        {"phase.rollback", L"Undoing changes\u2026"},
+        {"update.title", L"Flash Launcher ${VERSION} is installed"},
+        {"update.body", L"Restart the launcher to use the new version. It takes a second."},
+        {"update.restart", L"Restart now"},
+        {"update.later", L"Later"},
+        {"update.nextTime", L"Flash Launcher ${VERSION} is installed and starts next time."},
+        {"settings.autoUpdate", L"Update the launcher automatically"},
         {"discord.room", L"Room ${CODE}"},
         {"search.cue", L"Search games  (Ctrl+F)"},
         {"status.ready", L"Ready"},
@@ -176,6 +255,9 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"button.downloadGame", L"Download game files (${SIZE})"},
         {"button.updateGame", L"Update game files (${SIZE})"},
         {"status.update", L"Update available"},
+        {"status.comingSoon", L"Coming soon"},
+        {"status.notOnServer", L"Not on the server yet"},
+        {"rooms.notOnServer", L"This game isn't on the Multiplayer Everything server yet, so there are no rooms to show. It is added when its online mod is published."},
         {"rooms.count", L"${N} rooms open"},
         {"rooms.one", L"1 room open"},
         {"rooms.title", L"Open rooms"},
@@ -260,6 +342,12 @@ std::wstring Config::t(const std::string& key,
     std::wstring s = it == text.end() ? widen(key) : it->second;
     for (const auto& [name, value] : vars) s = replaceAll(s, L"${" + std::wstring(name) + L"}", value);
     return s;
+}
+
+std::wstring Config::modsInfoBase() const {
+    if (!downloads.modsInfo.empty()) return downloads.modsInfo;
+    size_t slash = rooms.servers.rfind(L'/');
+    return slash == std::wstring::npos ? std::wstring() : rooms.servers.substr(0, slash + 1);
 }
 
 const GameSpec* Config::findGame(std::string_view id) const {
@@ -399,6 +487,19 @@ private:
     std::set<std::string> seen_;
 };
 
+// "icon": a Segoe Fluent Icons code point written as hex ("E774" is the globe).
+void readIcon(Section& s, std::wstring& out) {
+    std::wstring icon;
+    s.str("icon", icon);
+    if (icon.empty()) return;
+    wchar_t* end = nullptr;
+    unsigned long cp = wcstoul(icon.c_str(), &end, 16);
+    if (*end || cp < 0xE000 || cp > 0xF8FF)
+        s.error(L"icon", L"must be a Segoe Fluent Icons code like \"E774\"");
+    else
+        out = std::wstring(1, static_cast<wchar_t>(cp));
+}
+
 std::wstring indexPath(const wchar_t* list, size_t i) { return std::wstring(list) + L"[" + std::to_wstring(i) + L"]"; }
 
 ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<ConfigIssue>& issues) {
@@ -444,6 +545,8 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
         }
     }
     s.boolean("more", a.more);
+    s.boolean("offline", a.offline);
+    readIcon(s, a.icon);
     std::wstring edition;
     s.str("edition", edition);
     if (!edition.empty() && edition != L"original" && edition != L"modded")
@@ -457,6 +560,100 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
     }
     if (a.label.empty()) a.label = widen(a.id);
     return a;
+}
+
+// A PC game mod: how to find the game, which files go where, how to start it.
+mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& where, std::vector<ConfigIssue>& issues) {
+    mod::Spec m;
+    Section s(&v, where, issues);
+    m.mod.id = widen(game.id);
+    m.mod.name = game.name;
+    m.mod.description = game.description;
+    s.str("id", m.mod.id);  // keep a stand-alone installer's id to adopt its installs
+    s.str("publisher", m.mod.publisher);
+    s.str("website", m.mod.website);
+    s.str("supportUrl", m.mod.supportUrl);
+    if (auto g = s.get("game", Type::Object)) {
+        Section gs(g, s.child("game"), issues);
+        gs.str("name", m.game.name);
+        gs.str("executable", m.game.executable);
+        gs.str("steamAppId", m.game.steamAppId);
+        gs.strList("validationFiles", m.game.validationFiles);
+        gs.strList("processNames", m.game.processNames);
+        gs.boolean("allowUnvalidated", m.game.allowUnvalidated);
+        if (auto list = gs.get("detection", Type::Array)) {
+            for (size_t i = 0; i < list->size(); ++i) {
+                mod::DetectionRule r;
+                Section rs(&list->at(i), gs.child("detection") + L"[" + std::to_wstring(i) + L"]", issues);
+                rs.str("type", r.type);
+                rs.str("appId", r.appId);
+                rs.str("installDir", r.installDir);
+                rs.str("appName", r.appName);
+                rs.str("key", r.key);
+                rs.str("value", r.value);
+                rs.str("subPath", r.subPath);
+                rs.str("path", r.path);
+                if (r.type != L"steam" && r.type != L"epic" && r.type != L"registry" && r.type != L"path")
+                    rs.error(L"type", L"must be steam, epic, registry or path");
+                m.game.detection.push_back(std::move(r));
+            }
+        }
+    }
+    if (m.game.name.empty()) m.game.name = game.name;
+    if (auto in = s.get("install", Type::Object)) {
+        Section is(in, s.child("install"), issues);
+        is.str("targetDir", m.install.targetDir);
+        is.str("stateDir", m.install.stateDir);
+        is.str("uninstallKey", m.install.uninstallKey);
+        is.strList("allowedRoots", m.install.allowedRoots);
+        is.strList("preserve", m.install.preserve);
+        is.strList("uninstallCleanup", m.install.uninstallCleanup);
+        is.boolean("backupOverwritten", m.install.backupOverwritten);
+        is.integer("lockedFileRetries", m.install.lockedFileRetries, 0, 30);
+        is.integer("extraSpaceMB", m.install.extraSpaceMB, 0, 1 << 20);
+    }
+    if (auto list = s.get("components", Type::Array)) {
+        for (size_t i = 0; i < list->size(); ++i) {
+            mod::Component c;
+            Section cs(&list->at(i), s.child("components") + L"[" + std::to_wstring(i) + L"]", issues);
+            cs.str("id", c.id);
+            cs.str("name", c.name);
+            cs.str("description", c.description);
+            cs.str("source", c.source);
+            cs.str("target", c.target);
+            cs.boolean("required", c.required);
+            cs.boolean("selected", c.selected);
+            if (c.name.empty()) c.name = widen(c.id);
+            m.components.push_back(std::move(c));
+        }
+    }
+    if (auto l = s.get("launch", Type::Object)) {
+        Section ls(l, s.child("launch"), issues);
+        ls.str("executable", m.launch.executable);
+        ls.str("arguments", m.launch.arguments);
+        ls.str("workingDir", m.launch.workingDir);
+        ls.str("uri", m.launch.uri);
+        ls.str("hint", m.launch.hint);
+    }
+    if (auto p = s.get("package", Type::Object)) {
+        Section ps(p, s.child("package"), issues);
+        ps.str("modsInfo", m.package.modsInfo);
+        ps.str("url", m.package.url);
+        ps.str("sha256", m.package.sha256);
+    }
+    return m;
+}
+
+// The buttons of a mod game; the window shows the ones that fit its state.
+void addModActions(GameSpec& g) {
+    // The top button is the first one shown: Update when there is one, else Launch.
+    for (const char* op : {"update", "install", "launch", "repair", "uninstall"}) {
+        ActionSpec a;
+        a.id = op;
+        a.modOp = op;
+        a.label = widen(op);
+        g.actions.push_back(std::move(a));
+    }
 }
 
 }  // namespace
@@ -538,6 +735,16 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             rs.error(L"servers", L"must be an https:// address");
     }
     {
+        Section s(top.get("updates", Type::Object), L"updates", issues);
+        s.str("github", c.updates.source.github);
+        s.str("asset", c.updates.source.asset);
+        s.str("api", c.updates.source.api);
+        if (!c.updates.source.github.empty() && c.updates.source.github.find('/') == std::string::npos)
+            s.error(L"github", L"must look like \"owner/repo\"");
+        if (!c.updates.source.github.empty() && c.updates.source.asset.empty())
+            s.error(L"asset", L"give the release file name, e.g. \"FlashLauncher.exe\"");
+    }
+    {
         Section s(top.get("discord", Type::Object), L"discord", issues);
         s.str("clientId", c.discord.clientId);
         if (c.discord.clientId.find_first_not_of(L"0123456789") != std::wstring::npos)
@@ -546,9 +753,13 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
     {
         Section s(top.get("downloads", Type::Object), L"downloads", issues);
         s.str("catalog", c.downloads.catalog);
+        s.str("modsInfo", c.downloads.modsInfo);
         const std::wstring& u = c.downloads.catalog;
         if (!u.empty() && !startsWithI(u, L"https://") && !startsWithI(u, L"http://127.0.0.1"))
             s.error(L"catalog", L"must be an https:// address");
+        const std::wstring& mi = c.downloads.modsInfo;
+        if (!mi.empty() && !startsWithI(mi, L"https://") && !startsWithI(mi, L"http://127.0.0.1"))
+            s.error(L"modsInfo", L"must be an https:// address");
     }
     if (auto list = top.get("players", Type::Array)) {
         for (size_t i = 0; i < list->size(); ++i) {
@@ -570,6 +781,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
                 is.str("sha256", p.install.sha256);
                 is.str("dir", p.install.dir);
                 is.str("exe", p.install.exe);
+                is.str("api", p.install.api);
             }
             if (p.name.empty()) p.name = widen(p.id);
             c.players.push_back(std::move(p));
@@ -581,16 +793,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             Section s(&list->at(i), indexPath(L"categories", i), issues);
             s.str("id", cat.id);
             s.str("name", cat.name);
-            std::wstring icon;
-            s.str("icon", icon);
-            if (!icon.empty()) {
-                wchar_t* end = nullptr;
-                unsigned long cp = wcstoul(icon.c_str(), &end, 16);
-                if (*end || cp < 0xE000 || cp > 0xF8FF)
-                    s.error(L"icon", L"must be a Segoe Fluent Icons code like \"E774\"");
-                else
-                    cat.icon = std::wstring(1, static_cast<wchar_t>(cp));
-            }
+            readIcon(s, cat.icon);
             if (cat.name.empty()) cat.name = widen(cat.id);
             c.categories.push_back(std::move(cat));
         }
@@ -617,12 +820,20 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("controls", g.controls);
             s.str("image", g.image);
             s.real("imageFocus", g.imageFocus, 0, 1);
+            s.boolean("comingSoon", g.comingSoon);
             s.idList("categories", g.categories);
             s.color("color", g.color);
             s.color("colorEnd", g.colorEnd);
             if (auto actions = s.get("actions", Type::Array)) {
                 for (size_t j = 0; j < actions->size(); ++j)
                     g.actions.push_back(readAction(actions->at(j), where + L"." + indexPath(L"actions", j), issues));
+            }
+            if (auto mv = s.get("mod", Type::Object)) {
+                if (!g.actions.empty())
+                    issues.push_back({ConfigIssue::Severity::Error, where + L".actions",
+                                      L"a mod game gets its buttons from the launcher; remove \"actions\""});
+                g.mod = std::make_shared<const mod::Spec>(readMod(*mv, g, s.child("mod"), issues));
+                addModActions(g);
             }
             if (g.name.empty()) g.name = widen(g.id);
             c.games.push_back(std::move(g));
@@ -727,13 +938,53 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
             std::none_of(g.actions.begin(), g.actions.end(), [&](const ActionSpec& a) { return a.id == g.joinAction; }))
             err(where + L".online.join", L"no action with id \"" + widen(g.joinAction) + L"\"");
         checkVars(g.image, where + L".image", issues);
-        if (g.actions.empty()) err(where + L".actions", L"add at least one action (e.g. \"Play\")");
+        if (g.mod) {
+            const mod::Spec& m = *g.mod;
+            std::wstring mw = where + L".mod";
+            if (m.game.executable.empty() && m.game.validationFiles.empty())
+                err(mw + L".game", L"give the game's \"executable\" or \"validationFiles\" so its folder can be recognised");
+            if (m.game.detection.empty()) err(mw + L".game.detection", L"say where to look for the game (steam, epic, registry or path)");
+            for (const auto& r : m.game.detection)
+                if (r.type == L"steam" && r.appId.empty() && m.game.steamAppId.empty() && r.installDir.empty())
+                    err(mw + L".game.detection", L"a steam rule needs an appId (or game.steamAppId) or an installDir");
+            if (m.components.empty()) err(mw + L".components", L"add at least one component");
+            std::set<std::string> cids;
+            for (const auto& c : m.components) {
+                if (!validId(c.id)) err(mw + L".components", L"component ids must be letters, digits, '-', '_' or '.'");
+                else if (!cids.insert(c.id).second) err(mw + L".components", L"duplicate component id \"" + widen(c.id) + L"\"");
+                if (c.source.empty()) err(mw + L".components." + widen(c.id), L"\"source\" (a folder inside the package) is required");
+                checkVars(c.source, mw + L".components", issues);
+                checkVars(c.target, mw + L".components", issues);
+            }
+            if (m.package.modsInfo.empty() && m.package.url.empty())
+                err(mw + L".package", L"give \"modsInfo\" (the mod's id in mods-info) or a \"url\"");
+            if (!m.package.url.empty() && !startsWithI(m.package.url, L"https://"))
+                err(mw + L".package.url", L"must be an https:// address");
+            for (size_t k = 0; k < m.install.uninstallCleanup.size(); ++k) {
+                const std::wstring& pat = m.install.uninstallCleanup[k];
+                std::wstring prefix = pat.substr(0, pat.find_first_of(L"*?"));
+                if (mod::normRel(pat).empty() || (!prefix.empty() && mod::normRel(prefix).empty()) || pat.rfind(L"*", 0) == 0)
+                    err(mw + L".install.uninstallCleanup[" + std::to_wstring(k) + L"]",
+                        L"must be a path inside the game folder that starts with a folder name, e.g. \"Loader/cache/**\"");
+            }
+            if (iequals(m.install.stateDir, m.install.targetDir) || iequals(m.install.stateDir, L"${GAME_DIR}"))
+                err(mw + L".install.stateDir", L"must be a sub-folder, not the install or game folder itself");
+            checkVars(m.install.targetDir, mw + L".install", issues);
+            checkVars(m.install.stateDir, mw + L".install", issues);
+            for (const auto& d : m.game.detection) {
+                checkVars(d.path, mw + L".game.detection", issues);
+                checkVars(d.installDir, mw + L".game.detection", issues);
+            }
+        } else if (g.actions.empty() && !g.comingSoon) {
+            err(where + L".actions", L"add at least one action (e.g. \"Play\")");
+        }
         std::set<std::string> actionIds;
         for (size_t j = 0; j < g.actions.size(); ++j) {
             const auto& a = g.actions[j];
             std::wstring aw = where + L"." + indexPath(L"actions", j);
             if (!validId(a.id)) err(aw + L".id", L"must be letters, digits, '-', '_' or '.'");
             else if (!actionIds.insert(a.id).second) err(aw + L".id", L"duplicate action id \"" + widen(a.id) + L"\"");
+            if (a.isMod()) continue;  // made by the launcher: no file to check
             if (a.isWeb()) {
                 if (a.server.enabled() && a.server.url.empty())
                     err(aw + L".server.url", L"give the address the game opens at, e.g. \"http://localhost:2053/\"");

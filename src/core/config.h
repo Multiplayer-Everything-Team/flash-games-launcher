@@ -4,12 +4,14 @@
 #pragma once
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <map>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "core/mod/spec.h"
 #include "vars.h"
 
 namespace fl {
@@ -37,7 +39,7 @@ struct WindowSpec {
 struct Branding {
     std::wstring title = L"Multiplayer Everything";
     std::wstring subtitle = L"Flash Launcher";
-    std::wstring website = L"https://github.com/multiplayereverything/flash-games-launcher";
+    std::wstring website = L"https://github.com/multiplayereverything/multiplayer-mods-launcher";
     std::wstring windowTitle = L"${TITLE} ${SUBTITLE}";
     std::wstring theme = L"dark";  // dark | light
     ThemeColors colors;            // palette for `theme` with overrides applied
@@ -70,6 +72,9 @@ struct Rooms {
 struct Downloads {
     // catalog.json of the flash-games repository; empty = no game downloads.
     std::wstring catalog;
+    // Folder of mods-info (mods/<id>.json: newest version and download of each PC mod).
+    // Empty: the folder of rooms.servers.
+    std::wstring modsInfo;
 };
 
 struct Behavior {
@@ -82,6 +87,7 @@ struct Behavior {
 // latest release has an asset matching `asset`, or a fixed `url`.
 struct InstallSpec {
     std::string github;         // "owner/repo"
+    std::wstring api;           // GitHub API address; empty = https://api.github.com (tests use a local one)
     std::wstring asset;         // file name glob, e.g. "*windows-x86_64.zip"
     std::wstring url, sha256;   // fixed download instead of GitHub (sha256 optional)
     std::wstring dir;           // unpack here; replaced on reinstall
@@ -145,9 +151,15 @@ struct ActionSpec {
     // Values handed to the game at start through the player's flashvarArg, such
     // as {"online": "1", "name": "${PLAYER_NAME}"}. A mod that doesn't read them ignores them.
     std::vector<std::pair<std::wstring, std::wstring>> flashvars;
+    // PC game mods: "install" | "update" | "repair" | "uninstall" | "launch". Such an
+    // action is made by the launcher, has no file of its own, and its label comes from the texts.
+    std::string modOp;
     bool more = false;      // listed under "Other ways to connect" (direct IP, LAN)
+    bool offline = false;   // solo / one keyboard: shown only when Settings asks for offline play
+    std::wstring icon;      // one Segoe Fluent Icons glyph before the label ("icon": "E774")
     bool original = false;  // "edition": "original": the unmodded game, shown only when Settings asks
     bool isWeb() const { return !page.empty() || server.enabled() || joinLink; }
+    bool isMod() const { return !modOp.empty(); }
 };
 
 struct GameSpec {
@@ -160,6 +172,9 @@ struct GameSpec {
     // that joins a room. Empty id: the game has no online rooms.
     std::string onlineId, joinAction;
     std::vector<std::string> categories;
+    bool comingSoon = false;  // listed with "Coming soon" and no buttons (its mod isn't built yet)
+    // A PC game mod: installed into the game's folder instead of played in Ruffle.
+    std::shared_ptr<const mod::Spec> mod;
     Color color{0x4F, 0x8B, 0xFF, 255}, colorEnd{0x9C, 0x6B, 0xFF, 255};
     std::vector<ActionSpec> actions;
 };
@@ -176,6 +191,13 @@ struct Discord {
     std::wstring clientId;
 };
 
+// The launcher updating itself: the newest release of its own GitHub
+// repository, the file `asset` in it (checked against GitHub's SHA-256).
+struct Updates {
+    InstallSpec source;  // github, asset, api
+    bool enabled() const { return !source.github.empty() && !source.asset.empty(); }
+};
+
 struct Config {
     int schemaVersion = 1;
     Branding branding;
@@ -184,6 +206,7 @@ struct Config {
     Downloads downloads;
     Rooms rooms;
     Discord discord;
+    Updates updates;
     std::vector<PlayerSpec> players;
     std::vector<Category> categories;
     std::vector<GameSpec> games;
@@ -193,6 +216,8 @@ struct Config {
     // UI text with ${VAR} substitution from `vars` (pairs of name, value).
     std::wstring t(const std::string& key,
                    std::initializer_list<std::pair<std::wstring_view, std::wstring_view>> vars = {}) const;
+    // Folder of mods-info: downloads.modsInfo, else the folder of rooms.servers.
+    std::wstring modsInfoBase() const;
     const GameSpec* findGame(std::string_view id) const;
     const PlayerSpec* findPlayer(std::string_view id) const;
     const Category* findCategory(std::string_view id) const;

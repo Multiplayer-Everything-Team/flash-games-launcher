@@ -278,6 +278,7 @@ ResolvedAction Library::resolveWeb(ResolvedAction r, const ActionSpec& a, Vars v
 
 ActionState Library::gameState(const GameSpec& g, const UserData& user) const {
     ActionState best = ActionState::NoSwf;
+    if (g.mod) return ActionState::Ready;  // a PC mod's state is the mod manager's (core/mod)
     for (const auto& a : g.actions) {
         ActionState s = resolve(g, a, user).state;
         if (s == ActionState::Ready) return s;

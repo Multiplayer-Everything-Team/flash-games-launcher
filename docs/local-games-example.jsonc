@@ -1,0 +1,43 @@
+// Local multiplayer classics, kept out of the shipped launcher.json for now.
+// To bring one back, add its entry to "games" and put its .swf in games\ (or
+// add the file to the flash-games catalog).
+{
+  "games": [
+    {
+      "id": "gunmayhem",
+      "name": "Gun Mayhem",
+      "players": "1-2 players",
+      "categories": ["local", "versus"],
+      "color": "#F2B544",
+      "colorEnd": "#C2410C",
+      "description": "The original platform shoot-out: grab a gun and knock your friend off the map.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Local multiplayer on one keyboard", "swf": ["${GAMES_DIR}\\gunmayhem.swf"] }
+      ]
+    },
+    {
+      "id": "fireboywatergirl",
+      "name": "Fireboy and Watergirl in the Forest Temple",
+      "players": "2 players",
+      "categories": ["local", "coop"],
+      "color": "#FF4D4D",
+      "colorEnd": "#2F6FEB",
+      "description": "Two players share one keyboard and solve temple puzzles together: fire and water must each reach their own door.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\fireboywatergirl.swf"] }
+      ]
+    },
+    {
+      "id": "boxhead2play",
+      "name": "Boxhead: 2Play Rooms",
+      "players": "1-2 players",
+      "categories": ["local", "coop"],
+      "color": "#9AA1AC",
+      "colorEnd": "#3A2A1E",
+      "description": "Two players fight off waves of zombies together on one keyboard.",
+      "actions": [
+        { "id": "play", "label": "Play", "description": "Two players on one keyboard", "swf": ["${GAMES_DIR}\\boxhead2play.swf"] }
+      ]
+    }
+  ]
+}

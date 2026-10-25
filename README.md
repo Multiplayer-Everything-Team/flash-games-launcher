@@ -1,9 +1,12 @@
-# Multiplayer Everything: Flash Launcher
+# Multiplayer Everything: mod installer and Flash player
 
-One window for every multiplayer Flash game in the *Multiplayer Everything*
-family. Pick a game, press **Play online**, pick a room or **Quick play**, and the
-launcher starts it in Ruffle or Flash Player with the right file and settings.
-Native C++20/Win32, no dependencies, and the whole launcher is one `.exe`.
+One window for every game mod in the *Multiplayer Everything* family. For the
+**Flash games**, pick a game, press **Play online**, pick a room or **Quick play**,
+and it starts in Ruffle or Flash Player with the right file and settings. For the
+**PC game mods** (Spooky Together and more to come), it finds your copy of the game,
+installs the mod into it, keeps it up to date, and can take it out again, putting
+back every game file it replaced. Native C++20/Win32, no dependencies, and the whole
+app is one `.exe`.
 
 Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.com/invite/P2MSSUf5GX).
 
@@ -11,6 +14,14 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 
 ## What it does
 
+- **Installs PC game mods safely.** Pick a mod, press *Install*: the launcher finds
+  the game (Steam, Epic, registry, or a folder you choose), downloads the mod's
+  package, checks it against its SHA-256 and copies it in as one all-or-nothing
+  transaction. Cancel, an error or a crash undoes every change; files the mod
+  replaces are backed up first; your edited settings files are kept on update.
+  *Update*, *Repair* and *Uninstall* work the same way, and a mod installed earlier by
+  its stand-alone setup is recognised as installed. Mods are installed per game and
+  need the game closed.
 - **Finds everything itself.** Ruffle (its own `players\` folder, `Program Files`,
   PATH), Flashpoint's Flash Player 32, and each game's `.swf` in `games\` or your
   Flashpoint folder. Anything missing gets a button that fixes it: *Locate game
@@ -32,13 +43,18 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
   the code and starts the game with it; mods that read it join by themselves,
   otherwise paste it in the game's F9 panel. The bottom bar shows whether the server
   answers and how fast. Lists refresh every 30 seconds.
+- **Updates itself.** At start the launcher checks the newest release here; when
+  there is a newer one it downloads `FlashLauncher.exe`, checks it against the
+  SHA-256 GitHub publishes for it, swaps it in and offers to restart (while a game
+  runs, it just starts next time). Settings can turn it off; `--update` does it now.
 - **One file.** `launcher.json` and the cover images are built into
   `FlashLauncher.exe`, so the exe is all you need to send someone. A `launcher.json`
   or `covers\` folder next to the exe still wins, for your own changes.
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
 - **Settings.** Your name for online rooms, minimize while playing, default player,
-  showing the original (unmodded) versions, online features on or off, where game
+  showing offline play (solo and one keyboard, off by default) and the original
+  (unmodded) versions, online features on or off, automatic updates, where game
   files are kept, and the log folder (button at the bottom of the sidebar, or Ctrl+,).
 - **Discord.** With a Discord application id in `launcher.json`, Discord shows what
   you are playing and the room code (off until an id is set).
@@ -62,11 +78,29 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 | Game | Actions | Notes |
 |---|---|---|
 | Gun Mayhem 2: More Mayhem | Play online, Quick play, Play on one keyboard | Up to 4 players, with the Gun Mayhem 2 Online mod. Direct IP: relay port 7777. |
-| Stealth Hunter 2 | Play online, Quick play, Play solo | The Stealth Hunter 2 Online mod adds co-op for up to 4. Direct IP: relay port 7778. |
+| Stealth Hunter 2 | Play online, Quick play, Play solo | The Stealth Hunter 2 Online mod adds co-op for up to 4. Runs in Ruffle only. Direct IP: relay port 7778. |
 | Bad Ice-Cream | Play online, Quick play, Play on one keyboard | Two players, with the Bad Ice-Cream Online mod (Nitrome's game). |
-| Gun Mayhem | Play | Local multiplayer on one keyboard. |
-| Fireboy and Watergirl in the Forest Temple | Play | Two-player co-op on one keyboard. |
-| Boxhead: 2Play Rooms | Play | Co-op on one keyboard. |
+| Territory War | Play online, Quick play | Red against blue on up to 4 PCs. |
+| Bow Man | Play online, Quick play | Two archers on two PCs. Ruffle only. |
+| Ultimate Crab Battle | Play online, Quick play | Co-op for up to 4, one ship each. |
+| Air Battle | Play online, Quick play | Co-op for up to 4, one balloon boat each. |
+| Raft Wars | Play online, Quick play | Co-op for up to 4, taking turns at the bazooka. |
+| Intrusion, Intrusion 2 | | Coming soon: listed, no buttons yet. |
+
+The newer mods are online-only (no direct IP); their single-player modes are under
+*Play offline* when Settings shows offline play. Until a mod's file is published in
+mods-info, the central server doesn't know the game: its card says *Not on the server
+yet* and Quick play is hidden.
+
+More games are on the way; the local-only classics (Gun Mayhem, Fireboy and
+Watergirl, Boxhead) are set aside in `docs/local-games-example.jsonc` for now.
+
+**PC game mods** (not Flash; installed into the game's own folder):
+
+| Mod | Game | Notes |
+|---|---|---|
+| Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players, with the BepInEx mod loader. Needs its package published (see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md)). |
+| Baldi Together | Baldi's Basics Plus (Steam) | Coming soon: listed, no buttons yet. |
 
 The original, unmodded versions of the modded games are hidden; Settings can show
 them (*Play the original*).
@@ -74,8 +108,8 @@ them (*Play the original*).
 **Getting the games.** When a game file is missing, the game shows *Download game
 files*: the launcher fetches them from [multiplayereverything/flash-games](https://github.com/multiplayereverything/flash-games),
 checks each file against the SHA-256 in that repository's catalog, and saves it in
-`games\`. Right now that covers Gun Mayhem 2, Stealth Hunter 2 and Bad Ice-Cream
-(the repository's README lists how far each build is tested). You can also put your own `.swf` files in `games\` (names are in
+`games\`. That covers every game in the list except the coming-soon ones (the
+repository's README lists how far each build is tested). You can also put your own `.swf` files in `games\` (names are in
 `games\README.txt`), use *Locate game file...*, or install Flashpoint, whose copies
 are picked up automatically.
 
@@ -119,6 +153,11 @@ FlashLauncher.exe --relay 7777                 run only the relay (a dedicated r
 FlashLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
 FlashLauncher.exe --download-game all          download every game file the catalog has
 FlashLauncher.exe --rooms gunmayhem2           list the open rooms on the central server
+FlashLauncher.exe --update                     install the newest launcher release now
+FlashLauncher.exe --mods                       the PC mods: game found, installed version, newest version
+FlashLauncher.exe --install-mod spooky-together  install or update a PC mod (add --game-dir "<folder>" to point at the game)
+FlashLauncher.exe --repair-mod spooky-together   put back missing or damaged files
+FlashLauncher.exe --uninstall-mod spooky-together  remove it and restore the game's files
 FlashLauncher.exe --validate                   check launcher.json
 ```
 
@@ -146,13 +185,24 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 
 | Path | Contents |
 |---|---|
+| `src/core/mod/` | The PC-mod engine (ported from the installer template): game detection, planning, the all-or-nothing install transaction, the install record, package download |
 | `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, downloads, rooms, settings, Discord, built-in files |
 | `src/ui/` | The launcher window and its theme |
 | `src/app/` | Entry point and command line |
 | `launcher/` | `launcher.json` and `covers\` (both also built into the exe), `games\`, `players\` |
 | `docs/html5-example.jsonc` | HTML5 support (browser players, Plazma Burst 2 co-op), kept out of the shipped list for now |
+| `docs/local-games-example.jsonc` | Gun Mayhem, Fireboy and Watergirl, Boxhead: local-only games set aside for now |
 | `tests/` | C++ tests and the end-to-end script |
 | [CONFIG.md](CONFIG.md) | Every `launcher.json` option |
 
 Ruffle is open source ([ruffle.rs](https://ruffle.rs)). Flash Player and the
 games belong to their owners; this project ships neither.
+
+## Made with
+
+This project was made with the help of these tools:
+
+- [antislop-ui](https://github.com/miqdadbadjuber/anti-slop/tree/main/skills/antislop-ui)
+- [coop-anything](https://github.com/cranebeaker/coop-anything)
+- [REA](https://github.com/morluto/rea)
+- [Universal Modder](https://github.com/rehan-remade/universal-modder)

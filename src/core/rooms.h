@@ -18,8 +18,10 @@ struct RoomInfo {
 bool parseRoomList(std::string_view reply, std::vector<RoomInfo>& out);
 
 // One short request on its own connection. `server` is "host:port".
+// `rejected` (optional) is set when the server answered but doesn't run this
+// game yet ("E|Unknown game ..."): the mod's mods-info file isn't merged.
 bool listRooms(const std::wstring& server, const std::string& gameId, std::vector<RoomInfo>& out, std::wstring& error,
-               int timeoutMs = 4000);
+               int timeoutMs = 4000, bool* rejected = nullptr);
 
 // First "online" server in mods-info servers.json at `serversUrl`; `fallback`
 // when that can't be read. Returns "host:port" or empty.

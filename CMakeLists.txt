@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MultiplayerFlashLauncher VERSION 1.2.0 LANGUAGES CXX RC)
+project(MultiplayerFlashLauncher VERSION 1.3.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,13 @@ add_library(launcher_core STATIC
   src/core/install.cpp
   src/core/json.cpp
   src/core/library.cpp
+  src/core/mod/detect.cpp
+  src/core/mod/engine.cpp
+  src/core/mod/manager.cpp
+  src/core/mod/package.cpp
+  src/core/mod/resources.cpp
+  src/core/mod/spec.cpp
+  src/core/mod/state.cpp
   src/core/log.cpp
   src/core/motion.cpp
   src/core/process.cpp
@@ -63,8 +70,17 @@ set_source_files_properties("${APP_RC}" PROPERTIES OBJECT_DEPENDS "${EMBEDDED_FI
 add_executable(launcher WIN32
   src/app/main.cpp
   src/app/cli.cpp
+  src/ui/dialogs.cpp
   src/ui/theme.cpp
   src/ui/launcher.cpp
+  src/ui/launcher_actions.cpp
+  src/ui/launcher_events.cpp
+  src/ui/launcher_headless.cpp
+  src/ui/launcher_layout.cpp
+  src/ui/launcher_mods.cpp
+  src/ui/launcher_motion.cpp
+  src/ui/launcher_online.cpp
+  src/ui/launcher_paint.cpp
   src/ui/settings.cpp
   src/app/app.manifest
   "${APP_RC}"
@@ -75,7 +91,7 @@ target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 u
 
 # ---- tests ----------------------------------------------------------------
 enable_testing()
-add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_relay.cpp)
+add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_mod.cpp tests/test_relay.cpp)
 target_link_libraries(launcher_tests PRIVATE launcher_core shell32)
 add_test(NAME core_and_relay COMMAND launcher_tests)
 add_test(NAME end_to_end

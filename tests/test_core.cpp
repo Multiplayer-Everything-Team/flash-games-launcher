@@ -1,5 +1,7 @@
 // Config parsing/validation, file and player lookup, command lines, settings.
 #include <cmath>
+#include <cstring>
+#include <thread>
 
 #include "core/config.h"
 #include "core/discord.h"
@@ -452,4 +454,51 @@ TEST(embedded_names_match_the_resource_script) {
     CHECK(embeddedName(L"covers/Pb2.jpg") == L"F_COVERS_PB2_JPG");
     std::string none;
     CHECK(!readEmbedded(L"covers\\nope.png", none));  // the test exe has no resources
+}
+
+TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
+    // Flash Player is never an option for Stealth Hunter 2.
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    LoadResult r = loadConfigFile(path);
+    REQUIRE(r.ok());
+    const GameSpec* g = r.config.findGame("stealthhunter2");
+    REQUIRE(g != nullptr);
+    for (const auto& a : g->actions) {
+        CHECK(a.players.size() == 1 && a.players[0] == "ruffle");
+        CHECK(!a.overrides.count("flash"));
+    }
+    CHECK(r.config.updates.enabled());
+}
+
+TEST(rooms_a_server_without_the_game_is_told_apart) {
+    // The relay answers "E|Unknown game ..." until the mod's mods-info file is merged.
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    SOCKET l = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    REQUIRE(bind(l, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0 && listen(l, 4) == 0);
+    int len = sizeof a;
+    getsockname(l, reinterpret_cast<sockaddr*>(&a), &len);
+    std::thread server([l] {
+        for (const char* reply : {"E|Unknown game 'tw' on this server", "LIST|ABCDE,1,4,Room"}) {
+            SOCKET c = accept(l, nullptr, nullptr);
+            char buf[256];
+            recv(c, buf, sizeof buf, 0);
+            send(c, reply, static_cast<int>(strlen(reply)) + 1, 0);  // with its NUL
+            closesocket(c);
+        }
+    });
+    std::wstring addr = L"127.0.0.1:" + std::to_wstring(ntohs(a.sin_port)), err;
+    std::vector<RoomInfo> rooms;
+    bool rejected = false;
+    CHECK(!listRooms(addr, "tw", rooms, err, 3000, &rejected));
+    CHECK(rejected && err.find(L"Unknown game") != std::wstring::npos);
+    CHECK(listRooms(addr, "gm2", rooms, err, 3000, &rejected));
+    CHECK(!rejected && rooms.size() == 1);
+    server.join();
+    closesocket(l);
+    WSACleanup();
 }

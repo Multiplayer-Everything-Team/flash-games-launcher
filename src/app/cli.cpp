@@ -24,6 +24,17 @@ Args parseArgs(int argc, wchar_t** argv) {
         else if (k == L"--install-player") {
             value(tmp);
             a.installPlayer = narrow(tmp);
+        } else if (k == L"--install-mod") {
+            value(tmp);
+            a.installMod = narrow(tmp);
+        } else if (k == L"--repair-mod") {
+            value(tmp);
+            a.repairMod = narrow(tmp);
+        } else if (k == L"--uninstall-mod") {
+            value(tmp);
+            a.uninstallMod = narrow(tmp);
+        } else if (k == L"--game-dir") {
+            value(a.gameDir);
         } else if (k == L"--rooms") {
             value(tmp);
             a.rooms = narrow(tmp);
@@ -44,6 +55,8 @@ Args parseArgs(int argc, wchar_t** argv) {
         } else if (k == L"--demo-host") a.demoHost = true;
         else if (k == L"--list") a.list = true;
         else if (k == L"--version") a.version = true;
+        else if (k == L"--update") a.update = true;
+        else if (k == L"--mods") a.mods = true;
         else if (k == L"--validate") a.validate = true;
         else if (k == L"--help" || k == L"-h" || k == L"--?" || k == L"-?") a.help = true;
         else a.error = L"Unknown option: " + std::wstring(argv[i]);
@@ -75,6 +88,12 @@ launcher.json next to the exe.
     --size <WxH>         ...at this window size in pixels
     --demo-host          ...with the selected game's relay running
   --rooms <game>         List the open rooms for a game on the central server
+  --update               Install the newest launcher release now, if there is one
+  --mods                 List the PC game mods: game found, installed version, newest version
+  --install-mod <id>     Install (or update) a PC game mod into its game's folder
+  --repair-mod <id>      Put back missing or damaged files of an installed mod
+  --uninstall-mod <id>   Remove a mod and restore the files it replaced
+    --game-dir <folder>  ...use this game folder instead of detecting one
   --version              Print the launcher version
   --help                 Show this help
 

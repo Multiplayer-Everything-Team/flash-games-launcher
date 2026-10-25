@@ -159,7 +159,7 @@ $server = Start-Job -ArgumentList $httpPort, $www -ScriptBlock {
   param($p, $root)
   $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
   $l.Start()
-  for ($i = 0; $i -lt 40; $i++) {
+  for ($i = 0; $i -lt 60; $i++) {
     $c = $l.AcceptTcpClient(); $s = $c.GetStream()
     $buf = New-Object byte[] 8192; $n = $s.Read($buf, 0, $buf.Length)
     $path = ([Text.Encoding]::ASCII.GetString($buf, 0, $n) -split ' ')[1].TrimStart('/') -replace '/', '\'
@@ -232,6 +232,45 @@ if ($dlg -ne [IntPtr]::Zero) {
   Check (WaitFor { Test-Path "$work\players\fake\fakeplay.exe" } 15000) 'accepting the prompt installs the player'
 }
 Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
+# ---- the launcher updating itself from a (fake) GitHub release -------------
+# A copy of the launcher stands in for the installed one; the "new version" is
+# another exe, so the swap is easy to see.
+$upd = Join-Path $work 'upd'
+New-Item -ItemType Directory -Force $upd, "$www\dl", "$www\repos\test\launcher\releases" | Out-Null
+Copy-Item $Launcher "$upd\FlashLauncher.exe"
+Copy-Item $fake "$www\dl\FlashLauncher.exe"
+$newSha = (Get-FileHash "$www\dl\FlashLauncher.exe" -Algorithm SHA256).Hash.ToLower()
+$newSize = (Get-Item "$www\dl\FlashLauncher.exe").Length
+function ReleaseJson([string]$tag, [string]$digest) {
+  '{ "tag_name": "' + $tag + '", "assets": [ { "name": "FlashLauncher.exe", "size": ' + $newSize +
+  ', "digest": "sha256:' + $digest + '", "browser_download_url": "http://127.0.0.1:' + $httpPort + '/dl/FlashLauncher.exe" } ] }'
+}
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
+  "updates": { "github": "test/launcher", "asset": "FlashLauncher.exe", "api": "http://127.0.0.1:$httpPort" },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["x.exe"] } ],
+  "games": [ { "id": "demo", "name": "Demo Game", "actions": [ { "id": "play", "label": "Play", "swf": "demo.swf" } ] } ]
+}
+"@ | Set-Content "$upd\update.json" -Encoding UTF8
+$before = (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash
+function RunUpd() {
+  $p = Start-Process -FilePath "$upd\FlashLauncher.exe" -ArgumentList @('--update', '--config', "`"$upd\update.json`"") -Wait -PassThru -NoNewWindow `
+         -RedirectStandardOutput "$work\uout.txt" -RedirectStandardError "$work\uerr.txt"
+  return @{ Code = $p.ExitCode; Out = (Get-Content "$work\uout.txt" -Raw) + (Get-Content "$work\uerr.txt" -Raw) }
+}
+Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v0.9.0' $newSha) -Encoding ASCII
+$r = RunUpd
+Check ($r.Code -eq 0 -and $r.Out -match 'Up to date' -and (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash -eq $before) "an older release changes nothing ($($r.Out.Trim()))"
+Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v99.0.0' ('0' * 64)) -Encoding ASCII
+$r = RunUpd
+Check ($r.Code -ne 0 -and (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash -eq $before -and -not (Test-Path "$upd\FlashLauncher.exe.new")) 'a newer release with the wrong checksum is refused'
+Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v99.0.0' $newSha) -Encoding ASCII
+$r = RunUpd
+Check ($r.Code -eq 0 -and $r.Out -match 'Updated to v99.0.0') "a newer release is installed ($($r.Out.Trim()))"
+Check ((Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash.ToLower() -eq $newSha) 'the new exe is in place'
+Check ((Test-Path "$upd\FlashLauncher.exe.old") -and (Get-FileHash "$upd\FlashLauncher.exe.old" -Algorithm SHA256).Hash -eq $before) 'the running exe was set aside as .old'
+
 # ---- downloading missing game files from the catalog -----------------------
 New-Item -ItemType Directory -Force "$www\games\demo2" | Out-Null
 Set-Content "$www\games\demo2\dl.swf" 'pretend game file' -NoNewline
@@ -389,6 +428,177 @@ try {
   Stop-Job $central -ErrorAction SilentlyContinue; Remove-Job $central -Force -ErrorAction SilentlyContinue
 }
 Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
+
+# ---- PC game mods: install, update, repair, uninstall through the real exe ----
+# A local web server stands in for mods-info and the package download; the "game"
+# is a fake folder. The game folder must end up exactly as it started.
+$modPort = 48200 + ($PID % 300)
+$mw = Join-Path $work 'modsite'
+New-Item -ItemType Directory -Force "$mw\mods", "$mw\dl" | Out-Null
+$modServer = Start-Job -ArgumentList $modPort, $mw -ScriptBlock {
+  param($p, $root)
+  $l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
+  $l.Start()
+  for ($i = 0; $i -lt 80; $i++) {
+    $c = $l.AcceptTcpClient(); $s = $c.GetStream()
+    $buf = New-Object byte[] 8192; $n = $s.Read($buf, 0, $buf.Length)
+    $path = ([Text.Encoding]::ASCII.GetString($buf, 0, $n) -split ' ')[1].TrimStart('/') -replace '/', '\'
+    $file = Join-Path $root $path
+    if (Test-Path $file -PathType Leaf) {
+      $bytes = [IO.File]::ReadAllBytes($file)
+      $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $($bytes.Length)`r`nConnection: close`r`n`r`n")
+      $s.Write($h, 0, $h.Length); $s.Write($bytes, 0, $bytes.Length)
+    } else {
+      $h = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 404 Not Found`r`nContent-Length: 0`r`nConnection: close`r`n`r`n")
+      $s.Write($h, 0, $h.Length)
+    }
+    $s.Flush(); $c.Close()
+  }
+  $l.Stop()
+}
+
+function MakePackage([string]$version, [string]$name) {
+  $pkg = Join-Path $work "pkg-$name"
+  Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force "$pkg\core\config", "$pkg\core\data", "$pkg\override\Data" | Out-Null
+  Set-Content "$pkg\core\Mod.dll" "mod dll $version" -NoNewline
+  Set-Content "$pkg\core\config\settings.ini" "default=$version" -NoNewline
+  Set-Content "$pkg\core\data\content-$version.txt" "content $version" -NoNewline
+  Set-Content "$pkg\override\Data\original.dat" "MODDED $version" -NoNewline
+  $zip = Join-Path $mw "dl\$name.zip"
+  Remove-Item $zip -ErrorAction SilentlyContinue
+  Compress-Archive -Path "$pkg\*" -DestinationPath $zip
+  return (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+}
+function Publish([string]$version, [string]$name, [string]$sha, [bool]$published = $true) {
+  $url = if ($published) { "http://127.0.0.1:$modPort/dl/$name.zip" } else { '' }
+  $json = '{ "schema": 1, "id": "modtest", "name": "Mod Test", "game": "Fake Game", "engine": "none", "status": "testing", ' +
+          '"latest_version": "' + $version + '", "min_version": "' + $version + '", "protocol": "x", "download_url": "' + $url + '", ' +
+          '"download_sha256": "' + $sha + '", "changelog_url": "", "relay": { "mode": "tunnel", "max_players": 4, "server": "main" }, ' +
+          '"notice": "", "updated": "2026-10-25" }'
+  Set-Content "$mw\mods\modtest.json" $json -Encoding ASCII
+}
+
+$gameDir = Join-Path $work 'FakeGame'
+New-Item -ItemType Directory -Force "$gameDir\Data" | Out-Null
+Set-Content "$gameDir\Game.exe" 'game binary' -NoNewline
+Set-Content "$gameDir\Data\original.dat" 'ORIGINAL' -NoNewline
+function Snapshot() { (Get-ChildItem $gameDir -Recurse -File | Sort-Object FullName | ForEach-Object { "$($_.FullName.Substring($gameDir.Length)) $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" }) -join "`n" }
+$modBefore = Snapshot
+
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\moddata", "flashpoint": [] },
+  "downloads": { "modsInfo": "http://127.0.0.1:$modPort/" },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"] } ],
+  "games": [ {
+    "id": "modtest", "name": "Mod Test",
+    "mod": {
+      "id": "mod-test",
+      "game": { "name": "Fake Game", "executable": "Game.exe", "processNames": ["FakeGame-not-running.exe"],
+                "detection": [ { "type": "path", "path": "C:\\no\\such\\folder" } ] },
+      "install": { "preserve": ["config/*.ini"], "lockedFileRetries": 1 },
+      "components": [
+        { "id": "core", "name": "Core", "source": "core", "required": true },
+        { "id": "override", "name": "Override", "source": "override", "target": "`${GAME_DIR}", "required": true }
+      ],
+      "package": { "modsInfo": "modtest" }
+    } } ]
+}
+"@ | Set-Content "$work\mods.json" -Encoding UTF8
+function ModRun([string[]]$extra) {
+  $p = Start-Process -FilePath $Launcher -ArgumentList (@('--config', "`"$work\mods.json`"") + $extra) -Wait -PassThru -NoNewWindow `
+         -RedirectStandardOutput "$work\mout.txt" -RedirectStandardError "$work\merr.txt"
+  return @{ Code = $p.ExitCode; Out = (Get-Content "$work\mout.txt" -Raw) + (Get-Content "$work\merr.txt" -Raw) }
+}
+$installDir = "$gameDir\Mods\mod-test"
+Start-Sleep -Milliseconds 800
+
+$r = ModRun @('--validate'); Check ($r.Code -eq 0) "the mod test config validates $($r.Out.Trim())"
+$sha1 = MakePackage '1.0.0' 'v1'
+Publish '1.0.0' 'v1' $sha1 $false
+$r = ModRun @('--mods', '--game-dir', "`"$gameDir`"")
+Check ($r.Out -match 'game: .*FakeGame' -and $r.Out -match 'installed: no' -and $r.Out -match 'not published yet') '--mods shows the game found, not installed, not published'
+$r = ModRun @('--install-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -ne 0 -and $r.Out -match "isn't published" -and (Snapshot) -eq $modBefore) 'an unpublished mod is not installed'
+
+Publish '1.0.0' 'v1' ('0' * 64)
+$r = ModRun @('--install-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -ne 0 -and (Snapshot) -eq $modBefore) 'a package with the wrong checksum is refused and nothing changes'
+
+Publish '1.0.0' 'v1' $sha1
+$r = ModRun @('--install-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -eq 0 -and $r.Out -match 'Done: Mod Test 1.0.0') "--install-mod downloads, checks and installs ($($r.Out.Trim() -replace '\s+', ' '))"
+Check ((Get-Content "$installDir\Mod.dll" -Raw -ErrorAction SilentlyContinue) -eq 'mod dll 1.0.0') 'the mod file is in the install folder'
+Check ((Get-Content "$gameDir\Data\original.dat" -Raw) -eq 'MODDED 1.0.0') 'a game file the mod replaces now has the modded content'
+Check (Test-Path "$installDir\.installer\manifest.json") 'the install record is written next to the mod'
+$r = ModRun @('--mods', '--game-dir', "`"$gameDir`"")
+Check ($r.Out -match 'installed: 1\.0\.0' -and $r.Out -match 'newest: 1\.0\.0') '--mods shows the installed and newest version'
+
+# The player edits a preserved setting; an update keeps it and swaps the rest.
+Set-Content "$installDir\config\settings.ini" 'user=42' -NoNewline
+$sha2 = MakePackage '2.0.0' 'v2'
+Publish '2.0.0' 'v2' $sha2
+$r = ModRun @('--install-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -eq 0 -and $r.Out -match 'Done: Mod Test 2.0.0') 'a newer version is installed as an update'
+Check ((Get-Content "$installDir\Mod.dll" -Raw) -eq 'mod dll 2.0.0' -and (Test-Path "$installDir\data\content-2.0.0.txt") -and -not (Test-Path "$installDir\data\content-1.0.0.txt")) 'the update replaced the files and removed the obsolete one'
+Check ((Get-Content "$installDir\config\settings.ini" -Raw) -eq 'user=42') "the player's edited settings file was kept"
+
+# Repair puts back a deleted file.
+Remove-Item "$installDir\Mod.dll"
+$r = ModRun @('--repair-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -eq 0 -and (Get-Content "$installDir\Mod.dll" -Raw) -eq 'mod dll 2.0.0') '--repair-mod restores a missing file'
+
+# Uninstall: the game folder is exactly as it was before the mod.
+Remove-Item "$installDir\config\settings.ini"   # a preserved file the player removed is simply gone
+$r = ModRun @('--uninstall-mod', 'modtest', '--game-dir', "`"$gameDir`"")
+Check ($r.Code -eq 0 -and $r.Out -match 'Uninstalled Mod Test') '--uninstall-mod succeeds'
+Check ((Snapshot) -eq $modBefore -and -not (Test-Path "$gameDir\Mods")) 'the game folder is byte-for-byte what it was before the mod'
+$r = ModRun @('--mods', '--game-dir', "`"$gameDir`"")
+Check ($r.Out -match 'installed: no') '--mods says it is not installed any more'
+
+# The same through the window's buttons: Install, Launch, Uninstall (with its question).
+Publish '1.0.0' 'v1' $sha1
+$env:FL_FAKE_OUT = "$work\args.txt"
+$env:FL_FAKE_MS = '300'
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$winCfg = Get-Content "$work\mods.json" -Raw
+$winCfg = $winCfg.Replace('"path": "C:\\no\\such\\folder"', '"path": "' + ($gameDir -replace '\\', '\\') + '"')
+$winCfg = $winCfg.Replace('"package": { "modsInfo": "modtest" }', '"launch": { "executable": "' + ($fake -replace '\\', '\\') + '", "arguments": "--fake-player" }, "package": { "modsInfo": "modtest" }')
+$winCfg | Set-Content "$work\modswin.json" -Encoding UTF8
+$mwin = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\modswin.json`"") -PassThru
+try {
+  WaitFor { $mwin.Refresh(); $mwin.MainWindowHandle -ne 0 } 10000 | Out-Null
+  $mh = $mwin.MainWindowHandle
+  $btn = $null
+  WaitFor { $script:btn = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Install Mod Test' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
+  Check ($null -ne $btn) 'the window offers Install for a mod whose game it found'
+  if ($btn) {
+    [Acc]::Do($btn.Hwnd)
+    Check (WaitFor { Test-Path "$installDir\Mod.dll" } 20000) 'Install puts the mod into the game folder'
+    $launch = $null
+    WaitFor { $script:launch = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Launch game' } | Select-Object -First 1; $null -ne $script:launch } 10000 | Out-Null
+    Check ($null -ne $launch) 'the Launch button appears once the mod is installed'
+    if ($launch) {
+      [Acc]::Do($launch.Hwnd)
+      Check (WaitFor { Test-Path "$work\args.txt" } 10000) 'Launch starts the game'
+    }
+    $un = $null
+    WaitFor { $script:un = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Uninstall' } | Select-Object -First 1; $null -ne $script:un } 10000 | Out-Null
+    if ($un) {
+      [Acc]::Do($un.Hwnd)
+      $dlg = [IntPtr]::Zero
+      WaitFor { $script:dlg = [Top]::Find([uint32]$mwin.Id, '#32770'); $script:dlg -ne [IntPtr]::Zero } 10000 | Out-Null
+      Check ($dlg -ne [IntPtr]::Zero) 'Uninstall asks before removing anything'
+      if ($dlg -ne [IntPtr]::Zero) { [Top]::SendMessage($dlg, 0x0466, [IntPtr]6, [IntPtr]::Zero) | Out-Null }  # TDM_CLICK_BUTTON, IDYES
+      Check (WaitFor { -not (Test-Path "$installDir\Mod.dll") } 20000) 'Uninstall removes the mod'
+      Check (WaitFor { (Snapshot) -eq $modBefore } 5000) 'the game folder is as it was after the window uninstalls the mod'
+    } else { Check $false 'the Uninstall button is found' }
+  }
+} finally {
+  Stop-Process -Id $mwin.Id -Force -ErrorAction SilentlyContinue
+}
+Stop-Job $modServer -ErrorAction SilentlyContinue; Remove-Job $modServer -Force -ErrorAction SilentlyContinue
 
 # ---- window, through MSAA (the API screen readers use for Win32 controls) ----
 function Ctl([IntPtr]$top, [string]$name) { [Acc]::Controls($top) | Where-Object { $_.Name -eq $name } | Select-Object -First 1 }

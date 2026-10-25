@@ -8,6 +8,7 @@
 #include "core/install.h"
 #include "core/library.h"
 #include "core/log.h"
+#include "core/mod/manager.h"
 #include "core/relay.h"
 #include "core/rooms.h"
 #include "core/settings.h"
@@ -106,13 +107,101 @@ const wchar_t* stateWord(ActionState s) {
 
 }  // namespace
 
+// --mods, --install-mod, --repair-mod, --uninstall-mod
+int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user, const std::wstring& userPath) {
+    std::wstring modsInfo = cfg.modsInfoBase();
+    auto specFor = [&](const GameSpec& g) {
+        mod::Spec s = *g.mod;
+        s.text = &cfg.text;
+        return s;
+    };
+    auto chosenDir = [&](const GameSpec& g) {
+        if (!a.gameDir.empty()) return fullPath(a.gameDir);
+        const GameStats* st = user.find(g.id);
+        return st ? st->gameDir : std::wstring();
+    };
+    if (a.mods) {
+        for (const auto& g : cfg.games) {
+            if (!g.mod) continue;
+            mod::Spec s = specFor(g);
+            mod::Status st = mod::inspect(s, lib.vars(), chosenDir(g));
+            mod::Source src;
+            std::wstring err;
+            bool known = mod::resolveSource(s, modsInfo, src, err);
+            out(widen(g.id) + L"  " + g.name + L"\n");
+            out(L"    game: " + (st.game.found() ? st.game.dir + L" (" + st.game.source + L")" : std::wstring(L"not found")) + L"\n");
+            out(L"    installed: " + (st.installed ? st.installedVersion : std::wstring(L"no")) +
+                (st.problem.empty() ? L"" : L"  (" + st.problem + L")") + L"\n");
+            out(L"    newest: " + (!known ? L"unknown (" + err + L")" : src.published() ? src.version : std::wstring(L"not published yet")) + L"\n");
+        }
+        return 0;
+    }
+    const std::string& id = !a.installMod.empty() ? a.installMod : !a.repairMod.empty() ? a.repairMod : a.uninstallMod;
+    const GameSpec* g = cfg.findGame(id);
+    if (!g || !g->mod) {
+        fail(L"No PC mod with id \"" + widen(id) + L"\" (see --mods)");
+        return 3;
+    }
+    mod::Spec s = specFor(*g);
+    mod::Status st = mod::inspect(s, lib.vars(), chosenDir(*g));
+    if (!st.game.found()) {
+        fail(s.t("mod.status.noGame", mod::withSpec(lib.vars(), s)) + L" Use --game-dir <folder> to point at it.");
+        return 4;
+    }
+    mod::RunRequest req;
+    req.gameDir = st.game.dir;
+    req.cacheDir = fs::join(lib.dataDir(), L"mods");
+    if (!a.uninstallMod.empty()) {
+        req.op = mod::Operation::Uninstall;
+    } else {
+        if (st.running) {
+            fail(s.t("mod.status.running", mod::withSpec(lib.vars(), s)));
+            return 4;
+        }
+        std::wstring err;
+        if (!mod::resolveSource(s, modsInfo, req.source, err)) {
+            fail(L"Cannot read mods-info: " + err);
+            return 1;
+        }
+        req.op = !a.repairMod.empty() ? mod::Operation::Repair : st.installed ? mod::Operation::Update : mod::Operation::Install;
+        if (req.op == mod::Operation::Repair && !st.installed) {
+            fail(L"Nothing to repair: the mod isn't installed.");
+            return 4;
+        }
+    }
+    if (!st.problem.empty()) {
+        fail(st.problem);
+        return 1;
+    }
+    mod::CancelToken cancel;
+    std::wstring lastPhase;
+    int lastPct = -1;
+    mod::Outcome o = mod::run(s, lib.vars(), req, [&](const std::wstring& phase, double f, const std::wstring&) {
+        int pct = static_cast<int>(f * 100);
+        if (phase != lastPhase || pct / 25 != lastPct / 25) out(phase + L" " + std::to_wstring(pct) + L"%\n");
+        lastPhase = phase;
+        lastPct = pct;
+    }, cancel);
+    if (o.result != mod::Outcome::Result::Success) {
+        fail(o.message + (o.detail.empty() ? L"" : L"\n" + o.detail));
+        return 1;
+    }
+    GameStats& gs = user.stats(g->id);
+    if (!a.gameDir.empty() && req.op != mod::Operation::Uninstall) gs.gameDir = st.game.dir;
+    saveUserData(user, userPath);
+    out(req.op == mod::Operation::Uninstall ? L"Uninstalled " + g->name + L".\n"
+                                            : L"Done: " + g->name + L" " + req.source.version + L" (" + st.game.dir + L").\n");
+    return 0;
+}
+
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     Args a = parseArgs(argc, argv);
     LocalFree(argv);
     bool cliMode = a.help || a.version || a.list || a.validate || !a.launch.empty() || a.relayPort || !a.installPlayer.empty() ||
-                   !a.downloadGame.empty() || !a.rooms.empty() || !a.error.empty();
+                   !a.downloadGame.empty() || !a.rooms.empty() || a.update || a.mods || !a.installMod.empty() ||
+                   !a.repairMod.empty() || !a.uninstallMod.empty() || !a.error.empty();
     if (cliMode) setupConsole();
     if (!a.error.empty()) {
         fail(a.error + L"\n\n" + usageText());
@@ -173,13 +262,36 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         std::wstring err;
         std::wstring server = resolveRoomServer(cfg.rooms.servers, cfg.rooms.server, &err);
         std::vector<RoomInfo> rooms;
-        if (server.empty() || !listRooms(server, g->onlineId, rooms, err)) {
+        bool rejected = false;
+        if (!server.empty() && !listRooms(server, g->onlineId, rooms, err, 4000, &rejected) && rejected) {
+            out(server + L": not on the server yet (" + err + L")\n");
+            return 0;
+        }
+        if (server.empty() || (rooms.empty() && !err.empty())) {
             fail(L"Cannot list rooms: " + err);
             return 1;
         }
         out(server + L": " + std::to_wstring(rooms.size()) + L" open\n");
         for (const auto& r : rooms)
             out(r.code + L"  " + std::to_wstring(r.players) + L"/" + std::to_wstring(r.max) + L"  " + r.name + L"\n");
+        return 0;
+    }
+
+    if (a.mods || !a.installMod.empty() || !a.repairMod.empty() || !a.uninstallMod.empty()) return runModCommand(a, cfg, lib, user, userPath);
+
+    if (a.update) {
+        if (!cfg.updates.enabled()) {
+            fail(L"launcher.json has no \"updates\" source");
+            return 3;
+        }
+        removeOldUpdate(fs::selfExePath());
+        UpdateResult r = updateSelf(cfg.updates.source, LAUNCHER_VERSION, fs::selfExePath(), nullptr);
+        if (!r.ok) {
+            fail(L"Update failed: " + r.error);
+            return 1;
+        }
+        out(r.updated ? L"Updated to " + r.version + L". It starts next time.\n"
+                      : L"Up to date (" + std::wstring(LAUNCHER_VERSION) + L"; newest release " + r.version + L").\n");
         return 0;
     }
 
@@ -256,6 +368,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         if (!g) {
             fail(L"No game with id \"" + gameId + L"\" (see --list)");
             return 3;
+        }
+        if (g->comingSoon) {
+            fail(g->name + L" is coming soon: its online mod isn't ready yet.");
+            return 4;
         }
         const ActionSpec* act = g->actions.empty() ? nullptr : &g->actions.front();
         if (!actionId.empty()) {

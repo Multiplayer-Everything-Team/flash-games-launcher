@@ -4,11 +4,12 @@ Put your own Flash game files (.swf) here. The launcher looks for these names:
   gunmayhem2_online.swf               Gun Mayhem 2 Online (modded build)
   stealth_hunter_2.swf                Stealth Hunter 2
   stealthhunter2_online.swf           Stealth Hunter 2 Online (modded build, Ruffle)
-  stealthhunter2_online_direct.swf    Stealth Hunter 2 Online (modded build, Flash Player)
-  gunmayhem.swf                       Gun Mayhem
-  fireboywatergirl.swf                Fireboy and Watergirl in the Forest Temple
   BadIceCream_online.swf              Bad Ice-Cream Online (modded build; also plays on one keyboard)
-  boxhead2play.swf                    Boxhead: 2Play Rooms
+  TerritoryWar_online.swf             Territory War Online (modded build)
+  BowMan_online.swf                   Bow Man Online (modded build)
+  UltimateCrabBattle_online.swf       Ultimate Crab Battle Online (modded build)
+  AirBattle_online.swf                Air Battle Online (modded build)
+  RaftWars_online.swf                 Raft Wars Online (modded build)
 
 Any other name works too: select the game in the launcher and press
 "Locate game file...". With Flashpoint installed, Gun Mayhem 2 and
