@@ -3,7 +3,7 @@
 <p align="center"><b>One app for every Multiplayer Everything game. Mods for PC games, online Flash games, your friends.</b></p>
 
 <p align="center">
-<a href="https://discord.com/invite/P2MSSUf5GX"><img src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white&style=for-the-badge" alt="Join the Discord" height="36"></a>
+<a href="https://discord.gg/jnnyz2vqB5"><img src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white&style=for-the-badge" alt="Join the Discord" height="36"></a>
 <a href="https://multiplayereverything.com"><img src="https://img.shields.io/badge/Website-multiplayereverything.com-1abc9c?style=for-the-badge" alt="multiplayereverything.com" height="36"></a>
 <a href="https://github.com/multiplayereverything/multiplayer-mods-launcher/releases/latest"><img src="https://img.shields.io/badge/Download-latest%20release-e5384c?style=for-the-badge" alt="Download the latest release" height="36"></a>
 </p>
