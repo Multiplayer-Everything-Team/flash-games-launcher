@@ -1,16 +1,63 @@
-# Multiplayer Everything: mod installer and Flash player
+<h1 align="center">Multiplayer Everything Launcher</h1>
 
-One window for every game mod in the *Multiplayer Everything* family. For the
-**Flash games**, pick a game, press **Play online**, pick a room or **Quick play**,
-and it starts in Ruffle or Flash Player with the right file and settings. For the
-**PC game mods** (Spooky Together and more to come), it finds your copy of the game,
-installs the mod into it, keeps it up to date, and can take it out again, putting
-back every game file it replaced. Native C++20/Win32, no dependencies, and the whole
-app is one `.exe`.
+<p align="center"><b>One app for every Multiplayer Everything game. Mods for PC games, online Flash games, your friends.</b></p>
+
+<p align="center">
+<a href="https://discord.com/invite/P2MSSUf5GX"><img src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white&style=for-the-badge" alt="Join the Discord" height="36"></a>
+<a href="https://multiplayereverything.com"><img src="https://img.shields.io/badge/Website-multiplayereverything.com-1abc9c?style=for-the-badge" alt="multiplayereverything.com" height="36"></a>
+<a href="https://github.com/multiplayereverything/multiplayer-mods-launcher/releases/latest"><img src="https://img.shields.io/badge/Download-latest%20release-e5384c?style=for-the-badge" alt="Download the latest release" height="36"></a>
+</p>
+
+<p align="center">
+<a href="#quick-start">Quick start</a> ·
+<a href="#how-it-works">How it works</a> ·
+<a href="#what-it-does">What it does</a> ·
+<a href="#games">Games</a> ·
+<a href="#command-line">Command line</a> ·
+<a href="#build">Build</a> ·
+<a href="#repository">Repository</a>
+</p>
+
+Want to play a game with friends over the internet? Open the launcher, pick a game, and
+press **Play online**. For the **Flash games** it starts them in Ruffle or Flash Player with
+the right file and settings, and you join a room with a code: no IP addresses, no port
+forwarding. For the **PC game mods** (Spooky Together and more to come) it finds your copy
+of the game, installs the mod into it, keeps it up to date, and can take it out again,
+putting back every game file it replaced. Native C++20/Win32, no dependencies, and the
+whole app is one `.exe`.
 
 Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.com/invite/P2MSSUf5GX).
 
 ![Library](docs/screenshots/01-library.png)
+
+Games available now: **Gun Mayhem 2** · **Stealth Hunter 2** · **Bad Ice-Cream** ·
+**Territory War** · **Bow Man** · **Ultimate Crab Battle** · **Air Battle** · **Raft Wars** ·
+PC mod: **Spooky Together** (**Baldi Together** coming soon). Full list under [Games](#games).
+
+## Quick start
+
+1. Download `MultiplayerEverythingLauncher.exe` from [Releases](https://github.com/multiplayereverything/multiplayer-mods-launcher/releases/latest)
+   (or the `.zip` with the editable `launcher.json` and covers next to it) and put it in
+   its own folder: game files are saved in a `games\` folder beside it.
+2. Run it. If no Flash player is found it offers to install Ruffle; say yes.
+3. Set your name in Settings once (Ctrl+,).
+4. **Flash game:** select it and press *Play online*, or *Quick play* to join the busiest
+   open room. **PC mod:** select it and press *Install*, then *Launch*.
+
+More detail: [Playing a Flash game](#playing-a-flash-game) and [PC game mods](#pc-game-mods).
+
+## How it works
+
+| | Flash games | PC game mods |
+|---|---|---|
+| What the launcher does | Finds Ruffle or Flash Player and the game's `.swf`, builds the exact command line, starts it, watches it exit | Finds the game, downloads the mod's package, installs it into the game's folder, keeps it updated |
+| Online play | Rooms with a code on the central server; direct IP through the built-in relay (Radmin, LAN, Tailscale) | The mod connects through the same central server |
+| Safety | Checksums on every download (Ruffle, game files, the launcher itself) | One all-or-nothing install with a SHA-256 check; backups of replaced files; Uninstall restores the game |
+| Where it's configured | `launcher/launcher.json` | the game's `mod` object in `launcher/launcher.json` |
+| Guide | [CONFIG.md](CONFIG.md) | [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md) |
+
+A new game or mod never needs a code change: everything lives in `launcher.json`
+(also built into the exe, so the exe is all you need to send someone).
 
 ## What it does
 
@@ -95,13 +142,6 @@ yet* and Quick play is hidden.
 More games are on the way; the local-only classics (Gun Mayhem, Fireboy and
 Watergirl, Boxhead) are set aside in `docs/local-games-example.jsonc` for now.
 
-**PC game mods** (not Flash; installed into the game's own folder):
-
-| Mod | Game | Notes |
-|---|---|---|
-| Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players, with the BepInEx mod loader. Needs its package published (see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md)). |
-| Baldi Together | Baldi's Basics Plus (Steam) | Coming soon: listed, no buttons yet. |
-
 The original, unmodded versions of the modded games are hidden; Settings can show
 them (*Play the original*).
 
@@ -113,18 +153,22 @@ repository's README lists how far each build is tested). You can also put your o
 `games\README.txt`), use *Locate game file...*, or install Flashpoint, whose copies
 are picked up automatically.
 
-## Install and play
+## PC game mods
 
-1. Download `MultiplayerEverythingLauncher.exe` from Releases (or the `.zip` with the editable
-   `launcher.json` and covers next to it) and put it in its own folder: game files
-   are saved in a `games\` folder beside it.
-2. Run `MultiplayerEverythingLauncher.exe`. If no Flash player is found it offers to install
-   Ruffle; say yes. (Or install [Ruffle](https://ruffle.rs/downloads) yourself.)
-   Flashpoint users already have Flash Player 32; the launcher finds it.
+Not Flash: installed into the game's own folder.
+
+| Mod | Game | Notes |
+|---|---|---|
+| Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players, with the BepInEx mod loader. Needs its package published (see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md)). |
+| Baldi Together | Baldi's Basics Plus (Steam) | Coming soon: listed, no buttons yet. |
+
+Pick the mod, press *Install*, then *Launch*. *Update*, *Repair* and *Uninstall* sit beside it; the game must be closed. Try it safely from the command line with `--game-dir` on a copy of the game folder. Authors: see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md).
+
+## Playing a Flash game
 
 Flash Player itself can't be installed automatically: Adobe stopped distributing
 it, so there is no official download left. Install [Flashpoint](https://flashpointarchive.org/downloads)
-if a game needs Flash Player instead of Ruffle.
+if a game needs Flash Player instead of Ruffle (Ruffle is [installed for you](#what-it-does)).
 
 **Hosting:** set your name in Settings once. Select the game, press *Play online*,
 then in the game press **F9**, set MODE to ONLINE and click **HOST**. Send friends
