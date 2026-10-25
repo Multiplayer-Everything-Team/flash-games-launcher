@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <regex>
 #include <set>
 
 #include "fs.h"
@@ -99,10 +100,58 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"nav.all", L"All games"},
         {"nav.favorites", L"Favorites"},
         {"nav.ready", L"Ready to play"},
+        {"nav.rooms", L"Rooms"},
+        {"nav.online", L"${N} online"},
+        {"roomsPage.title", L"Open rooms"},
+        {"roomsPage.subtitle", L"Rooms on the Multiplayer Everything server. Join one, or host from a game's page."},
+        {"roomsPage.allGames", L"All games"},
+        {"roomsPage.hideFull", L"Hide full rooms"},
+        {"roomsPage.code", L"Room code"},
+        {"roomsPage.join", L"Join"},
+        {"roomsPage.joinCode", L"Join by code"},
+        {"roomsPage.empty", L"No open rooms right now."},
+        {"roomsPage.emptyBody", L"Host one from a game's page; it shows up here for everyone."},
+        {"roomsPage.offline", L"Can't reach the server."},
+        {"roomsPage.offlineBody", L"Check your internet connection. Direct connect still works from a game's page."},
+        {"roomsPage.disabled", L"Online features are off."},
+        {"roomsPage.disabledBody", L"Turn them on in Settings to see open rooms."},
+        {"roomsPage.badCode", L"Room codes are 5 letters or digits, like VK7Q2."},
+        {"roomsPage.pickGame", L"Pick the game for room ${CODE} in the list first."},
+        {"roomsPage.host", L"Hosted by ${NAME}"},
+        {"tab.play", L"Play"},
+        {"tab.rooms", L"Rooms"},
+        {"tab.roomsCount", L"Rooms (${N})"},
+        {"button.quickPlay", L"Quick play"},
+        {"button.quickJoin", L"Join the busiest open room"},
+        {"button.quickHost", L"No rooms open: host one"},
+        {"button.more", L"Other ways to connect"},
+        {"button.less", L"Fewer options"},
+        {"badge.original", L"Original"},
+        {"server.checking", L"Checking the server\u2026"},
+        {"server.ok", L"Server online (${MS} ms)"},
+        {"server.okUntimed", L"Server online"},
+        {"server.down", L"Server unreachable: use direct connect"},
+        {"server.off", L"Online features off"},
+        {"settings.name", L"Your name"},
+        {"settings.nameNote", L"Shown to other players in online rooms."},
+        {"settings.originals", L"Show the original versions of modded games"},
+        {"toast.joined", L"Joining room ${CODE}"},
+        {"discord.playing", L"Playing ${GAME}"},
+        {"discord.room", L"Room ${CODE}"},
         {"search.cue", L"Search games  (Ctrl+F)"},
         {"status.ready", L"Ready"},
         {"status.noPlayer", L"No Flash player found"},
         {"status.noSwf", L"Game file missing"},
+        {"status.noRuntime", L"${RUNTIME} not found"},
+        {"button.getRuntime", L"Get ${RUNTIME}"},
+        {"web.starting", L"Starting ${GAME}\u2026"},
+        {"web.serverRunning", L"Co-op server running"},
+        {"web.serverFailed", L"The ${GAME} server stopped: ${ERROR}"},
+        {"web.serverTimeout", L"The ${GAME} server didn't start within 30 seconds. Details are in the log."},
+        {"web.joinNeedsLink", L"Copy the link your friend sent you, then press ${ACTION} again."},
+        {"web.joinOpening", L"Opening ${LINK}"},
+        {"web.links", L"Friends join at:"},
+        {"web.waitingLink", L"Waiting for the internet link\u2026"},
         {"status.playing", L"Playing"},
         {"badge.online", L"Online"},
         {"slot.label", L"P${N}"},
@@ -360,6 +409,20 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
     s.str("description", a.description);
     s.str("hint", a.hint);
     s.strList("swf", a.swf);
+    s.strList("file", a.swf);  // the same list, named for HTML5 games
+    s.strList("page", a.page);
+    s.boolean("joinLink", a.joinLink);
+    if (auto sv = s.get("server", Type::Object)) {
+        Section ss(sv, s.child("server"), issues);
+        ss.str("name", a.server.name);
+        ss.str("website", a.server.website);
+        ss.strList("exe", a.server.exe);
+        ss.strList("args", a.server.args);
+        ss.str("cwd", a.server.cwd);
+        ss.str("url", a.server.url);
+        ss.str("share", a.server.share);
+        ss.str("lan", a.server.lan);
+    }
     s.strList("args", a.args);
     s.idList("players", a.players);
     if (auto o = s.get("overrides", Type::Object)) {
@@ -371,6 +434,21 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
             a.overrides[o->keyAt(i)] = std::move(po);
         }
     }
+    if (auto fv = s.get("flashvars", Type::Object)) {
+        for (size_t i = 0; i < fv->size(); ++i) {
+            if (!fv->at(i).isString()) {
+                s.error(L"flashvars", L"values must be strings");
+                continue;
+            }
+            a.flashvars.emplace_back(widen(fv->keyAt(i)), widen(fv->at(i).str()));
+        }
+    }
+    s.boolean("more", a.more);
+    std::wstring edition;
+    s.str("edition", edition);
+    if (!edition.empty() && edition != L"original" && edition != L"modded")
+        s.error(L"edition", L"must be \"original\" or \"modded\"");
+    a.original = edition == L"original";
     if (auto r = s.get("relay", Type::Object)) {
         Section rs(r, s.child("relay"), issues);
         a.relay.enabled = true;
@@ -460,6 +538,12 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             rs.error(L"servers", L"must be an https:// address");
     }
     {
+        Section s(top.get("discord", Type::Object), L"discord", issues);
+        s.str("clientId", c.discord.clientId);
+        if (c.discord.clientId.find_first_not_of(L"0123456789") != std::wstring::npos)
+            s.error(L"clientId", L"must be the application id, digits only");
+    }
+    {
         Section s(top.get("downloads", Type::Object), L"downloads", issues);
         s.str("catalog", c.downloads.catalog);
         const std::wstring& u = c.downloads.catalog;
@@ -471,6 +555,8 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             PlayerSpec p;
             Section s(&list->at(i), indexPath(L"players", i), issues);
             s.str("id", p.id);
+            s.str("kind", p.kind);
+            if (p.kind != "flash" && p.kind != "browser") s.error(L"kind", L"must be \"flash\" or \"browser\"");
             s.str("name", p.name);
             s.str("website", p.website);
             s.strList("paths", p.paths);
@@ -495,6 +581,16 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             Section s(&list->at(i), indexPath(L"categories", i), issues);
             s.str("id", cat.id);
             s.str("name", cat.name);
+            std::wstring icon;
+            s.str("icon", icon);
+            if (!icon.empty()) {
+                wchar_t* end = nullptr;
+                unsigned long cp = wcstoul(icon.c_str(), &end, 16);
+                if (*end || cp < 0xE000 || cp > 0xF8FF)
+                    s.error(L"icon", L"must be a Segoe Fluent Icons code like \"E774\"");
+                else
+                    cat.icon = std::wstring(1, static_cast<wchar_t>(cp));
+            }
             if (cat.name.empty()) cat.name = widen(cat.id);
             c.categories.push_back(std::move(cat));
         }
@@ -520,6 +616,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
                         g.maxPlayers = std::max(g.maxPlayers, _wtoi(g.playerCount.c_str() + k));
             s.str("controls", g.controls);
             s.str("image", g.image);
+            s.real("imageFocus", g.imageFocus, 0, 1);
             s.idList("categories", g.categories);
             s.color("color", g.color);
             s.color("colorEnd", g.colorEnd);
@@ -637,7 +734,22 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
             std::wstring aw = where + L"." + indexPath(L"actions", j);
             if (!validId(a.id)) err(aw + L".id", L"must be letters, digits, '-', '_' or '.'");
             else if (!actionIds.insert(a.id).second) err(aw + L".id", L"duplicate action id \"" + widen(a.id) + L"\"");
-            if (a.swf.empty()) {
+            if (a.isWeb()) {
+                if (a.server.enabled() && a.server.url.empty())
+                    err(aw + L".server.url", L"give the address the game opens at, e.g. \"http://localhost:2053/\"");
+                for (const auto& pid : a.players)
+                    if (auto p = cfg.findPlayer(pid); p && p->kind != "browser")
+                        err(aw + L".players", L"\"" + widen(pid) + L"\" is not a browser; HTML5 games need one");
+                if (!std::any_of(cfg.players.begin(), cfg.players.end(), [](const PlayerSpec& p) { return p.kind == "browser"; }))
+                    err(aw, L"HTML5 games need a player with \"kind\": \"browser\"");
+                for (const auto& re : {a.server.share, a.server.lan}) {
+                    try {
+                        if (!re.empty()) std::wregex test(re);
+                    } catch (const std::regex_error&) {
+                        err(aw + L".server", L"not a valid pattern: " + re);
+                    }
+                }
+            } else if (a.swf.empty()) {
                 bool all = !a.overrides.empty();
                 for (const auto& p : cfg.players)
                     if (a.players.empty() || std::find(a.players.begin(), a.players.end(), p.id) != a.players.end()) {
@@ -648,6 +760,7 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
             }
             for (const auto& s : a.swf) checkVars(s, aw + L".swf", issues);
             for (const auto& s : a.args) checkVars(s, aw + L".args", issues);
+            for (const auto& [k, v] : a.flashvars) checkVars(v, aw + L".flashvars", issues);
             for (const auto& p : a.players)
                 if (!cfg.findPlayer(p)) err(aw + L".players", L"unknown player \"" + widen(p) + L"\"");
             for (const auto& [pid, o] : a.overrides) {

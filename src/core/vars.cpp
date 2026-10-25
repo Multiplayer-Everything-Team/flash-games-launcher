@@ -70,7 +70,8 @@ const std::vector<std::wstring>& knownVariableNames() {
     static const std::vector<std::wstring> names = {
         L"LAUNCHER_DIR", L"GAMES_DIR", L"PLAYERS_DIR", L"DATA_DIR", L"FLASHPOINT",
         L"GAME_ID",      L"GAME_NAME", L"SWF",         L"SWF_DIR",  L"PORT",
-        L"TITLE",        L"SUBTITLE",
+        L"TITLE",        L"SUBTITLE",  L"URL",       L"FILE",     L"FILE_DIR",
+        L"PLAYER_NAME",
     };
     return names;
 }

@@ -25,6 +25,8 @@ struct UserData {
     bool online = true;          // room list and update checks
     std::string defaultPlayer;   // empty = automatic (config order)
     std::wstring gamesDir;       // empty = paths.games
+    std::wstring playerName;     // passed to games as ${PLAYER_NAME}
+    bool showOriginals = false;  // list "edition": "original" actions
     int x = 0, y = 0, width = 0, height = 0;  // 0 = default placement
     bool maximized = false;
 

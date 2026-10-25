@@ -17,7 +17,7 @@ struct PlayerStatus {
     bool found() const { return !exe.empty(); }
 };
 
-enum class ActionState { Ready, NoPlayer, NoSwf };
+enum class ActionState { Ready, NoPlayer, NoSwf, NoRuntime };
 
 struct ResolvedAction {
     const GameSpec* game = nullptr;
@@ -28,6 +28,14 @@ struct ResolvedAction {
     std::vector<std::wstring> args;  // final argv after the exe
     bool swfIsUrl = false;
     bool userSwf = false;  // the file came from "Locate", not the config
+
+    // HTML5 actions (action->isWeb()).
+    bool web = false;
+    std::wstring page;      // local .html to serve, or a URL
+    bool pageLocal = false;
+    std::wstring url;       // where the browser goes; empty until the launcher knows it
+    std::wstring serverExe, serverCwd;
+    std::vector<std::wstring> serverArgs;
 };
 
 class Library {
@@ -57,6 +65,8 @@ public:
     static bool isUrl(const std::wstring& s);
 
 private:
+    ResolvedAction resolveWeb(ResolvedAction r, const ActionSpec& a, Vars v, const std::wstring& userFile,
+                              const std::string& preferred) const;
     const Config& cfg_;
     Vars vars_;
     std::vector<PlayerStatus> players_;

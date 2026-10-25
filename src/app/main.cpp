@@ -3,6 +3,7 @@
 // --launch, --relay, --validate, --snapshot).
 #include "app/cli.h"
 #include "core/config.h"
+#include "core/embedded.h"
 #include "core/fs.h"
 #include "core/install.h"
 #include "core/library.h"
@@ -98,6 +99,7 @@ const wchar_t* stateWord(ActionState s) {
         case ActionState::Ready: return L"ready";
         case ActionState::NoPlayer: return L"no player";
         case ActionState::NoSwf: return L"game file missing";
+        case ActionState::NoRuntime: return L"server program missing";
     }
     return L"?";
 }
@@ -129,7 +131,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::wstring configPath = a.config.empty() ? fs::join(exeDir, L"launcher.json") : fullPath(a.config);
     if (a.relayPort && !fs::isFile(configPath)) return runRelay(a.relayPort);  // a bare relay needs no config
 
-    LoadResult lr = loadConfigFile(configPath);
+    // No launcher.json next to the exe: use the one built into it.
+    bool builtIn = false;
+    std::string embeddedConfig;
+    if (a.config.empty() && !fs::isFile(configPath) && readEmbedded(L"launcher.json", embeddedConfig)) builtIn = true;
+    LoadResult lr = builtIn ? loadConfig(embeddedConfig, exeDir) : loadConfigFile(configPath);
     if (a.validate) {
         out(formatIssues(lr.issues));
         out(lr.ok() ? L"OK\n" : L"Configuration has errors.\n");
@@ -145,7 +151,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     std::wstring dataDir = fs::normalize(base.expand(cfg.paths.data));
     logger().open(a.log.empty() ? fs::join(dataDir, L"launcher.log") : fullPath(a.log));
     logger().setEcho(!a.launch.empty() || a.relayPort);  // --list and --validate print only their own output
-    logger().info(L"Config: " + configPath);
+    logger().info(L"Config: " + (builtIn ? std::wstring(L"built into the exe") : configPath));
     for (const auto& i : lr.issues) logger().warn(i.where + L": " + i.message);
 
     if (a.relayPort) return runRelay(a.relayPort);

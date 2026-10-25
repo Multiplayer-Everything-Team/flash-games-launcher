@@ -14,12 +14,14 @@
 #include <thread>
 
 #include "core/config.h"
+#include "core/discord.h"
 #include "core/install.h"
 #include "core/library.h"
 #include "core/process.h"
 #include "core/relay.h"
 #include "core/rooms.h"
 #include "core/settings.h"
+#include "core/webserver.h"
 #include "theme.h"
 
 namespace fl::ui {
@@ -44,30 +46,56 @@ public:
 
 private:
     struct NavItem {
-        std::string key;  // all | fav | ready | cat:<id>
+        std::string key;  // all | fav | ready | rooms | cat:<id>
         std::wstring label;
+        std::wstring icon;  // one icon-font glyph, drawn before the label
         int count = 0;
     };
     struct Session {
-        DWORD pid = 0;
+        int id = 0;
+        DWORD pid = 0;  // the player (or browser); 0 while an HTML5 server starts
         int game = -1;
         std::string action;
         std::wstring player;
         ULONGLONG started = 0;
+        int64_t startedUnix = 0;  // for Discord's elapsed time
+        std::wstring room;        // the room code it joined, if it came from a room list
         bool host = false;
+        // HTML5: what runs next to the browser, and what it told us.
+        std::shared_ptr<sys::BackgroundProcess> server;
+        std::shared_ptr<WebServer> web;
+        std::vector<std::wstring> shareLinks, lanLinks;
+        std::wstring url, exe, workDir;
+        std::vector<std::wstring> args;  // still holding ${URL}
     };
-    enum class BtnStyle { Primary, Secondary, Ghost, Danger, Check };
+    // One line of the hosting box: the relay's addresses or an HTML5 server's links.
+    struct HostLine {
+        std::wstring text;
+        int role = 0;  // 0 heading, 1 muted label, 2 address
+    };
+    enum class BtnStyle { Primary, Secondary, Ghost, Danger, Check, Tab };
     struct BtnInfo {
         BtnStyle style = BtnStyle::Secondary;
         std::wstring sub;    // second, smaller line
         std::wstring label;  // drawn text when shorter than the accessible name ("Join")
+        std::wstring icon;   // icon-font glyph before the label
+        std::wstring tag;    // small pill after the label ("Original")
         bool ready = true;
+        bool selected = false;  // Tab: the open tab
+        bool busy = false;      // a light runs around the border while its work runs
     };
     struct DetailLayout {
         RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
         std::vector<RECT> hostLines;
-        RECT rooms{}, roomsTitle{};
-        std::vector<RECT> roomRows;
+        RECT rooms{};    // Rooms tab: the room rows
+        RECT tabs{};     // the tab strip, underlined
+        RECT codeBox{};  // Rooms tab: the painted box around the room-code field
+    };
+    // One room in a list (the Rooms page or the details panel's Rooms tab).
+    struct RoomRow {
+        int game = -1;
+        RoomInfo room;
+        RECT rc{};
     };
 
     static LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l);
@@ -75,6 +103,7 @@ private:
     static LRESULT CALLBACK searchProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
     static LRESULT CALLBACK buttonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
     static LRESULT CALLBACK settingsProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    static LRESULT CALLBACK toastProc(HWND h, UINT m, WPARAM w, LPARAM l);
     LRESULT handle(UINT m, WPARAM w, LPARAM l);
 
     void create(const LauncherOptions& opt);
@@ -92,7 +121,7 @@ private:
     int selectedAction(int preferred) const;
     void refreshAll();
 
-    void paint(HDC dc);
+    void paint(HDC dc, const RECT& dirty);
     void paintSidebar(Gdiplus::Graphics& g, HDC dc);
     void paintDetail(Gdiplus::Graphics& g, HDC dc);
     void paintStatus(Gdiplus::Graphics& g, HDC dc);
@@ -108,6 +137,15 @@ private:
     bool runAction(int gameIndex, size_t actionIndex,
                    const std::vector<std::pair<std::wstring, std::wstring>>& flashvars = {});
     bool minimizeOnLaunch() const;
+    bool runWeb(int gameIndex, const ActionSpec& a, ResolvedAction r,
+                const std::vector<std::pair<std::wstring, std::wstring>>& flashvars);
+    bool launchBrowser(Session& s);
+    void onServerLine(int sessionId, const std::wstring& line);
+    void onServerReady(int sessionId, bool ok);
+    void endSession(std::vector<Session>::iterator it);
+    Session* webHostSession(int gameIndex);
+    std::vector<HostLine> hostView();
+    std::wstring clipboardText();
 
     // Rooms on the central server, polled on a worker thread.
     void startRoomPolling();
@@ -149,6 +187,69 @@ private:
     bool isPlaying(int gameIndex) const;
     bool isNarrow() const;
 
+    // Animations (core/motion.h). One frame timer runs only while something
+    // moves; with Windows' "Show animations" off, and in snapshots, nothing does.
+    void wake();
+    void onFrame();
+    bool pulsing() const;
+    // The opening entrance: the finished first frame, controls included, is
+    // drawn once into a bitmap; for a moment the window shows it in pieces
+    // (sidebar, cards, details panel) while the real controls wait hidden.
+    struct Intro {
+        ULONGLONG from = 0;
+        std::unique_ptr<Gdiplus::Bitmap> shot;
+        std::vector<RECT> cards;  // visible game cards, window coordinates
+        RECT gridBar{};           // the grid's scroll bar
+        std::vector<HWND> hidden;
+        bool layoutLater = false;  // something changed while it ran
+    };
+    void startIntro();
+    void endIntro();
+    void paintIntro(Gdiplus::Graphics& g);
+    std::unique_ptr<Intro> intro_;
+    // Cards lift a little under the mouse: game index -> 0..1.
+    std::map<int, float> lift_;
+    ULONGLONG liftTick_ = 0;
+    bool stepLift();  // true while a card is still moving
+    bool anyBusy() const;
+
+    // Online play: the Rooms page, the details panel's Rooms tab, Quick play,
+    // the server status, toasts and Discord.
+    bool roomsPage() const;
+    void layoutRoomsPage();
+    void paintRoomsPage(Gdiplus::Graphics& g);
+    void paintRoomRow(Gdiplus::Graphics& g, const RoomRow& row, bool showGame, int joinW);
+    std::vector<RoomRow> listedRooms(int onlyGame, bool hideFull) const;
+    void joinListedRoom(int game, const RoomInfo& room);
+    void joinByCode(HWND edit, int game);
+    void quickPlay();
+    size_t joinActionIndex(const GameSpec& g) const;
+    int playersOnline() const;
+    void refreshRoomsNav();
+    std::wstring serverText(Color& color) const;
+    void toast(const std::wstring& text, const Color& color);
+    void layoutToast();
+    void paintToast(HDC dc);
+    void updatePresence();
+    bool actionShown(const ActionSpec& a) const;
+
+    HWND tabPlayBtn_ = nullptr, tabRoomsBtn_ = nullptr, moreBtn_ = nullptr, quickBtn_ = nullptr;
+    HWND tabCodeEdit_ = nullptr, tabCodeBtn_ = nullptr;
+    HWND pageGameCombo_ = nullptr, pageHideFull_ = nullptr, pageCodeEdit_ = nullptr, pageCodeBtn_ = nullptr;
+    std::vector<HWND> pageRoomBtns_;
+    std::vector<RoomRow> pageRows_, tabRows_;
+    RECT pageTitle_{}, pageSub_{}, pageList_{}, pageCodeBox_{};
+    int pageScroll_ = 0;
+    int detailTab_ = 0;  // 0 Play, 1 Rooms
+    bool showMore_ = false;
+    int pingMs_ = -1, pendingPing_ = -1;  // -1: no answer
+    bool serverAsked_ = false;            // at least one poll finished
+    HWND toast_ = nullptr;
+    std::wstring toastText_;
+    Color toastColor_;
+    ULONGLONG toastFrom_ = 0;
+    std::unique_ptr<DiscordPresence> discord_;
+
     const Config& cfg_;
     Library& lib_;
     UserData& user_;
@@ -178,6 +279,8 @@ private:
     std::map<int, bool> imageTried_;
 
     std::vector<Session> sessions_;
+    int nextSessionId_ = 0;
+    std::vector<std::thread> helpers_;  // HTML5 server start-up waits
     std::unique_ptr<sys::ProcessWatcher> watcher_;
     Relay relay_;
     int relayGame_ = -1;
@@ -187,6 +290,11 @@ private:
     Color noticeColor_;
     ULONGLONG noticeUntil_ = 0;
     bool snapshot_ = false;
+    bool motion_ = true, frameTimer_ = false;
+    ULONGLONG titleFrom_ = 0;                     // the title decodes after a selection; 0 when done
+    std::map<std::wstring, ULONGLONG> codeFrom_;  // room code -> when it first showed up; 0 once decoded
+    std::map<int, ULONGLONG> joinFrom_;           // slot -> when its player joined; 0 once settled
+    size_t slotPeers_ = 0;
 
     std::thread installThread_;
     std::atomic<bool> installing_{false}, installCancel_{false};
@@ -208,6 +316,7 @@ private:
     std::atomic<bool> roomsStop_{false}, onlineOn_{true};
 
     HWND settingsWnd_ = nullptr;
+    HWND setOriginals_ = nullptr, setName_ = nullptr;
     HWND setMinimize_ = nullptr, setPlayer_ = nullptr, setOnline_ = nullptr, setDirText_ = nullptr,
          setReset_ = nullptr;
     std::vector<HWND> setLabels_;  // static texts, for fonts and colors

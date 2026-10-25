@@ -7,7 +7,7 @@ Put your own Flash game files (.swf) here. The launcher looks for these names:
   stealthhunter2_online_direct.swf    Stealth Hunter 2 Online (modded build, Flash Player)
   gunmayhem.swf                       Gun Mayhem
   fireboywatergirl.swf                Fireboy and Watergirl in the Forest Temple
-  badicecream.swf                     Bad Ice-Cream
+  BadIceCream_online.swf              Bad Ice-Cream Online (modded build; also plays on one keyboard)
   boxhead2play.swf                    Boxhead: 2Play Rooms
 
 Any other name works too: select the game in the launcher and press

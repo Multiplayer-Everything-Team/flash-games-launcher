@@ -1,9 +1,13 @@
 #include "launcher.h"
 
 #include <algorithm>
+#include <cwctype>
+#include <regex>
 
+#include "core/embedded.h"
 #include "core/fs.h"
 #include "core/log.h"
+#include "core/motion.h"
 #include "core/strings.h"
 // win.h (via theme.h) first: these need the full Windows types.
 #include <commctrl.h>
@@ -26,7 +30,38 @@ constexpr UINT WM_APP_INSTALLED = WM_APP + 4; // player install finished
 constexpr UINT WM_APP_FIRSTRUN = WM_APP + 5;  // offer to install a player
 constexpr UINT WM_APP_CATALOG = WM_APP + 6;   // fresh game catalog downloaded
 constexpr UINT WM_APP_ROOMS = WM_APP + 7;     // fresh room list from the central server
+constexpr UINT WM_APP_SERVERLINE = WM_APP + 8;  // an HTML5 server printed a line (lParam: ServerLine*)
+constexpr UINT WM_APP_SERVERREADY = WM_APP + 9; // wParam session id, lParam 1 = answering, 0 = gave up
+
+struct ServerLine {
+    int session;
+    std::wstring text;
+};
+
+// A fixed port per game keeps HTML5 saves: browsers file storage by address.
+int stablePort(const std::string& gameId) {
+    unsigned h = 2166136261u;
+    for (char ch : gameId) h = (h ^ static_cast<unsigned char>(ch)) * 16777619u;
+    return 47000 + static_cast<int>(h % 2000);
+}
 constexpr UINT_PTR kTimer = 1;
+constexpr UINT_PTR kFrameTimer = 2;
+// About 30 frames a second: enough for a slow breath and a short decode, and
+// half the repaints of 60.
+constexpr UINT kFrameMs = 33;
+constexpr ULONGLONG kTitleMs = 380, kCodeMs = 500, kJoinMs = 450, kIntroMs = 830;
+
+// Milliseconds since `from`, or "long ago" when it never started or is done.
+ULONGLONG since(ULONGLONG from) { return from ? GetTickCount64() - from : ~0ull; }
+
+bool systemAnimations() {
+    // FL_MOTION=1 or 0 overrides Windows' setting, for tests and screenshots.
+    wchar_t forced[4] = L"";
+    if (GetEnvironmentVariableW(L"FL_MOTION", forced, 4)) return forced[0] == L'1';
+    BOOL on = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0);
+    return on != FALSE;
+}
 
 enum : int {
     kIdNav = 100,
@@ -42,9 +77,27 @@ enum : int {
     kIdCopy,
     kIdDownload,
     kIdSettings,
-    kIdRoom0 = 300,
+    kIdTabPlay,
+    kIdTabRooms,
+    kIdMore,
+    kIdQuick,
+    kIdTabCode,
+    kIdTabCodeJoin,
+    kIdPageGame,
+    kIdPageHideFull,
+    kIdPageCode,
+    kIdPageCodeJoin,
     kIdAction0 = 200,
+    kIdRoom0 = 300,      // details panel Rooms tab rows
+    kIdPageRoom0 = 400,  // Rooms page rows
+    kIdPageRoomEnd = 500,
 };
+
+// Icon-font glyphs (Segoe Fluent Icons / MDL2 Assets) for the window's own items.
+constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] = L"\uE768", kIconRooms[] = L"\uE902",
+                  kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945";
+constexpr wchar_t kToastClass[] = L"MultiplayerFlashLauncherToast";
+constexpr ULONGLONG kToastMs = 4000;
 
 // 96-DPI layout units.
 constexpr int kSidebarW = 228, kDetailW = 360, kDetailNarrowW = 300, kTopH = 68, kStatusH = 32, kPad = 20;
@@ -100,6 +153,7 @@ std::wstring windowText(HWND h) {
 }
 
 std::wstring stateReason(const Config& cfg, const ResolvedAction& r) {
+    if (r.state == ActionState::NoRuntime) return cfg.t("status.noRuntime", {{L"RUNTIME", r.action->server.name}});
     if (r.state == ActionState::NoSwf) return cfg.t("status.noSwf");
     if (r.state == ActionState::NoPlayer) return cfg.t("status.noPlayer");
     return cfg.t("status.ready");
@@ -114,6 +168,10 @@ Launcher::~Launcher() {
     installCancel_ = true;
     if (installThread_.joinable()) installThread_.join();
     if (catalogThread_.joinable()) catalogThread_.join();
+    for (auto& s : sessions_)
+        if (s.server) s.server->stop();  // wakes the start-up waits below
+    for (auto& t : helpers_)
+        if (t.joinable()) t.join();
     roomsStop_ = true;
     if (roomsWake_) SetEvent(roomsWake_);
     if (roomsThread_.joinable()) roomsThread_.join();
@@ -215,6 +273,11 @@ int Launcher::run(const LauncherOptions& opt) {
                 SetWindowTextW(search_, L"");
                 continue;
             }
+            if (msg.wParam == VK_RETURN && (msg.hwnd == tabCodeEdit_ || msg.hwnd == pageCodeEdit_)) {
+                if (msg.hwnd == tabCodeEdit_) joinByCode(tabCodeEdit_, selected_);
+                else joinByCode(pageCodeEdit_, -1);
+                continue;
+            }
             if (msg.wParam == VK_RETURN && msg.hwnd == search_) {
                 if (!visible_.empty()) {
                     SetFocus(grid_);
@@ -231,6 +294,7 @@ int Launcher::run(const LauncherOptions& opt) {
 }
 
 void Launcher::create(const LauncherOptions& opt) {
+    motion_ = !snapshot_ && systemAnimations();
     HINSTANCE inst = GetModuleHandleW(nullptr);
     theme_.init(cfg_);
     WNDCLASSEXW wc{sizeof wc};
@@ -281,10 +345,14 @@ void Launcher::create(const LauncherOptions& opt) {
     if (start < 0 && !visible_.empty()) start = visible_.front();
     select(start);
     relayout();
+    // The cards were added before the grid knew its tile size; added again now,
+    // they land in order (otherwise the first arrange can leave them shuffled).
+    rebuildGrid();
     if (snapshot_) {
         SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     } else {
         ShowWindow(hwnd_, user_.maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
+        if (motion_) startIntro();
         SetTimer(hwnd_, kTimer, 1000, nullptr);
         // Nothing can start without a player: offer to install one right away.
         bool anyPlayer = false, installable = false;
@@ -295,15 +363,17 @@ void Launcher::create(const LauncherOptions& opt) {
         if (!anyPlayer && installable) PostMessageW(hwnd_, WM_APP_FIRSTRUN, 0, 0);
         onlineOn_ = user_.online;
         startRoomPolling();
+        if (!cfg_.discord.clientId.empty()) discord_ = std::make_unique<DiscordPresence>(cfg_.discord.clientId);
     }
     loadCatalog();
-    SetFocus(grid_);
+    SetFocus(intro_ ? hwnd_ : grid_);  // the grid is hidden while the entrance plays
 }
 
 void Launcher::createControls() {
     HINSTANCE inst = GetModuleHandleW(nullptr);
     auto child = [&](const wchar_t* cls, DWORD style, DWORD ex, int id) {
-        return CreateWindowExW(ex, cls, L"", WS_CHILD | WS_VISIBLE | style, 0, 0, 10, 10, hwnd_,
+        // WS_CLIPSIBLINGS: the toast floats above the other controls.
+        return CreateWindowExW(ex, cls, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | style, 0, 0, 10, 10, hwnd_,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst, nullptr);
     };
     nav_ = child(L"LISTBOX", WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT, 0,
@@ -330,10 +400,58 @@ void Launcher::createControls() {
     downloadBtn_ = makeButton(kIdDownload, BtnStyle::Secondary);
     settingsBtn_ = makeButton(kIdSettings, BtnStyle::Ghost);
     SetWindowTextW(settingsBtn_, cfg_.t("button.settings").c_str());
+    btnInfo_[settingsBtn_].icon = kIconSettings;
     ShowWindow(settingsBtn_, SW_SHOW);
+
+    // Details panel: Play / Rooms tabs, Quick play, "Other ways to connect", join by code.
+    tabPlayBtn_ = makeButton(kIdTabPlay, BtnStyle::Tab);
+    tabRoomsBtn_ = makeButton(kIdTabRooms, BtnStyle::Tab);
+    quickBtn_ = makeButton(kIdQuick, BtnStyle::Secondary);
+    btnInfo_[quickBtn_].icon = kIconQuick;
+    moreBtn_ = makeButton(kIdMore, BtnStyle::Ghost);
+    tabCodeEdit_ = child(L"EDIT", WS_TABSTOP | ES_AUTOHSCROLL | ES_UPPERCASE, 0, kIdTabCode);
+    tabCodeBtn_ = makeButton(kIdTabCodeJoin, BtnStyle::Secondary);
+    // The Rooms page: game filter, hide full rooms, join by code.
+    pageGameCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdPageGame);
+    pageHideFull_ = makeButton(kIdPageHideFull, BtnStyle::Check);
+    SetWindowTextW(pageHideFull_, cfg_.t("roomsPage.hideFull").c_str());
+    pageCodeEdit_ = child(L"EDIT", WS_TABSTOP | ES_AUTOHSCROLL | ES_UPPERCASE, 0, kIdPageCode);
+    pageCodeBtn_ = makeButton(kIdPageCodeJoin, BtnStyle::Secondary);
+    for (HWND e : {tabCodeEdit_, pageCodeEdit_}) {
+        SendMessageW(e, EM_LIMITTEXT, 8, 0);
+        SetWindowSubclass(e, searchProc, 3, reinterpret_cast<DWORD_PTR>(this));  // draws the "Room code" hint
+        SetWindowTextW(e, L"");
+        ShowWindow(e, SW_HIDE);
+    }
+    for (HWND b : {tabCodeBtn_, pageCodeBtn_}) SetWindowTextW(b, cfg_.t("roomsPage.joinCode").c_str());
+    std::wstring all = cfg_.t("roomsPage.allGames");
+    SendMessageW(pageGameCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(all.c_str()));
+    SendMessageW(pageGameCombo_, CB_SETITEMDATA, 0, static_cast<LPARAM>(-1));
+    for (size_t i = 0; i < cfg_.games.size(); ++i) {
+        if (cfg_.games[i].onlineId.empty()) continue;
+        int at = static_cast<int>(
+            SendMessageW(pageGameCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(cfg_.games[i].name.c_str())));
+        SendMessageW(pageGameCombo_, CB_SETITEMDATA, at, static_cast<LPARAM>(i));
+    }
+    SendMessageW(pageGameCombo_, CB_SETCURSEL, 0, 0);
+    ShowWindow(pageGameCombo_, SW_HIDE);
+
+    // Toasts: a small layered child window over the game grid.
+    static bool toastClass = false;
+    if (!toastClass) {
+        WNDCLASSEXW tc{sizeof tc};
+        tc.lpfnWndProc = toastProc;
+        tc.hInstance = GetModuleHandleW(nullptr);
+        tc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        tc.lpszClassName = kToastClass;
+        RegisterClassExW(&tc);
+        toastClass = true;
+    }
+    toast_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE, kToastClass, L"", WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 10, 10,
+                             hwnd_, nullptr, GetModuleHandleW(nullptr), this);
     if (theme_.dark && !theme_.highContrast) {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
-        for (HWND h : {navCombo_, playerCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
+        for (HWND h : {navCombo_, playerCombo_, pageGameCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
     }
     applyFonts();
 }
@@ -342,7 +460,7 @@ HWND Launcher::makeButton(int id, BtnStyle style, HWND parent) {
     // A real push button painted in NM_CUSTOMDRAW (not BS_OWNERDRAW) keeps the
     // Button role and Invoke action that screen readers and UI Automation use.
     DWORD kind = style == BtnStyle::Check ? BS_AUTOCHECKBOX : BS_PUSHBUTTON;
-    HWND b = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_TABSTOP | kind, 0, 0, 10, 10, parent ? parent : hwnd_,
+    HWND b = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_TABSTOP | WS_CLIPSIBLINGS | kind, 0, 0, 10, 10, parent ? parent : hwnd_,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
     SetWindowSubclass(b, buttonProc, 2, reinterpret_cast<DWORD_PTR>(this));
     btnInfo_[b].style = style;
@@ -351,8 +469,10 @@ HWND Launcher::makeButton(int id, BtnStyle style, HWND parent) {
 }
 
 void Launcher::applyFonts() {
-    for (HWND h : {nav_, navCombo_, search_, grid_, playerCombo_})
+    for (HWND h : {nav_, navCombo_, search_, grid_, playerCombo_, pageGameCombo_})
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), TRUE);
+    for (HWND h : {tabCodeEdit_, pageCodeEdit_})
+        if (h) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.button), TRUE);
     for (auto& [b, info] : btnInfo_) SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.strong), FALSE);
     SendMessageW(nav_, LB_SETITEMHEIGHT, 0, theme_.s(38));
     SendMessageW(search_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(theme_.s(4), theme_.s(4)));
@@ -363,12 +483,18 @@ void Launcher::applyFonts() {
 
 void Launcher::buildNav() {
     navItems_.clear();
-    navItems_.push_back({"all", cfg_.t("nav.all")});
-    navItems_.push_back({"fav", cfg_.t("nav.favorites")});
-    navItems_.push_back({"ready", cfg_.t("nav.ready")});
-    for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name});
+    navItems_.push_back({"all", cfg_.t("nav.all"), kIconAll});
+    navItems_.push_back({"fav", cfg_.t("nav.favorites"), kIconFav});
+    navItems_.push_back({"ready", cfg_.t("nav.ready"), kIconReady});
+    bool online = std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return !g.onlineId.empty(); });
+    if (online) navItems_.push_back({"rooms", cfg_.t("nav.rooms"), kIconRooms});
+    for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name, c.icon});
     for (auto& n : navItems_) {
         n.count = 0;
+        if (n.key == "rooms") {
+            n.count = playersOnline();
+            continue;
+        }
         for (size_t i = 0; i < cfg_.games.size(); ++i) {
             const auto& g = cfg_.games[i];
             const GameStats* st = user_.find(g.id);
@@ -386,7 +512,10 @@ void Launcher::buildNav() {
     SendMessageW(navCombo_, CB_RESETCONTENT, 0, 0);
     for (const auto& n : navItems_) {
         // The visible count is drawn separately; screen readers get it in the text.
-        std::wstring text = n.label + L" (" + std::to_wstring(n.count) + L")";
+        std::wstring text = n.label + L" (" +
+                            (n.key == "rooms" ? cfg_.t("nav.online", {{L"N", std::to_wstring(n.count)}})
+                                              : std::to_wstring(n.count)) +
+                            L")";
         SendMessageW(nav_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
         SendMessageW(navCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
     }
@@ -398,6 +527,7 @@ bool Launcher::matches(int gi) const {
     const GameSpec& g = cfg_.games[gi];
     const std::string& key = navItems_.empty() ? std::string("all") : navItems_[navIndex_].key;
     const GameStats* st = user_.find(g.id);
+    if (key == "rooms") return false;  // the Rooms page replaces the grid
     if (key == "fav" && !(st && st->favorite)) return false;
     if (key == "ready" && lib_.gameState(g, user_) != ActionState::Ready) return false;
     if (key.rfind("cat:", 0) == 0 &&
@@ -435,13 +565,16 @@ void Launcher::rebuildGrid() {
     }
     SendMessageW(grid_, WM_SETREDRAW, TRUE, 0);
     suppressSelect_ = false;
-    ShowWindow(grid_, visible_.empty() ? SW_HIDE : SW_SHOW);
+    ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
     hoverItem_ = -1;
+    pageScroll_ = 0;
+    layoutRoomsPage();
     InvalidateRect(grid_, nullptr, TRUE);
     InvalidateRect(hwnd_, &gridRc_, FALSE);
 }
 
 void Launcher::select(int gi) {
+    if (gi != selected_ && gi >= 0 && motion_) titleFrom_ = GetTickCount64();
     selected_ = gi;
     if (gi >= 0) user_.selectedGame = cfg_.games[gi].id;
     // Player choice: "Automatic" plus every player any action of this game allows.
@@ -473,8 +606,12 @@ void Launcher::select(int gi) {
         }
         SendMessageW(playerCombo_, CB_SETCURSEL, sel, 0);
     }
+    if (gi < 0 || cfg_.games[gi].onlineId.empty()) detailTab_ = 0;
     // One button per action, created on demand and reused.
     size_t count = gi >= 0 ? cfg_.games[gi].actions.size() : 0;
+    size_t lead = count;
+    for (size_t i = 0; i < count && lead == count; ++i)
+        if (actionShown(cfg_.games[gi].actions[i]) && !cfg_.games[gi].actions[i].more) lead = i;
     while (actionBtns_.size() < count)
         actionBtns_.push_back(makeButton(kIdAction0 + static_cast<int>(actionBtns_.size()), BtnStyle::Secondary));
     for (size_t i = 0; i < actionBtns_.size(); ++i) {
@@ -487,8 +624,9 @@ void Launcher::select(int gi) {
         const ActionSpec& a = g.actions[i];
         ResolvedAction r = lib_.resolve(g, a, user_);
         BtnInfo& info = btnInfo_[b];
-        info.style = i == 0 ? BtnStyle::Primary : BtnStyle::Secondary;
+        info.style = i == lead ? BtnStyle::Primary : BtnStyle::Secondary;
         info.ready = r.state == ActionState::Ready;
+        info.tag = a.original ? cfg_.t("badge.original") : std::wstring();
         std::wstring sub = a.description;
         if (sub.empty() && r.player) sub = r.player->name;
         if (r.state != ActionState::Ready) sub = stateReason(cfg_, r);
@@ -528,6 +666,7 @@ bool Launcher::isNarrow() const {
 }
 
 void Launcher::relayout() {
+    endIntro();
     RECT cr;
     GetClientRect(hwnd_, &cr);
     if (cr.right <= 0 || cr.bottom <= 0) return;
@@ -571,7 +710,9 @@ void Launcher::relayout() {
     MoveWindow(grid_, gridRc_.left + t.s(kPad) - t.s(kGap) / 2, gridRc_.top,
                width(gridRc_) - t.s(kPad) * 2 + t.s(kGap), height(gridRc_), TRUE);
     layoutGrid();
+    layoutRoomsPage();
     layoutDetail();
+    layoutToast();
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -601,15 +742,24 @@ void Launcher::layoutGrid() {
 }
 
 void Launcher::layoutDetail() {
+    if (intro_) {
+        intro_->layoutLater = true;
+        return;
+    }
     dl_ = {};
-    std::vector<HWND> all = {playerCombo_, favBtn_, locateBtn_, folderBtn_, getPlayerBtn_, stopHostBtn_, copyBtn_,
-                             downloadBtn_};
+    tabRows_.clear();
+    std::vector<HWND> all = {playerCombo_, favBtn_,      locateBtn_,   folderBtn_,  getPlayerBtn_,
+                             stopHostBtn_, copyBtn_,     downloadBtn_, tabPlayBtn_, tabRoomsBtn_,
+                             moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_};
     all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
     all.insert(all.end(), actionBtns_.begin(), actionBtns_.end());
     if (selected_ < 0 || width(detail_) <= 0) {
         for (HWND h : all) ShowWindow(h, SW_HIDE);
         return;
     }
+    // Controls placed below are collected here and shown together at the end;
+    // hiding everything first would throw keyboard focus out of the panel.
+    std::set<HWND> shown;
     const Theme& t = theme_;
     const GameSpec& g = cfg_.games[selected_];
     HDC dc = GetDC(hwnd_);
@@ -621,168 +771,199 @@ void Launcher::layoutDetail() {
     int metaH = meta.empty() ? 0 : textHeight(dc, t.caption, meta, w);
     bool hostingThis = relay_.running() && relayGame_ == selected_;
     int slotsH = g.maxPlayers > 0 ? t.s(hostingThis ? 56 : 40) : 0;
+    // Games with online rooms get two tabs: Play (the actions) and Rooms.
+    bool tabs = !g.onlineId.empty() && onlineOn_;
+    if (!tabs) detailTab_ = 0;
+    bool roomsTab = detailTab_ == 1;
+    int tabsH = tabs ? t.s(36) : 0;
 
     // Everything below the description is laid out bottom-up from the panel's
     // end, so the buttons never move when the description is long.
     int bottom = detail_.bottom - t.s(kPad);
-    int rowH = t.s(34), actionH = t.s(54), gap = t.s(8);
+    int rowH = t.s(34), actionH = t.s(54), gap = t.s(8), roomRowH = t.s(40);
     const GameStats* st = user_.find(g.id);
+    // Originals show only when Settings asks; "more" actions (direct IP, LAN)
+    // wait behind "Other ways to connect".
+    std::vector<size_t> mainActs, moreActs;
+    for (size_t i = 0; i < g.actions.size(); ++i) {
+        if (!actionShown(g.actions[i])) continue;
+        (g.actions[i].more ? moreActs : mainActs).push_back(i);
+    }
+    std::vector<size_t> listed = mainActs;
+    if (showMore_) listed.insert(listed.end(), moreActs.begin(), moreActs.end());
+    bool quick = tabs && roomsKnown_ && !g.joinAction.empty();
     const ActionSpec* missingSwf = nullptr;
     const PlayerSpec* missingPlayer = nullptr;
-    for (const auto& a : g.actions) {
+    const ServerSpec* missingRuntime = nullptr;
+    for (size_t i : listed) {
+        const ActionSpec& a = g.actions[i];
         ResolvedAction r = lib_.resolve(g, a, user_);
         if (r.state == ActionState::NoSwf && !missingSwf) missingSwf = &a;
         if (r.state == ActionState::NoPlayer && !missingPlayer && r.player) missingPlayer = r.player;
+        if (r.state == ActionState::NoRuntime && !missingRuntime) missingRuntime = &a.server;
     }
-    bool hosting = relay_.running() && relayGame_ == selected_;
-    RelaySnapshot snap = relay_.snapshot();
-    int hostLines = 2 + static_cast<int>(std::min<size_t>(std::max<size_t>(addresses_.size(), 1), 3));
+    std::vector<HostLine> hostLinesView = hostView();
+    bool hosting = !hostLinesView.empty();
+    int hostLines = static_cast<int>(hostLinesView.size());
     int hostLineH = textHeight(dc, t.caption, L"Ag", 100, DT_SINGLELINE) + t.s(4);
     int hostBoxH = t.s(14) + hostLines * hostLineH + t.s(8) + rowH + t.s(14);
     int comboH = t.s(30);
     bool picker = SendMessageW(playerCombo_, CB_GETCOUNT, 0, 0) > 2;  // "Automatic" + 2 players
-
-    // Short windows: thinner action buttons (no second line) and no player picker,
-    // so the game's name and state stay visible above the buttons.
     std::vector<CatalogFile> downloadable = missingSwf ? missingGameFiles(g) : std::vector<CatalogFile>{};
     bool isUpdate = downloadable.empty();
     if (isUpdate) downloadable = outdatedFor(g);
-    // Open rooms: a title, then up to three rows with a Join button, or one line
-    // saying there are none.
-    bool showRooms = !g.onlineId.empty() && onlineOn_ && roomsKnown_;
     std::vector<RoomInfo> roomList;
-    if (showRooms)
+    if (tabs)
         if (auto it = rooms_.find(g.id); it != rooms_.end()) roomList = it->second;
-    size_t roomRowsN = std::min<size_t>(roomList.size(), 3);
-    int roomRowH = t.s(34), roomTitleH = textHeight(dc, t.strong, L"Ag", 100, DT_SINGLELINE) + t.s(6);
-    int noneH = textHeight(dc, t.caption, cfg_.t("rooms.none"), w);
-    int roomsBoxH = !showRooms ? 0 : roomTitleH + (roomRowsN ? static_cast<int>(roomRowsN) * roomRowH : noneH + t.s(4));
-    int fixed = rowH + gap + (missingPlayer ? rowH + gap : 0) + (missingSwf ? rowH + gap : 0) +
-                (downloadable.empty() ? 0 : rowH + gap) + (roomsBoxH ? roomsBoxH + t.s(12) : 0) +
-                (hosting ? hostBoxH + t.s(12) : 0);
-    int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0);
-    int actionsH = static_cast<int>(g.actions.size()) * (actionH + gap) + (picker ? comboH + t.s(16) : 0);
-    if (bottom - fixed - actionsH < y + headerMin) {
-        actionH = t.s(40);
-        picker = false;
-    }
 
-    // Row: favorite + folder (ghost buttons).
-    SetWindowTextW(favBtn_, cfg_.t(st && st->favorite ? "button.unfavorite" : "button.favorite").c_str());
-    SetWindowTextW(folderBtn_, cfg_.t("button.folder").c_str());
-    int half = (w - gap) / 2;
-    MoveWindow(favBtn_, x, bottom - rowH, half, rowH, TRUE);
-    MoveWindow(folderBtn_, x + half + gap, bottom - rowH, w - half - gap, rowH, TRUE);
-    ShowWindow(favBtn_, SW_SHOW);
-    ShowWindow(folderBtn_, SW_SHOW);
-    bottom -= rowH + gap;
-
-    // Fix-it buttons for whatever stops the game from starting.
     auto place = [&](HWND b, bool show) {
-        if (!show) {
-            ShowWindow(b, SW_HIDE);
-            return;
-        }
+        if (!show) return;
         MoveWindow(b, x, bottom - rowH, w, rowH, TRUE);
-        ShowWindow(b, SW_SHOW);
+        shown.insert(b);
         bottom -= rowH + gap;
     };
-    if (missingPlayer)
-        SetWindowTextW(getPlayerBtn_, cfg_.t(missingPlayer->install.enabled() ? "button.installPlayer" : "button.getPlayer",
-                                             {{L"PLAYER", missingPlayer->name}})
-                                          .c_str());
-    EnableWindow(getPlayerBtn_, !installing_);
-    place(getPlayerBtn_, missingPlayer != nullptr);
-    if (missingSwf)
-        SetWindowTextW(locateBtn_, (g.actions.size() > 1 ? cfg_.t("button.locateFor", {{L"ACTION", missingSwf->label}})
+    int headerBottom = bottom;
+    if (!roomsTab) {
+        // Short windows: thinner action buttons (no second line) and no player
+        // picker, so the game's name and state stay visible above the buttons.
+        int fixed = rowH + gap + (missingPlayer || missingRuntime ? rowH + gap : 0) + (missingSwf ? rowH + gap : 0) +
+                    (downloadable.empty() ? 0 : rowH + gap) + (hosting ? hostBoxH + t.s(12) : 0) +
+                    (moreActs.empty() ? 0 : rowH + gap) +
+                    (showMore_ ? static_cast<int>(moreActs.size()) * (actionH + gap) : 0);
+        int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0) + (tabs ? tabsH + t.s(12) : 0);
+        int actionsH = static_cast<int>(mainActs.size() + (quick ? 1 : 0)) * (actionH + gap) +
+                       (picker ? comboH + t.s(16) : 0);
+        if (bottom - fixed - actionsH < y + headerMin) {
+            actionH = t.s(40);
+            picker = false;
+        }
+
+        // Row: favorite + folder (ghost buttons).
+        SetWindowTextW(favBtn_, cfg_.t(st && st->favorite ? "button.unfavorite" : "button.favorite").c_str());
+        SetWindowTextW(folderBtn_, cfg_.t("button.folder").c_str());
+        int half = (w - gap) / 2;
+        MoveWindow(favBtn_, x, bottom - rowH, half, rowH, TRUE);
+        MoveWindow(folderBtn_, x + half + gap, bottom - rowH, w - half - gap, rowH, TRUE);
+        shown.insert(favBtn_);
+        shown.insert(folderBtn_);
+        bottom -= rowH + gap;
+
+        // Fix-it buttons for whatever stops the game from starting.
+        if (missingPlayer)
+            SetWindowTextW(getPlayerBtn_,
+                           cfg_.t(missingPlayer->install.enabled() ? "button.installPlayer" : "button.getPlayer",
+                                  {{L"PLAYER", missingPlayer->name}})
+                               .c_str());
+        if (!missingPlayer && missingRuntime)
+            SetWindowTextW(getPlayerBtn_, cfg_.t("button.getRuntime", {{L"RUNTIME", missingRuntime->name}}).c_str());
+        EnableWindow(getPlayerBtn_, !installing_);
+        btnInfo_[getPlayerBtn_].busy = installing_ && !jobIsGame_;
+        place(getPlayerBtn_, missingPlayer != nullptr || missingRuntime != nullptr);
+        if (missingSwf)
+            SetWindowTextW(locateBtn_, (listed.size() > 1 ? cfg_.t("button.locateFor", {{L"ACTION", missingSwf->label}})
                                                           : cfg_.t("button.locate"))
-                                       .c_str());
-    place(locateBtn_, missingSwf != nullptr);
-    if (!downloadable.empty()) {
-        uint64_t bytes = 0;
-        for (const auto& f : downloadable) bytes += f.size;
-        SetWindowTextW(downloadBtn_,
-                       cfg_.t(isUpdate ? "button.updateGame" : "button.downloadGame", {{L"SIZE", formatBytes(bytes)}}).c_str());
-        // Missing files block play, so that fix leads; an update is optional.
-        btnInfo_[downloadBtn_].style = isUpdate ? BtnStyle::Secondary : BtnStyle::Primary;
-    }
-    EnableWindow(downloadBtn_, !installing_);
-    place(downloadBtn_, !downloadable.empty());
-
-    // Hosting box: relay status, peers, this PC's addresses.
-    ShowWindow(stopHostBtn_, hosting ? SW_SHOW : SW_HIDE);
-    ShowWindow(copyBtn_, hosting ? SW_SHOW : SW_HIDE);
-    if (hosting) {
-        dl_.host = {x, bottom - hostBoxH, x + w, bottom};
-        int by = dl_.host.top + t.s(14);
-        for (int i = 0; i < hostLines; ++i, by += hostLineH)
-            dl_.hostLines.push_back({x + t.s(14), by, x + w - t.s(14), by + hostLineH});
-        int bw = (w - t.s(28) - gap) / 2;
-        MoveWindow(copyBtn_, x + t.s(14), dl_.host.bottom - t.s(14) - rowH, bw, rowH, TRUE);
-        MoveWindow(stopHostBtn_, x + t.s(14) + bw + gap, dl_.host.bottom - t.s(14) - rowH, w - t.s(28) - bw - gap, rowH,
-                   TRUE);
-        SetWindowTextW(copyBtn_, cfg_.t("button.copyAddress").c_str());
-        SetWindowTextW(stopHostBtn_, cfg_.t("button.stopHost").c_str());
-        bottom = dl_.host.top - t.s(12);
-    }
-
-    // Open rooms, right under the action buttons (Join belongs with them).
-    for (size_t i = 0; i < roomBtns_.size(); ++i) ShowWindow(roomBtns_[i], SW_HIDE);
-    if (roomsBoxH) {
-        dl_.rooms = {x, bottom - roomsBoxH, x + w, bottom};
-        dl_.roomsTitle = {x, dl_.rooms.top, x + w, dl_.rooms.top + roomTitleH};
-        int ry = dl_.roomsTitle.bottom;
-        while (roomBtns_.size() < roomRowsN) {
-            HWND b = makeButton(kIdRoom0 + static_cast<int>(roomBtns_.size()), BtnStyle::Secondary);
-            btnInfo_[b].label = cfg_.t("rooms.join");
-            roomBtns_.push_back(b);
+                                           .c_str());
+        place(locateBtn_, missingSwf != nullptr);
+        if (!downloadable.empty()) {
+            uint64_t bytes = 0;
+            for (const auto& f : downloadable) bytes += f.size;
+            SetWindowTextW(downloadBtn_, cfg_.t(isUpdate ? "button.updateGame" : "button.downloadGame",
+                                                {{L"SIZE", formatBytes(bytes)}})
+                                             .c_str());
+            // Missing files block play, so that fix leads; an update is optional.
+            btnInfo_[downloadBtn_].style = isUpdate ? BtnStyle::Secondary : BtnStyle::Primary;
         }
-        for (size_t i = 0; i < roomRowsN; ++i, ry += roomRowH) {
-            RECT row{x, ry, x + w, ry + roomRowH};
-            dl_.roomRows.push_back(row);
-            int bw = t.s(64);
-            MoveWindow(roomBtns_[i], row.right - bw, row.top + t.s(3), bw, roomRowH - t.s(6), TRUE);
-            // The accessible name says which room; the button itself just reads "Join".
-            SetWindowTextW(roomBtns_[i], cfg_.t("rooms.joinName", {{L"CODE", roomList[i].code}}).c_str());
-            EnableWindow(roomBtns_[i], roomList[i].max <= 0 || roomList[i].players < roomList[i].max);
-            ShowWindow(roomBtns_[i], SW_SHOW);
+        EnableWindow(downloadBtn_, !installing_);
+        btnInfo_[downloadBtn_].busy = installing_ && jobIsGame_;
+        place(downloadBtn_, !downloadable.empty());
+
+        // Hosting box: relay status, peers, this PC's addresses.
+        if (hosting) {
+            dl_.host = {x, bottom - hostBoxH, x + w, bottom};
+            int by = dl_.host.top + t.s(14);
+            for (int i = 0; i < hostLines; ++i, by += hostLineH)
+                dl_.hostLines.push_back({x + t.s(14), by, x + w - t.s(14), by + hostLineH});
+            int bw = (w - t.s(28) - gap) / 2;
+            MoveWindow(copyBtn_, x + t.s(14), dl_.host.bottom - t.s(14) - rowH, bw, rowH, TRUE);
+            MoveWindow(stopHostBtn_, x + t.s(14) + bw + gap, dl_.host.bottom - t.s(14) - rowH,
+                       w - t.s(28) - bw - gap, rowH, TRUE);
+            SetWindowTextW(copyBtn_, cfg_.t("button.copyAddress").c_str());
+            SetWindowTextW(stopHostBtn_, cfg_.t("button.stopHost").c_str());
+            shown.insert(copyBtn_);
+            shown.insert(stopHostBtn_);
+            bottom = dl_.host.top - t.s(12);
         }
-        bottom = dl_.rooms.top - t.s(12);
-    }
 
-    // Action buttons, last one at the bottom.
-    for (size_t i = g.actions.size(); i-- > 0;) {
-        HWND b = actionBtns_[i];
-        MoveWindow(b, x, bottom - actionH, w, actionH, TRUE);
-        ShowWindow(b, SW_SHOW);
-        bottom -= actionH + gap;
-    }
-    for (size_t i = g.actions.size(); i < actionBtns_.size(); ++i) ShowWindow(actionBtns_[i], SW_HIDE);
+        // Action buttons, bottom-up: the "more" ones under their toggle, then the
+        // rest, Quick play right under the leading action.
+        auto placeAction = [&](size_t i) {
+            HWND b = actionBtns_[i];
+            const ActionSpec& a = g.actions[i];
+            bool starting = std::any_of(sessions_.begin(), sessions_.end(), [&](const Session& s) {
+                return s.game == selected_ && s.action == a.id && s.server && !s.pid;
+            });
+            btnInfo_[b].busy = starting;
+            MoveWindow(b, x, bottom - actionH, w, actionH, TRUE);
+            shown.insert(b);
+            bottom -= actionH + gap;
+        };
+        if (showMore_)
+            for (size_t k = moreActs.size(); k-- > 0;) placeAction(moreActs[k]);
+        if (!moreActs.empty()) {
+            SetWindowTextW(moreBtn_, cfg_.t(showMore_ ? "button.less" : "button.more").c_str());
+            btnInfo_[moreBtn_].icon = showMore_ ? kIconLess : kIconMore;
+            place(moreBtn_, true);
+        }
+        for (size_t k = mainActs.size(); k-- > 1;) placeAction(mainActs[k]);
+        if (quick) {
+            const RoomInfo* busiest = nullptr;
+            for (const auto& r : roomList)
+                if ((r.max <= 0 || r.players < r.max) && (!busiest || r.players > busiest->players)) busiest = &r;
+            SetWindowTextW(quickBtn_, cfg_.t("button.quickPlay").c_str());
+            btnInfo_[quickBtn_].sub = cfg_.t(busiest ? "button.quickJoin" : "button.quickHost");
+            MoveWindow(quickBtn_, x, bottom - actionH, w, actionH, TRUE);
+            shown.insert(quickBtn_);
+            bottom -= actionH + gap;
+        }
+        if (!mainActs.empty()) placeAction(mainActs[0]);
 
-    // Player picker, only worth showing when there is a choice.
-    if (picker) {
-        bottom -= t.s(4);
-        int labelW = textWidth(dc, t.strong, cfg_.t("detail.player")) + t.s(12);
-        dl_.playerLabel = {x, bottom - comboH, x + labelW, bottom};
-        MoveWindow(playerCombo_, x + labelW, bottom - comboH, w - labelW, t.s(240), TRUE);
-        ShowWindow(playerCombo_, SW_SHOW);
-        bottom -= comboH + t.s(12);
+        // Player picker, only worth showing when there is a choice.
+        if (picker) {
+            bottom -= t.s(4);
+            int labelW = textWidth(dc, t.strong, cfg_.t("detail.player")) + t.s(12);
+            dl_.playerLabel = {x, bottom - comboH, x + labelW, bottom};
+            MoveWindow(playerCombo_, x + labelW, bottom - comboH, w - labelW, t.s(240), TRUE);
+            shown.insert(playerCombo_);
+            bottom -= comboH + t.s(12);
+        }
+        headerBottom = bottom;
     } else {
-        ShowWindow(playerCombo_, SW_HIDE);
+        // Rooms tab: join by code at the bottom, the room rows above it.
+        int jbw = textWidth(dc, t.button, cfg_.t("roomsPage.joinCode")) + t.s(32);
+        int lineH = textHeight(dc, t.button, L"Ag", 100, DT_SINGLELINE);
+        dl_.codeBox = {x, bottom - rowH, x + w - jbw - gap, bottom};
+        MoveWindow(tabCodeEdit_, dl_.codeBox.left + t.s(12), dl_.codeBox.top + (rowH - lineH) / 2,
+                   width(dl_.codeBox) - t.s(20), lineH, TRUE);
+        MoveWindow(tabCodeBtn_, x + w - jbw, bottom - rowH, jbw, rowH, TRUE);
+        shown.insert(tabCodeEdit_);
+        shown.insert(tabCodeBtn_);
+        bottom -= rowH + t.s(14);
+        headerBottom = bottom - roomRowH * 2;  // the header gives way to at least two rows
     }
 
     // The art gives way before the description does: keep room for two lines of it.
-    int descMin = g.description.empty() ? 0 : textHeight(dc, t.body, L"Ag", w, DT_SINGLELINE) * 2 + t.s(10);
-    int headerH = titleH + t.s(4) + metaH + t.s(10) + (slotsH ? slotsH + t.s(12) : 0) + t.s(24) + t.s(12) + descMin;
+    int descMin = roomsTab || g.description.empty() ? 0 : textHeight(dc, t.body, L"Ag", w, DT_SINGLELINE) * 2 + t.s(10);
+    int headerH = titleH + t.s(4) + metaH + t.s(10) + (slotsH ? slotsH + t.s(12) : 0) + t.s(24) + t.s(12) +
+                  (tabs ? tabsH + t.s(12) : 0) + descMin;
     int artH = std::min(static_cast<int>(w * 0.5625), t.s(200));
-    int room = bottom - t.s(8) - y - headerH - t.s(16);
+    int room = headerBottom - t.s(8) - y - headerH - t.s(16);
     if (room < artH) artH = room >= t.s(72) ? room : 0;
     if (artH > 0) {
         dl_.art = {x, y, x + w, y + artH};
         y += artH + t.s(16);
     }
     // Each header line is shown only while it still fits above the controls.
-    int limit = bottom - t.s(8);
+    int limit = headerBottom - t.s(8);
     if (y + titleH <= limit) {
         dl_.title = {x, y, x + w, y + titleH};
         y += titleH + t.s(4);
@@ -799,33 +980,60 @@ void Launcher::layoutDetail() {
         dl_.status = {x, y, x + w, y + t.s(24)};
         y += t.s(24) + t.s(12);
     }
+    if (tabs) {
+        std::wstring playLabel = cfg_.t("tab.play");
+        std::wstring roomsLabel = roomList.empty() ? cfg_.t("tab.rooms")
+                                                   : cfg_.t("tab.roomsCount", {{L"N", std::to_wstring(roomList.size())}});
+        int tw1 = textWidth(dc, t.button, playLabel) + t.s(28), tw2 = textWidth(dc, t.button, roomsLabel) + t.s(28);
+        dl_.tabs = {x, y, x + w, y + tabsH};
+        SetWindowTextW(tabPlayBtn_, playLabel.c_str());
+        SetWindowTextW(tabRoomsBtn_, roomsLabel.c_str());
+        btnInfo_[tabPlayBtn_].selected = !roomsTab;
+        btnInfo_[tabRoomsBtn_].selected = roomsTab;
+        MoveWindow(tabPlayBtn_, x, y, tw1, tabsH, TRUE);
+        MoveWindow(tabRoomsBtn_, x + tw1, y, tw2, tabsH, TRUE);
+        shown.insert(tabPlayBtn_);
+        shown.insert(tabRoomsBtn_);
+        y += tabsH + t.s(12);
+    }
 
-    // Text between the status pill and the controls, dropped when it doesn't fit.
-    int textBottom = bottom - t.s(8);
-    std::wstring stats;
-    stats = statsText(st);
-    int statsH = textHeight(dc, t.caption, stats, w);
-    if (textBottom - statsH >= y) {
-        dl_.stats = {x, textBottom - statsH, x + w, textBottom};
-        textBottom = dl_.stats.top - t.s(10);
-    }
-    if (!g.controls.empty()) {
-        int headH = textHeight(dc, t.strong, cfg_.t("detail.controls"), w);
-        int ch = textHeight(dc, t.caption, g.controls, w);
-        int avail = textBottom - y - headH - t.s(4);
-        if (avail > t.s(16)) {
-            ch = std::min(ch, avail);
-            dl_.controls = {x, textBottom - ch, x + w, textBottom};
-            dl_.controlsHead = {x, dl_.controls.top - t.s(4) - headH, x + w, dl_.controls.top - t.s(4)};
-            textBottom = dl_.controlsHead.top - t.s(12);
+    if (roomsTab) {
+        dl_.rooms = {x, y, x + w, bottom};
+        size_t fit = static_cast<size_t>(std::max(0, (bottom - y) / roomRowH));
+        size_t n = std::min(roomList.size(), fit);
+        while (roomBtns_.size() < n) {
+            HWND b = makeButton(kIdRoom0 + static_cast<int>(roomBtns_.size()), BtnStyle::Secondary);
+            btnInfo_[b].label = cfg_.t("rooms.join");
+            roomBtns_.push_back(b);
+            all.push_back(b);
         }
+        for (size_t i = 0; i < n; ++i) {
+            RECT row{x, y + static_cast<int>(i) * roomRowH, x + w, y + static_cast<int>(i + 1) * roomRowH};
+            tabRows_.push_back({selected_, roomList[i], row});
+            int bw = t.s(64);
+            MoveWindow(roomBtns_[i], row.right - bw, row.top + t.s(4), bw, roomRowH - t.s(8), TRUE);
+            // The accessible name says which room; the button itself just reads "Join".
+            SetWindowTextW(roomBtns_[i], cfg_.t("rooms.joinName", {{L"CODE", roomList[i].code}}).c_str());
+            EnableWindow(roomBtns_[i], roomList[i].max <= 0 || roomList[i].players < roomList[i].max);
+            shown.insert(roomBtns_[i]);
+        }
+    } else {
+        // Text between the tabs and the controls, dropped when it doesn't fit.
+        int textBottom = bottom - t.s(8);
+        std::wstring stats = statsText(st);
+        int statsH = textHeight(dc, t.caption, stats, w);
+        if (textBottom - statsH >= y) {
+            dl_.stats = {x, textBottom - statsH, x + w, textBottom};
+            textBottom = dl_.stats.top - t.s(10);
+        }
+        dl_.desc = {x, y, x + w, std::max(y, textBottom)};
+        descText_ = fitText(dc, t.body, g.description, w, height(dl_.desc));
     }
-    dl_.desc = {x, y, x + w, std::max(y, textBottom)};
-    descText_ = fitText(dc, t.body, g.description, w, height(dl_.desc));
-    controlsText_ = fitText(dc, t.caption, g.controls, w, height(dl_.controls));
     ReleaseDC(hwnd_, dc);
+    for (HWND h : all) ShowWindow(h, shown.count(h) ? SW_SHOW : SW_HIDE);
     InvalidateRect(hwnd_, &detail_, FALSE);
     for (HWND hb : all) InvalidateRect(hb, nullptr, FALSE);
+    wake();
 }
 
 // ---- painting -------------------------------------------------------------
@@ -844,6 +1052,11 @@ std::wstring Launcher::stateText(int gi, Color& color) const {
             color = theme_.c.success;
             return cfg_.t("status.ready");
         case ActionState::NoPlayer: color = theme_.c.error; return cfg_.t("status.noPlayer");
+        case ActionState::NoRuntime:
+            color = theme_.c.error;
+            for (const auto& a : cfg_.games[gi].actions)
+                if (a.server.enabled()) return cfg_.t("status.noRuntime", {{L"RUNTIME", a.server.name}});
+            return cfg_.t("status.noPlayer");
         case ActionState::NoSwf: break;
     }
     color = theme_.c.warning;
@@ -860,9 +1073,11 @@ Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
     if (!imageTried_[gi]) {
         imageTried_[gi] = true;
         if (!g.image.empty()) {
-            std::wstring path = lib_.vars().expand(g.image);
-            if (!fs::isAbsolute(path)) path = fs::join(cfg_.configDir, path);
-            images_[gi] = loadImageFile(path);
+            std::wstring rel = lib_.vars().expand(g.image);
+            std::wstring path = fs::isAbsolute(rel) ? rel : fs::join(cfg_.configDir, rel);
+            std::string bytes;
+            if (!fs::isFile(path) && !fs::isAbsolute(rel) && readEmbedded(rel, bytes)) images_[gi] = loadImageBytes(bytes);
+            else images_[gi] = loadImageFile(path);
         }
     }
     std::unique_ptr<Bitmap> bmp;
@@ -871,7 +1086,7 @@ Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
         bmp = std::make_unique<Bitmap>(w, h, PixelFormat32bppPARGB);
         Graphics gg(bmp.get());
         gg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-        drawCover(gg, *images_[gi], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true);
+        drawCover(gg, *images_[gi], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true, g.imageFocus);
     } else {
         bmp = coverArt(g.name, g.color, g.colorEnd, w, h);
     }
@@ -880,12 +1095,22 @@ Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
     return raw;
 }
 
-void Launcher::paint(HDC dc) {
+void Launcher::paint(HDC dc, const RECT& dirty) {
     RECT cr;
     GetClientRect(hwnd_, &cr);
     Buffer buf(dc, cr.right, cr.bottom);
+    if (intro_) {
+        {
+            Graphics g(buf.dc);
+            paintIntro(g);
+        }
+        BitBlt(dc, 0, 0, cr.right, cr.bottom, buf.dc, 0, 0, SRCCOPY);
+        return;
+    }
     {
         Graphics g(buf.dc);
+        // Animation frames invalidate a few small rectangles; skip the rest.
+        g.SetClip(rf(dirty));
         g.SetSmoothingMode(SmoothingModeAntiAlias);
         const Theme& t = theme_;
         SolidBrush bg(gc(t.c.background));
@@ -898,7 +1123,9 @@ void Launcher::paint(HDC dc) {
         RECT icon{searchBox_.left + t.s(10), searchBox_.top, searchBox_.left + t.s(30), searchBox_.bottom};
         drawText(g, L"\u2315", icon, t.body, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
 
-        if (visible_.empty()) {
+        if (roomsPage()) {
+            paintRoomsPage(g);
+        } else if (visible_.empty()) {
             RECT r = gridRc_;
             r.top += t.s(80);
             drawText(g, cfg_.t("empty.title"), r, t.heading, t.c.text, DT_CENTER | DT_SINGLELINE);
@@ -908,7 +1135,7 @@ void Launcher::paint(HDC dc) {
         paintDetail(g, buf.dc);
         paintStatus(g, buf.dc);
     }
-    BitBlt(dc, 0, 0, cr.right, cr.bottom, buf.dc, 0, 0, SRCCOPY);
+    BitBlt(dc, dirty.left, dirty.top, width(dirty), height(dirty), buf.dc, dirty.left, dirty.top, SRCCOPY);
 }
 
 void Launcher::paintSidebar(Graphics& g, HDC) {
@@ -940,7 +1167,12 @@ void Launcher::paintDetail(Graphics& g, HDC) {
     if (height(dl_.art) > 0)
         if (Bitmap* a = art(selected_, width(dl_.art), height(dl_.art), true))
             drawCover(g, *a, rf(dl_.art), t.sf(12), true);
-    if (height(dl_.title) > 0) drawText(g, game.name, dl_.title, t.title, t.c.text, DT_WORDBREAK);
+    if (height(dl_.title) > 0) {
+        std::wstring title = game.name;
+        if (ULONGLONG e = since(titleFrom_); e < kTitleMs)
+            title = motion::scramble(title, static_cast<float>(e) / kTitleMs, static_cast<uint32_t>(e / 50));
+        drawText(g, title, dl_.title, t.title, t.c.text, DT_WORDBREAK);
+    }
     if (height(dl_.meta) > 0) drawText(g, categoryText(game), dl_.meta, t.caption, t.c.textMuted, DT_WORDBREAK);
     if (height(dl_.slots) > 0) paintSlots(g, game);
 
@@ -961,54 +1193,37 @@ void Launcher::paintDetail(Graphics& g, HDC) {
     }
 
     if (height(dl_.desc) > 0) drawText(g, descText_, dl_.desc, t.body, t.c.text, DT_WORDBREAK);
-    if (height(dl_.controls) > 0) {
-        drawText(g, cfg_.t("detail.controls"), dl_.controlsHead, t.strong, t.c.text, DT_SINGLELINE);
-        drawText(g, controlsText_, dl_.controls, t.caption, t.c.textMuted, DT_WORDBREAK);
-    }
     std::wstring stats = statsText(user_.find(game.id));
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);
     if (width(dl_.playerLabel) > 0)
         drawText(g, cfg_.t("detail.player"), dl_.playerLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
 
-    if (height(dl_.rooms) > 0) {
-        drawText(g, cfg_.t("rooms.title"), dl_.roomsTitle, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
-        std::vector<RoomInfo> list;
-        if (auto it = rooms_.find(game.id); it != rooms_.end()) list = it->second;
+    if (height(dl_.tabs) > 0) {
         Pen line(gc(t.c.border), 1);
-        if (dl_.roomRows.empty()) {
-            RECT nr{dl_.rooms.left, dl_.roomsTitle.bottom, dl_.rooms.right, dl_.rooms.bottom};
-            drawText(g, cfg_.t("rooms.none"), nr, t.caption, t.c.textMuted, DT_WORDBREAK);
+        g.DrawLine(&line, static_cast<REAL>(dl_.tabs.left), static_cast<REAL>(dl_.tabs.bottom - 1),
+                   static_cast<REAL>(dl_.tabs.right), static_cast<REAL>(dl_.tabs.bottom - 1));
+    }
+    if (detailTab_ == 1 && height(dl_.rooms) > 0) {
+        for (const auto& row : tabRows_) paintRoomRow(g, row, false, t.s(64));
+        if (tabRows_.empty()) {
+            RECT er = dl_.rooms;
+            er.top += t.s(8);
+            drawText(g, cfg_.t(roomsKnown_ ? "rooms.none" : "roomsPage.offline"), er, t.caption, t.c.textMuted, DT_WORDBREAK);
         }
-        for (size_t i = 0; i < dl_.roomRows.size() && i < list.size(); ++i) {
-            const RECT& row = dl_.roomRows[i];
-            g.DrawLine(&line, static_cast<REAL>(row.left), static_cast<REAL>(row.top), static_cast<REAL>(row.right),
-                       static_cast<REAL>(row.top));
-            std::wstring players = cfg_.t("rooms.players", {{L"N", std::to_wstring(list[i].players)},
-                                                            {L"MAX", std::to_wstring(list[i].max)}});
-            RECT pr{row.right - t.s(64) - t.s(52), row.top, row.right - t.s(64) - t.s(8), row.bottom};
-            drawText(g, players, pr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
-            RECT cr{row.left, row.top, row.left + t.s(64), row.bottom};
-            drawText(g, list[i].code, cr, t.button, t.c.text, DT_SINGLELINE | DT_VCENTER);
-            RECT nr{cr.right + t.s(6), row.top, pr.left - t.s(6), row.bottom};
-            drawText(g, list[i].name, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-        }
+    }
+    if (height(dl_.codeBox) > 0) {
+        fillRound(g, rf(dl_.codeBox), t.sf(9), t.c.background);
+        strokeRound(g, rf(dl_.codeBox), t.sf(9), GetFocus() == tabCodeEdit_ ? t.c.focus : t.c.border, t.sf(1));
     }
 
     if (height(dl_.host) > 0 && !dl_.hostLines.empty()) {
         fillRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.10f));
         strokeRound(g, rf(dl_.host), t.sf(10), mix(t.c.surface, t.c.online, 0.55f), t.sf(1));
-        size_t line = 0;
-        auto put = [&](const std::wstring& s, HFONT f, const Color& c) {
-            if (line < dl_.hostLines.size()) drawText(g, s, dl_.hostLines[line++], f, c, DT_SINGLELINE | DT_END_ELLIPSIS);
-        };
-        std::wstring port = std::to_wstring(relay_.port());
-        put(cfg_.t("host.running", {{L"PORT", port}}), t.button, t.c.online);
-        put(cfg_.t("host.addresses"), t.caption, t.c.textMuted);
-        if (addresses_.empty()) {
-            put(cfg_.t("host.noAddress", {{L"PORT", port}}), t.caption, t.c.text);
-        } else {
-            for (size_t i = 0; i < addresses_.size() && i < 3; ++i)
-                put(addresses_[i].address + L":" + port + L"   " + addresses_[i].adapter, t.caption, t.c.text);
+        std::vector<HostLine> view = hostView();
+        for (size_t i = 0; i < view.size() && i < dl_.hostLines.size(); ++i) {
+            HFONT f = view[i].role == 0 ? t.button : t.caption;
+            const Color& c = view[i].role == 0 ? t.c.online : view[i].role == 1 ? t.c.textMuted : t.c.text;
+            drawText(g, view[i].text, dl_.hostLines[i], f, c, DT_SINGLELINE | DT_END_ELLIPSIS);
         }
     }
 }
@@ -1026,9 +1241,20 @@ void Launcher::paintStatus(Graphics& g, HDC) {
     if (!lib_.flashpointDir().empty()) right += L"   " + cfg_.t("bar.flashpoint", {{L"PATH", lib_.flashpointDir()}});
     HDC mdc = g.GetHDC();
     int rw = std::min<int>(textWidth(mdc, t.caption, right), width(r) / 2);
+    Color serverColor;
+    std::wstring server = serverText(serverColor);
+    int sw = server.empty() ? 0 : textWidth(mdc, t.caption, server);
     g.ReleaseHDC(mdc);
     RECT rr{r.right - rw, r.top, r.right, r.bottom};
     drawText(g, right, rr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_END_ELLIPSIS);
+    if (sw && rr.left - sw - t.s(40) > r.left + width(r) / 3) {
+        RECT sr{rr.left - t.s(24) - sw, r.top, rr.left - t.s(24), r.bottom};
+        SolidBrush dot(gc(serverColor));
+        g.FillEllipse(&dot, static_cast<REAL>(sr.left - t.s(13)), static_cast<REAL>((sr.top + sr.bottom) / 2 - t.s(4)),
+                      t.sf(8), t.sf(8));
+        drawText(g, server, sr, t.caption, serverColor, DT_SINGLELINE | DT_VCENTER);
+        rr.left = sr.left - t.s(13);
+    }
 
     RECT left{r.left, r.top, rr.left - t.s(16), r.bottom};
     std::wstring text;
@@ -1068,6 +1294,9 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     int half = t.s(kGap) / 2;
     RECT c{tile.left + half, tile.top + half, tile.right - half, tile.bottom - half};
     bool hover = hoverItem_ >= 0 && hoverItem_ < static_cast<int>(visible_.size()) && visible_[hoverItem_] == gi;
+    // Under the mouse the card rises a little and takes its game's color on the edge.
+    float lift = motion_ ? (lift_.count(gi) ? lift_[gi] : 0.0f) : (hover ? 1.0f : 0.0f);
+    OffsetRect(&c, 0, -static_cast<int>(t.s(3) * lift + 0.5f));
     float radius = t.sf(12);
     fillRound(g, rf(c), radius, hover || selected ? t.c.surfaceHover : t.c.surface);
     int artH = static_cast<int>(width(c) * 0.5625);
@@ -1085,7 +1314,7 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
         fillRound(g, rf(b), t.sf(10), Color{t.c.sidebar.r, t.c.sidebar.g, t.c.sidebar.b, 225});
         drawText(g, text, b, t.tiny, textColor, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
     };
-    bool online = false;
+    bool online = !game.onlineId.empty();
     for (const auto& a : game.actions) online = online || a.relay.enabled;
     if (online) badge(cfg_.t("badge.online"), t.c.sidebarText, false);
     const GameStats* st = user_.find(game.id);
@@ -1123,6 +1352,7 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     drawText(g, status, sr, t.caption, sc, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     // Selection is a neutral outline: red means "start", blue means keyboard focus.
+    if (!selected && lift > 0.01f) strokeRound(g, rf(c), radius, mix(t.c.surface, game.color, 0.85f * lift), t.sf(1.5));
     if (selected) strokeRound(g, rf(c), radius, t.c.text, t.sf(2));
     if (focused && !(SendMessageW(hwnd_, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
         RECT f{c.left - t.s(3), c.top - t.s(3), c.right + t.s(3), c.bottom + t.s(3)};
@@ -1160,6 +1390,21 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
 
         bool hover = hoverBtn_ == button, pressed = (state & CDIS_SELECTED) != 0;
         Color fill = t.c.surfaceHover, text = t.c.text, border = t.c.border;
+        if (info.style == BtnStyle::Tab) {
+            // A tab: plain text, the open one bold with a bar under it.
+            std::wstring label = windowText(button);
+            RECT tr{0, 0, width(r), height(r) - t.s(3)};
+            drawText(g, label, tr, t.button, info.selected || hover ? t.c.text : t.c.textMuted,
+                     DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
+            if (info.selected) {
+                RectF bar(t.sf(10), static_cast<REAL>(height(r)) - t.sf(3), static_cast<REAL>(width(r)) - t.sf(20), t.sf(3));
+                fillRound(g, bar, t.sf(1.5), t.c.text);
+            }
+            if ((state & CDIS_FOCUS) && !(SendMessageW(button, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
+                RectF f(t.sf(2), t.sf(2), static_cast<REAL>(width(r)) - t.sf(4), static_cast<REAL>(height(r)) - t.sf(6));
+                strokeRound(g, f, t.sf(6), t.c.focus, t.sf(1.5));
+            }
+        } else {
         switch (info.style) {
             case BtnStyle::Primary:
                 // A primary action that can't start looks like a secondary one, so its
@@ -1207,17 +1452,37 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
                 strokeRound(g, f, t.sf(6), t.c.focus, t.sf(1.5));
             }
         } else {
+        // Pressed, the face sinks a little and darkens (FlutterFX ShimmerButton).
+        int sink = pressed ? t.s(1) : 0;
         if (pressed) fill = mix(fill, Color{0, 0, 0, 255}, 0.15f);
-        RectF box(0.5f, 0.5f, static_cast<REAL>(width(r)) - 1, static_cast<REAL>(height(r)) - 1);
+        RectF box(0.5f, 0.5f + sink, static_cast<REAL>(width(r)) - 1, static_cast<REAL>(height(r)) - 1 - sink);
         fillRound(g, box, t.sf(9), fill);
         strokeRound(g, box, t.sf(9), border, t.sf(1));
 
         std::wstring label = info.label.empty() ? windowText(button) : info.label;
         if (!IsWindowEnabled(button)) text = t.c.textMuted;
-        RECT tr{t.s(14), 0, width(r) - t.s(14), height(r)};
+        RECT tr{t.s(14), sink, width(r) - t.s(14), height(r) + sink};
+        auto iconAt = [&](RECT ir) {  // the icon glyph; returns its width
+            if (info.icon.empty() || !t.icon) return 0;
+            drawText(g, info.icon, ir, t.icon, text, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+            return t.s(26);
+        };
         if (!info.sub.empty() && height(r) >= t.s(48)) {
-            RECT top{tr.left, t.s(8), tr.right, height(r) / 2 + t.s(2)};
-            RECT bottom{tr.left, height(r) / 2 + t.s(1), tr.right, height(r) - t.s(6)};
+            RECT top{tr.left, t.s(8) + sink, tr.right, height(r) / 2 + t.s(2) + sink};
+            RECT bottom{tr.left, height(r) / 2 + t.s(1) + sink, tr.right, height(r) - t.s(6) + sink};
+            int iw = iconAt(top);
+            top.left += iw;
+            if (!info.tag.empty()) {
+                // A small pill after the label: "Original".
+                HDC mdc = g.GetHDC();
+                int lw = textWidth(mdc, t.button, label), pw = textWidth(mdc, t.tiny, info.tag) + t.s(12);
+                g.ReleaseHDC(mdc);
+                int px = std::min<int>(top.left + lw + t.s(8), top.right - pw);
+                RECT pill{px, (top.top + top.bottom) / 2 - t.s(9), px + pw, (top.top + top.bottom) / 2 + t.s(9)};
+                strokeRound(g, rf(pill), t.sf(9), mix(fill, text, 0.5f), t.sf(1));
+                drawText(g, info.tag, pill, t.tiny, text, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+                top.right = pill.left - t.s(4);
+            }
             drawText(g, label, top, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
             Color subColor = info.style == BtnStyle::Primary && info.ready ? t.c.onPrimary
                              : info.ready                                   ? t.c.textMuted
@@ -1227,12 +1492,38 @@ void Launcher::drawButton(HWND button, HDC hdc, RECT r, UINT state) {
                 RECT arrow{tr.right - t.s(20), 0, tr.right, height(r)};
                 drawText(g, L"\u25B6", arrow, t.body, text, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
             }
+        } else if (!info.icon.empty() && t.icon) {
+            // Icon and label centered together.
+            HDC mdc = g.GetHDC();
+            int lw = textWidth(mdc, t.button, label), iw = t.s(26);
+            g.ReleaseHDC(mdc);
+            int left = std::max<int>(tr.left, (width(r) - lw - iw) / 2);
+            iconAt(RECT{left, tr.top, left + iw, tr.bottom});
+            RECT lr{left + iw, tr.top, tr.right, tr.bottom};
+            drawText(g, label, lr, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
         } else {
             drawText(g, label, tr, t.button, text, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
+        }
+        if (info.busy) {
+            // Work in progress: a short light runs around the border (FlutterFX
+            // Border Beam), once every 1.4 s.
+            REAL bw = static_cast<REAL>(width(r)) - 1, bh = static_cast<REAL>(height(r)) - 1, rad = t.sf(9);
+            REAL pen = t.sf(2);
+            REAL perimeter = 2 * (bw + bh) - (8 - 2 * 3.14159265f) * rad;
+            float phase = static_cast<float>(GetTickCount64() % 1400) / 1400.0f;
+            REAL seg = perimeter / 4;
+            Pen beam(gc(t.c.online), pen);
+            REAL pattern[] = {seg / pen, (perimeter - seg) / pen};
+            beam.SetDashPattern(pattern, 2);
+            beam.SetDashOffset(-phase * perimeter / pen);
+            GraphicsPath path;
+            roundRectPath(path, RectF(0.5f + pen / 2, 0.5f + pen / 2, bw - pen, bh - pen), rad);
+            g.DrawPath(&beam, &path);
         }
         if ((state & CDIS_FOCUS) && !(SendMessageW(button, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS)) {
             RectF f(t.sf(2), t.sf(2), static_cast<REAL>(width(r)) - t.sf(4), static_cast<REAL>(height(r)) - t.sf(4));
             strokeRound(g, f, t.sf(7), t.c.focus, t.sf(1.5));
+        }
         }
         }
     }
@@ -1255,11 +1546,32 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
         bool sel = (d.itemState & ODS_SELECTED) != 0;
         RectF box(0, t.sf(2), static_cast<REAL>(width(r)), static_cast<REAL>(height(r)) - t.sf(4));
         if (sel) fillRound(g, box, t.sf(8), mix(t.c.sidebar, t.c.sidebarText, 0.10f));
-        RECT tr{t.s(14), 0, width(r) - t.s(44), height(r)};
-        drawText(g, n.label, tr, sel ? t.strong : t.body, sel ? t.c.sidebarText : mix(t.c.sidebarText, t.c.sidebarTextMuted, 0.4f),
-                 DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-        RECT cr{width(r) - t.s(44), 0, width(r) - t.s(12), height(r)};
-        drawText(g, std::to_wstring(n.count), cr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+        Color labelColor = sel ? t.c.sidebarText : mix(t.c.sidebarText, t.c.sidebarTextMuted, 0.4f);
+        int left = t.s(14);
+        if (!n.icon.empty() && t.icon) {
+            RECT ir{left, 0, left + t.s(22), height(r)};
+            drawText(g, n.icon, ir, t.icon, sel ? t.c.sidebarText : t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER);
+            left += t.s(30);
+        }
+        RECT tr{left, 0, width(r) - t.s(48), height(r)};
+        drawText(g, n.label, tr, sel ? t.strong : t.body, labelColor, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        RECT cr{width(r) - t.s(48), 0, width(r) - t.s(12), height(r)};
+        if (n.key == "rooms") {
+            // Players online right now, live, in P2's color.
+            if (onlineOn_ && roomsKnown_ && n.count > 0) {
+                const auto& pc = cfg_.branding.playerColors;
+                Color live = pc.size() > 1 ? pc[1] : t.c.online;
+                HDC mdc = g.GetHDC();
+                int cw = textWidth(mdc, t.caption, std::to_wstring(n.count));
+                g.ReleaseHDC(mdc);
+                SolidBrush dot(gc(live));
+                g.FillEllipse(&dot, static_cast<REAL>(cr.right - cw - t.s(12)), static_cast<REAL>(height(r) / 2 - t.s(3)),
+                              t.sf(6), t.sf(6));
+                drawText(g, std::to_wstring(n.count), cr, t.caption, live, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+            }
+        } else {
+            drawText(g, std::to_wstring(n.count), cr, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+        }
         if ((d.itemState & ODS_FOCUS) && GetFocus() == nav_ &&
             !(SendMessageW(hwnd_, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS))
             strokeRound(g, box, t.sf(8), t.c.focus, t.sf(1.5));
@@ -1303,6 +1615,13 @@ void Launcher::paintSlots(Graphics& g, const GameSpec& game) {
     for (int i = 0; i < n; ++i) {
         RECT r{dl_.slots.left + i * (tileW + gap), dl_.slots.top, dl_.slots.left + i * (tileW + gap) + tileW,
                dl_.slots.bottom};
+        bool filled = hosting && i < static_cast<int>(names.size());
+        if (auto j = joinFrom_.find(i); filled && j != joinFrom_.end())
+            if (ULONGLONG e = since(j->second); e < kJoinMs) {
+                // Arrives from 90% size, overshoots a little, settles at 100%.
+                float grow = 0.1f * motion::singleBounce(static_cast<float>(e) / kJoinMs) - 0.1f;
+                InflateRect(&r, static_cast<int>(width(r) * grow / 2), static_cast<int>(height(r) * grow / 2));
+            }
         fillRound(g, rf(r), t.sf(8), t.c.surfaceHover);
         RectF top(rf(r).X, rf(r).Y, rf(r).Width, t.sf(5));
         Region old;
@@ -1319,13 +1638,628 @@ void Launcher::paintSlots(Graphics& g, const GameSpec& game) {
             drawText(g, label, lr, t.button, t.c.text, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
             continue;
         }
+        if (!filled) {
+            // An open slot waits in its player's color. The breath travels along
+            // the row; without animations it holds halfway.
+            float a = motion_ ? 0.2f + 0.6f * motion::wave(GetTickCount64(), i) : 0.5f;
+            strokeRound(g, RectF(rf(r).X + 0.75f, rf(r).Y + 0.75f, rf(r).Width - 1.5f, rf(r).Height - 1.5f), t.sf(8),
+                        mix(t.c.border, colors[i % colors.size()], a), t.sf(1.5));
+        }
         RECT lr{r.left + t.s(10), r.top + t.s(9), r.right - t.s(6), r.top + t.s(29)};
         drawText(g, label, lr, t.button, t.c.text, DT_SINGLELINE | DT_VCENTER);
-        bool filled = i < static_cast<int>(names.size());
         RECT nr{r.left + t.s(10), r.top + t.s(29), r.right - t.s(6), r.bottom - t.s(6)};
         drawText(g, filled ? names[i] : cfg_.t("slot.open"), nr, t.caption, filled ? t.c.text : t.c.textMuted,
                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     }
+}
+
+// ---- animation -------------------------------------------------------------
+
+bool Launcher::pulsing() const {
+    if (!motion_ || selected_ < 0 || !relay_.running() || relayGame_ != selected_ || IsIconic(hwnd_)) return false;
+    return static_cast<int>(slotPeers_) < cfg_.games[selected_].maxPlayers;
+}
+
+void Launcher::wake() {
+    if (!motion_ || frameTimer_ || !hwnd_) return;
+    frameTimer_ = SetTimer(hwnd_, kFrameTimer, kFrameMs, nullptr) != 0;
+}
+
+void Launcher::onFrame() {
+    if (intro_) {
+        if (since(intro_->from) < kIntroMs) {
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        }
+        endIntro();
+    }
+    bool any = false;
+    auto redraw = [&](const RECT& r) {
+        InvalidateRect(hwnd_, &r, FALSE);
+        any = true;
+    };
+    // A finished animation still gets this frame, painted with its final look
+    // (since() of 0 is "long ago"). Timer messages can arrive late, so the end
+    // is marked here rather than guessed from the clock.
+    auto step = [](ULONGLONG& from, ULONGLONG duration) {
+        if (!from) return false;
+        if (since(from) >= duration) from = 0;
+        return true;
+    };
+    if (step(titleFrom_, kTitleMs)) redraw(dl_.title);
+    bool decoding = false;
+    for (auto& [code, from] : codeFrom_) decoding = step(from, kCodeMs) || decoding;
+    if (decoding) {
+        redraw(dl_.rooms);
+        if (roomsPage()) redraw(pageList_);
+    }
+    if ((!lift_.empty() || hoverItem_ >= 0) && stepLift()) any = true;
+    if (anyBusy()) {
+        any = true;
+        for (auto& [b, info] : btnInfo_)
+            if (info.busy && IsWindowVisible(b)) InvalidateRect(b, nullptr, FALSE);
+    }
+    if (toastFrom_) {
+        any = true;
+        layoutToast();
+    }
+    bool joining = false;
+    for (auto& [slot, from] : joinFrom_) joining = step(from, kJoinMs) || joining;
+    if (joining || pulsing()) {
+        // A joining slot grows a little past its rectangle.
+        RECT r = dl_.slots;
+        InflateRect(&r, theme_.s(6), theme_.s(4));
+        redraw(r);
+    }
+    if (!any || !motion_) {
+        KillTimer(hwnd_, kFrameTimer);
+        frameTimer_ = false;
+    }
+}
+
+void Launcher::startIntro() {
+    RECT cr;
+    GetClientRect(hwnd_, &cr);
+    if (cr.right <= 0 || cr.bottom <= 0) return;
+    // The title decodes once the panel has arrived, not inside the picture.
+    titleFrom_ = 0;
+    HDC screen = GetDC(hwnd_);
+    Buffer buf(screen, cr.right, cr.bottom);
+    ReleaseDC(hwnd_, screen);
+    paint(buf.dc, cr);
+    auto intro = std::make_unique<Intro>();
+    std::vector<HWND> children;
+    for (HWND h = GetWindow(hwnd_, GW_CHILD); h; h = GetWindow(h, GW_HWNDNEXT))
+        if (IsWindowVisible(h)) children.push_back(h);
+    // Bottom of the z-order first, so overlapping controls end up as on screen.
+    for (auto it = children.rbegin(); it != children.rend(); ++it) {
+        RECT r;
+        GetWindowRect(*it, &r);
+        MapWindowPoints(nullptr, hwnd_, reinterpret_cast<POINT*>(&r), 2);
+        POINT old;
+        SetViewportOrgEx(buf.dc, r.left, r.top, &old);
+        SendMessageW(*it, WM_PRINT, reinterpret_cast<WPARAM>(buf.dc),
+                     PRF_CLIENT | PRF_NONCLIENT | PRF_CHILDREN | PRF_ERASEBKGND);
+        SetViewportOrgEx(buf.dc, old.x, old.y, nullptr);
+    }
+    intro->hidden = children;
+
+    RECT gw, gcl;
+    GetWindowRect(grid_, &gw);
+    MapWindowPoints(nullptr, hwnd_, reinterpret_cast<POINT*>(&gw), 2);
+    GetClientRect(grid_, &gcl);
+    if (IsWindowVisible(grid_)) {
+        int n = ListView_GetItemCount(grid_);
+        for (int i = 0; i < n; ++i) {
+            RECT ir;
+            if (!ListView_GetItemRect(grid_, i, &ir, LVIR_BOUNDS) || ir.bottom <= 0 || ir.top >= gcl.bottom) continue;
+            OffsetRect(&ir, gw.left, gw.top);
+            intro->cards.push_back(ir);
+        }
+        intro->gridBar = {gw.left + gcl.right, gw.top, gw.right, gw.bottom};
+    }
+
+    SelectObject(buf.dc, buf.old);  // GDI+ must not read a bitmap still selected into a DC
+    {
+        Bitmap src(buf.bmp, nullptr);
+        intro->shot = std::make_unique<Bitmap>(cr.right, cr.bottom, PixelFormat32bppPARGB);
+        Graphics g(intro->shot.get());
+        g.DrawImage(&src, 0, 0, cr.right, cr.bottom);
+    }
+    buf.old = SelectObject(buf.dc, buf.bmp);
+
+    for (HWND h : children) ShowWindow(h, SW_HIDE);
+    intro->from = GetTickCount64();
+    intro_ = std::move(intro);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    wake();
+}
+
+void Launcher::endIntro() {
+    if (!intro_) return;
+    std::unique_ptr<Intro> intro = std::move(intro_);
+    for (HWND h : intro->hidden) ShowWindow(h, SW_SHOWNA);
+    if (!GetFocus() || GetFocus() == hwnd_) SetFocus(grid_);
+    if (intro->layoutLater) layoutDetail();
+    if (motion_ && selected_ >= 0) titleFrom_ = GetTickCount64();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    wake();
+}
+
+void Launcher::paintIntro(Graphics& g) {
+    const Theme& t = theme_;
+    Bitmap& shot = *intro_->shot;
+    ULONGLONG e = since(intro_->from);
+    // 0..1 between `start` and `start + duration` ms, eased out.
+    auto at = [e](ULONGLONG start, ULONGLONG duration) {
+        return motion::easeOutCubic(e <= start ? 0.0f : static_cast<float>(e - start) / duration);
+    };
+    // A piece of the finished frame, moved by (dx, dy) and faded to `alpha`.
+    auto piece = [&](const RECT& src, float dx, float dy, float alpha) {
+        if (alpha <= 0 || width(src) <= 0 || height(src) <= 0) return;
+        RectF dst(src.left + dx, src.top + dy, static_cast<REAL>(width(src)), static_cast<REAL>(height(src)));
+        ColorMatrix m = {{{1, 0, 0, 0, 0}, {0, 1, 0, 0, 0}, {0, 0, 1, 0, 0}, {0, 0, 0, alpha, 0}, {0, 0, 0, 0, 1}}};
+        ImageAttributes fade;
+        fade.SetColorMatrix(&m);
+        g.DrawImage(&shot, dst, static_cast<REAL>(src.left), static_cast<REAL>(src.top), dst.Width, dst.Height,
+                    UnitPixel, alpha < 1 ? &fade : nullptr);
+    };
+    SolidBrush bg(gc(t.c.background));
+    g.FillRectangle(&bg, 0, 0, static_cast<INT>(shot.GetWidth()), static_cast<INT>(shot.GetHeight()));
+
+    // The details panel slides in from the right edge.
+    float d = at(90, 480);
+    piece(detail_, width(detail_) * 0.35f * (1 - d), 0, d);
+    // Cards rise into place one after another, like a deal.
+    Region old;
+    g.GetClip(&old);
+    g.SetClip(rf(gridRc_), CombineModeIntersect);
+    for (size_t i = 0; i < intro_->cards.size(); ++i) {
+        float c = at(160 + std::min<ULONGLONG>(i, 7) * 45, 340);
+        piece(intro_->cards[i], 0, t.sf(14) * (1 - c), c);
+    }
+    piece(intro_->gridBar, 0, 0, at(400, 300));
+    g.SetClip(&old);
+    // The sidebar comes in from the left, the search bar drops in.
+    float sb = at(0, 460);
+    piece(sidebar_, -width(sidebar_) * 0.5f * (1 - sb), 0, sb);
+    float tp = at(120, 380);
+    piece(top_, 0, -t.sf(8) * (1 - tp), tp);
+    piece(status_, 0, 0, at(350, 350));
+}
+
+// ---- online play ------------------------------------------------------------
+
+bool Launcher::actionShown(const ActionSpec& a) const { return !a.original || user_.showOriginals; }
+
+bool Launcher::roomsPage() const { return !navItems_.empty() && navItems_[navIndex_].key == "rooms"; }
+
+size_t Launcher::joinActionIndex(const GameSpec& g) const {
+    for (size_t i = 0; i < g.actions.size(); ++i)
+        if (g.actions[i].id == g.joinAction) return i;
+    return 0;
+}
+
+int Launcher::playersOnline() const {
+    if (!onlineOn_ || !roomsKnown_) return 0;
+    int n = 0;
+    for (const auto& [id, list] : rooms_)
+        for (const auto& r : list) n += r.players;
+    return n;
+}
+
+void Launcher::refreshRoomsNav() {
+    for (size_t i = 0; i < navItems_.size(); ++i) {
+        if (navItems_[i].key != "rooms") continue;
+        navItems_[i].count = playersOnline();
+        // Screen readers read the item's text, so it carries the count too.
+        std::wstring text = navItems_[i].label + L" (" +
+                            cfg_.t("nav.online", {{L"N", std::to_wstring(navItems_[i].count)}}) + L")";
+        SendMessageW(nav_, LB_DELETESTRING, i, 0);
+        SendMessageW(nav_, LB_INSERTSTRING, i, reinterpret_cast<LPARAM>(text.c_str()));
+        SendMessageW(nav_, LB_SETCURSEL, navIndex_, 0);
+        int sel = static_cast<int>(SendMessageW(navCombo_, CB_GETCURSEL, 0, 0));
+        SendMessageW(navCombo_, CB_DELETESTRING, i, 0);
+        SendMessageW(navCombo_, CB_INSERTSTRING, i, reinterpret_cast<LPARAM>(text.c_str()));
+        SendMessageW(navCombo_, CB_SETCURSEL, sel, 0);
+    }
+}
+
+std::wstring Launcher::serverText(Color& color) const {
+    const Theme& t = theme_;
+    bool any = std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return !g.onlineId.empty(); });
+    if (!any) return {};
+    if (!onlineOn_) {
+        color = t.c.sidebarTextMuted;
+        return cfg_.t("server.off");
+    }
+    if (!serverAsked_) {
+        color = t.c.sidebarTextMuted;
+        return cfg_.t("server.checking");
+    }
+    if (!roomsKnown_) {
+        color = t.c.warning;
+        return cfg_.t("server.down");
+    }
+    color = t.c.success;
+    if (pingMs_ < 0) return cfg_.t("server.okUntimed");
+    return cfg_.t("server.ok", {{L"MS", std::to_wstring(std::max(pingMs_, 1))}});
+}
+
+std::vector<Launcher::RoomRow> Launcher::listedRooms(int onlyGame, bool hideFull) const {
+    std::vector<RoomRow> out;
+    if (!onlineOn_ || !roomsKnown_) return out;
+    std::vector<std::wstring> words = split(toLower(trim(windowText(search_))), L' ');
+    for (size_t gi = 0; gi < cfg_.games.size(); ++gi) {
+        if (onlyGame >= 0 && static_cast<int>(gi) != onlyGame) continue;
+        auto it = rooms_.find(cfg_.games[gi].id);
+        if (it == rooms_.end()) continue;
+        for (const auto& r : it->second) {
+            bool full = r.max > 0 && r.players >= r.max;
+            if (hideFull && full) continue;
+            // The search box filters rooms too: game, code or room name.
+            std::wstring hay = toLower(cfg_.games[gi].name + L" " + r.code + L" " + r.name);
+            bool hit = true;
+            for (const auto& w : words) hit = hit && (w.empty() || hay.find(w) != std::wstring::npos);
+            if (hit) out.push_back({static_cast<int>(gi), r, {}});
+        }
+    }
+    // Busiest first: that's where a match is about to start.
+    std::stable_sort(out.begin(), out.end(), [](const RoomRow& a, const RoomRow& b) { return a.room.players > b.room.players; });
+    return out;
+}
+
+void Launcher::layoutRoomsPage() {
+    std::vector<HWND> controls = {pageGameCombo_, pageHideFull_, pageCodeEdit_, pageCodeBtn_};
+    controls.insert(controls.end(), pageRoomBtns_.begin(), pageRoomBtns_.end());
+    pageRows_.clear();
+    if (!pageGameCombo_) return;
+    if (!roomsPage() || width(gridRc_) <= 0) {
+        for (HWND h : controls) ShowWindow(h, SW_HIDE);
+        pageList_ = pageCodeBox_ = {};
+        return;
+    }
+    std::set<HWND> shown = {pageGameCombo_, pageHideFull_, pageCodeEdit_, pageCodeBtn_};
+    const Theme& t = theme_;
+    HDC dc = GetDC(hwnd_);
+    int x = gridRc_.left + t.s(kPad), w = width(gridRc_) - t.s(kPad) * 2, y = gridRc_.top + t.s(4);
+    int headH = textHeight(dc, t.heading, L"Ag", 100, DT_SINGLELINE);
+    pageTitle_ = {x, y, x + w, y + headH};
+    y += headH + t.s(4);
+    std::wstring subtitle = cfg_.t("roomsPage.subtitle");
+    int subH = textHeight(dc, t.caption, subtitle, w);
+    pageSub_ = {x, y, x + w, y + subH};
+    y += subH + t.s(16);
+
+    // Toolbar: game filter and "Hide full rooms" on the left, join by code on the right.
+    int barH = t.s(34);
+    int comboW = std::min(t.s(200), w / 3);
+    MoveWindow(pageGameCombo_, x, y + (barH - t.s(30)) / 2, comboW, t.s(300), TRUE);
+    int checkW = textWidth(dc, t.body, cfg_.t("roomsPage.hideFull")) + t.s(36);
+    MoveWindow(pageHideFull_, x + comboW + t.s(14), y, checkW, barH, TRUE);
+    int jbw = textWidth(dc, t.button, cfg_.t("roomsPage.joinCode")) + t.s(32), codeW = t.s(120);
+    int lineH = textHeight(dc, t.button, L"Ag", 100, DT_SINGLELINE);
+    if (x + comboW + checkW + jbw + codeW + t.s(40) > x + w) {  // narrow: the code row moves under
+        y += barH + t.s(10);
+        pageCodeBox_ = {x, y, x + codeW, y + barH};
+        MoveWindow(pageCodeBtn_, x + codeW + t.s(8), y, jbw, barH, TRUE);
+    } else {
+        pageCodeBox_ = {x + w - jbw - t.s(8) - codeW, y, x + w - jbw - t.s(8), y + barH};
+        MoveWindow(pageCodeBtn_, x + w - jbw, y, jbw, barH, TRUE);
+    }
+    MoveWindow(pageCodeEdit_, pageCodeBox_.left + t.s(12), pageCodeBox_.top + (barH - lineH) / 2,
+               width(pageCodeBox_) - t.s(20), lineH, TRUE);
+    y += barH + t.s(16);
+
+    pageList_ = {x, y, x + w, gridRc_.bottom - t.s(kPad)};
+    int sel = static_cast<int>(SendMessageW(pageGameCombo_, CB_GETCURSEL, 0, 0));
+    int onlyGame = sel > 0 ? static_cast<int>(SendMessageW(pageGameCombo_, CB_GETITEMDATA, sel, 0)) : -1;
+    bool hideFull = SendMessageW(pageHideFull_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    std::vector<RoomRow> rows = listedRooms(onlyGame, hideFull);
+    int rowH = t.s(48);
+    int fit = std::max(1, height(pageList_) / rowH);
+    pageScroll_ = std::clamp(pageScroll_, 0, std::max(0, static_cast<int>(rows.size()) - fit));
+    size_t first = static_cast<size_t>(pageScroll_);
+    size_t n = std::min<size_t>(rows.size() - std::min(first, rows.size()), static_cast<size_t>(fit));
+    n = std::min<size_t>(n, kIdPageRoomEnd - kIdPageRoom0);
+    while (pageRoomBtns_.size() < n) {
+        HWND b = makeButton(kIdPageRoom0 + static_cast<int>(pageRoomBtns_.size()), BtnStyle::Secondary);
+        btnInfo_[b].label = cfg_.t("rooms.join");
+        pageRoomBtns_.push_back(b);
+        controls.push_back(b);
+    }
+    int bw = t.s(72);
+    for (size_t i = 0; i < n; ++i) {
+        RoomRow row = rows[first + i];
+        row.rc = {x, y + static_cast<int>(i) * rowH, x + w, y + static_cast<int>(i + 1) * rowH};
+        pageRows_.push_back(row);
+        HWND b = pageRoomBtns_[i];
+        MoveWindow(b, row.rc.right - bw, row.rc.top + t.s(7), bw, rowH - t.s(14), TRUE);
+        SetWindowTextW(b, cfg_.t("rooms.joinName", {{L"CODE", row.room.code}}).c_str());
+        EnableWindow(b, row.room.max <= 0 || row.room.players < row.room.max);
+        shown.insert(b);
+    }
+    ReleaseDC(hwnd_, dc);
+    for (HWND h : controls) ShowWindow(h, shown.count(h) ? SW_SHOW : SW_HIDE);
+    for (HWND h : controls) InvalidateRect(h, nullptr, FALSE);
+}
+
+void Launcher::paintRoomRow(Graphics& g, const RoomRow& row, bool showGame, int joinW) {
+    const Theme& t = theme_;
+    const RECT& r = row.rc;
+    Pen line(gc(t.c.border), 1);
+    g.DrawLine(&line, static_cast<REAL>(r.left), static_cast<REAL>(r.top), static_cast<REAL>(r.right),
+               static_cast<REAL>(r.top));
+    int x = r.left, mid = (r.top + r.bottom) / 2;
+    if (showGame && row.game >= 0) {
+        const GameSpec& game = cfg_.games[row.game];
+        int chip = t.s(12);
+        fillRound(g, RectF(static_cast<REAL>(x), static_cast<REAL>(mid - chip / 2), static_cast<REAL>(chip),
+                           static_cast<REAL>(chip)),
+                  t.sf(3), game.color);
+        RECT gr{x + chip + t.s(10), r.top, x + t.s(200), r.bottom};
+        drawText(g, game.name, gr, t.body, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        x += t.s(212);
+    }
+    // The code decodes the first time it shows up.
+    std::wstring code = row.room.code;
+    if (auto c = codeFrom_.find(code); c != codeFrom_.end())
+        if (ULONGLONG e = since(c->second); e < kCodeMs)
+            code = motion::scramble(code, static_cast<float>(e) / kCodeMs, static_cast<uint32_t>(e / 50));
+    RECT cr{x, r.top, x + t.s(72), r.bottom};
+    drawText(g, code, cr, t.button, t.c.text, DT_SINGLELINE | DT_VCENTER);
+    x += t.s(78);
+
+    // Players: one block per slot, filled in the players' colors (P1-P4); bigger
+    // rooms as "3/8".
+    int right = r.right - joinW - t.s(12);
+    const auto& colors = cfg_.branding.playerColors;
+    const RoomInfo& room = row.room;
+    if (room.max > 0 && room.max <= 4 && !colors.empty()) {
+        int pip = t.s(10), pipGap = t.s(4);
+        int px = right - room.max * (pip + pipGap) + pipGap;
+        for (int i = 0; i < room.max; ++i, px += pip + pipGap) {
+            RectF pr(static_cast<REAL>(px), static_cast<REAL>(mid - pip / 2), static_cast<REAL>(pip), static_cast<REAL>(pip));
+            if (i < room.players) fillRound(g, pr, t.sf(2), colors[i % colors.size()]);
+            else strokeRound(g, pr, t.sf(2), t.c.textMuted, t.sf(1));
+        }
+        right -= room.max * (pip + pipGap) + t.s(10);
+    } else {
+        std::wstring n = cfg_.t("rooms.players", {{L"N", std::to_wstring(room.players)}, {L"MAX", std::to_wstring(room.max)}});
+        RECT nr{right - t.s(48), r.top, right, r.bottom};
+        drawText(g, n, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+        right -= t.s(56);
+    }
+    if (!room.name.empty() && right > x) {
+        RECT nr{x, r.top, right, r.bottom};
+        drawText(g, room.name, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    }
+}
+
+void Launcher::paintRoomsPage(Graphics& g) {
+    const Theme& t = theme_;
+    drawText(g, cfg_.t("roomsPage.title"), pageTitle_, t.heading, t.c.text, DT_SINGLELINE);
+    drawText(g, cfg_.t("roomsPage.subtitle"), pageSub_, t.caption, t.c.textMuted, DT_WORDBREAK);
+    if (width(pageCodeBox_) > 0) {
+        fillRound(g, rf(pageCodeBox_), t.sf(9), t.c.surface);
+        strokeRound(g, rf(pageCodeBox_), t.sf(9), GetFocus() == pageCodeEdit_ ? t.c.focus : t.c.border, t.sf(1));
+    }
+    for (const auto& row : pageRows_) paintRoomRow(g, row, true, t.s(72));
+    if (pageRows_.empty() && height(pageList_) > 0) {
+        const char* head = !onlineOn_ ? "roomsPage.disabled" : !roomsKnown_ ? "roomsPage.offline" : "roomsPage.empty";
+        const char* body = !onlineOn_    ? "roomsPage.disabledBody"
+                           : !roomsKnown_ ? "roomsPage.offlineBody"
+                                          : "roomsPage.emptyBody";
+        RECT r = pageList_;
+        r.top += t.s(40);
+        drawText(g, cfg_.t(head), r, t.heading, t.c.text, DT_CENTER | DT_SINGLELINE);
+        r.top += t.s(32);
+        drawText(g, cfg_.t(body), r, t.body, t.c.textMuted, DT_CENTER | DT_WORDBREAK);
+    }
+}
+
+void Launcher::joinListedRoom(int gi, const RoomInfo& room) {
+    if (gi < 0 || gi >= static_cast<int>(cfg_.games.size())) return;
+    if (room.max > 0 && room.players >= room.max) {
+        notice(cfg_.t("rooms.full", {{L"CODE", room.code}}), theme_.c.warning);
+        return;
+    }
+    const GameSpec& g = cfg_.games[gi];
+    copyText(room.code);
+    // The code goes to the game too: a mod that reads it joins by itself; with
+    // one that doesn't, the player pastes it into the F9 panel.
+    if (runAction(gi, joinActionIndex(g), {{L"join", room.code}}))
+        toast(cfg_.t("rooms.copied", {{L"CODE", room.code}}), theme_.c.success);
+}
+
+void Launcher::joinByCode(HWND edit, int gi) {
+    std::wstring code;
+    for (wchar_t ch : windowText(edit))
+        if (iswalnum(ch)) code += static_cast<wchar_t>(towupper(ch));
+    if (code.size() != 5) {
+        notice(cfg_.t("roomsPage.badCode"), theme_.c.warning);
+        SetFocus(edit);
+        return;
+    }
+    // Which game: the one asked for, else the listed room with that code, else
+    // the Rooms page's game filter.
+    if (gi < 0)
+        for (const auto& [id, list] : rooms_)
+            for (const auto& r : list)
+                if (r.code == code)
+                    for (size_t i = 0; i < cfg_.games.size(); ++i)
+                        if (cfg_.games[i].id == id) gi = static_cast<int>(i);
+    if (gi < 0) {
+        int sel = static_cast<int>(SendMessageW(pageGameCombo_, CB_GETCURSEL, 0, 0));
+        if (sel > 0) gi = static_cast<int>(SendMessageW(pageGameCombo_, CB_GETITEMDATA, sel, 0));
+    }
+    if (gi < 0) {
+        notice(cfg_.t("roomsPage.pickGame", {{L"CODE", code}}), theme_.c.warning);
+        SetFocus(pageGameCombo_);
+        return;
+    }
+    RoomInfo room;
+    room.code = code;
+    joinListedRoom(gi, room);
+    SetWindowTextW(edit, L"");
+}
+
+void Launcher::quickPlay() {
+    if (selected_ < 0) return;
+    const GameSpec& g = cfg_.games[selected_];
+    const RoomInfo* busiest = nullptr;
+    if (auto it = rooms_.find(g.id); it != rooms_.end())
+        for (const auto& r : it->second)
+            if ((r.max <= 0 || r.players < r.max) && (!busiest || r.players > busiest->players)) busiest = &r;
+    if (busiest) {
+        joinListedRoom(selected_, *busiest);
+        return;
+    }
+    // Nobody is playing: start the game ready to host ("host" for mods that read it).
+    runAction(selected_, joinActionIndex(g), {{L"host", L"1"}});
+}
+
+void Launcher::toast(const std::wstring& text, const Color& color) {
+    logger().info(L"Toast: " + text);
+    if (!toast_ || snapshot_) {
+        notice(text, color);
+        return;
+    }
+    toastText_ = text;
+    toastColor_ = color;
+    toastFrom_ = GetTickCount64();
+    SetWindowTextW(toast_, text.c_str());  // screen readers read the window's name
+    layoutToast();
+    SetWindowPos(toast_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    NotifyWinEvent(EVENT_SYSTEM_ALERT, toast_, OBJID_CLIENT, CHILDID_SELF);
+    InvalidateRect(toast_, nullptr, FALSE);
+    wake();
+}
+
+void Launcher::layoutToast() {
+    if (!toast_) return;
+    if (!toastFrom_) {
+        ShowWindow(toast_, SW_HIDE);
+        return;
+    }
+    const Theme& t = theme_;
+    ULONGLONG e = since(toastFrom_);
+    if (motion_ && e > kToastMs + 250) {
+        toastFrom_ = 0;
+        ShowWindow(toast_, SW_HIDE);
+        return;
+    }
+    // In over 0.18 s, rising a little; out over 0.25 s at the end.
+    float in = motion_ ? motion::easeOutCubic(static_cast<float>(e) / 180.0f) : 1.0f;
+    float out = motion_ && e > kToastMs ? 1.0f - static_cast<float>(e - kToastMs) / 250.0f : 1.0f;
+    float alpha = std::clamp(std::min(in, out), 0.0f, 1.0f);
+    const RECT& area = gridRc_;
+    HDC dc = GetDC(hwnd_);
+    int maxW = std::min(t.s(440), width(area) - t.s(40));
+    int textW = std::min(textWidth(dc, t.body, toastText_), maxW - t.s(48));
+    int textH = textHeight(dc, t.body, toastText_, std::max(textW, 1));
+    ReleaseDC(hwnd_, dc);
+    int w = textW + t.s(48), h = textH + t.s(24);
+    int x = area.left + (width(area) - w) / 2;
+    int y = area.bottom - t.s(20) - h + static_cast<int>(t.s(10) * (1 - in));
+    SetWindowPos(toast_, HWND_TOP, x, y, w, h, SWP_NOACTIVATE);
+    SetLayeredWindowAttributes(toast_, 0, static_cast<BYTE>(255 * alpha), LWA_ALPHA);
+}
+
+void Launcher::paintToast(HDC hdc) {
+    const Theme& t = theme_;
+    RECT r;
+    GetClientRect(toast_, &r);
+    Buffer buf(hdc, width(r), height(r));
+    {
+        Graphics g(buf.dc);
+        SolidBrush under(gc(t.c.background));
+        g.FillRectangle(&under, 0, 0, width(r), height(r));
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
+        RectF box(0.5f, 0.5f, static_cast<REAL>(width(r)) - 1, static_cast<REAL>(height(r)) - 1);
+        fillRound(g, box, t.sf(10), t.c.surfaceHover);
+        strokeRound(g, box, t.sf(10), mix(t.c.surfaceHover, toastColor_, 0.6f), t.sf(1));
+        SolidBrush dot(gc(toastColor_));
+        g.FillEllipse(&dot, t.sf(16), static_cast<REAL>(height(r)) / 2 - t.sf(4), t.sf(8), t.sf(8));
+        RECT tr{t.s(32), t.s(12), width(r) - t.s(16), height(r) - t.s(12)};
+        drawText(g, toastText_, tr, t.body, t.c.text, DT_WORDBREAK);
+    }
+    BitBlt(hdc, 0, 0, width(r), height(r), buf.dc, 0, 0, SRCCOPY);
+}
+
+LRESULT CALLBACK Launcher::toastProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* self = reinterpret_cast<Launcher*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    if (m == WM_NCCREATE) {
+        self = static_cast<Launcher*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+        SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+    }
+    if (self && m == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(h, &ps);
+        self->paintToast(dc);
+        EndPaint(h, &ps);
+        return 0;
+    }
+    if (m == WM_ERASEBKGND) return 1;
+    if (m == WM_LBUTTONDOWN && self) {  // a click dismisses it
+        self->toastFrom_ = 0;
+        ShowWindow(h, SW_HIDE);
+        return 0;
+    }
+    if (m == WM_NCHITTEST) return HTCLIENT;
+    return DefWindowProcW(h, m, w, l);
+}
+
+void Launcher::updatePresence() {
+    if (!discord_) return;
+    if (sessions_.empty()) {
+        discord_->clear();
+        return;
+    }
+    const Session& s = sessions_.back();
+    Presence p;
+    p.details = cfg_.t("discord.playing", {{L"GAME", cfg_.games[s.game].name}});
+    if (!s.room.empty()) {
+        p.state = cfg_.t("discord.room", {{L"CODE", s.room}});
+    } else {
+        for (const auto& a : cfg_.games[s.game].actions)
+            if (a.id == s.action) p.state = a.label;
+    }
+    p.start = s.startedUnix;
+    discord_->set(p);
+}
+
+bool Launcher::stepLift() {
+    ULONGLONG now = GetTickCount64();
+    float dt = liftTick_ ? static_cast<float>(now - liftTick_) / 140.0f : 0.0f;  // 140 ms all the way
+    liftTick_ = now;
+    bool any = false;
+    int hovered = hoverItem_ >= 0 && hoverItem_ < static_cast<int>(visible_.size()) ? visible_[hoverItem_] : -1;
+    if (hovered >= 0 && !lift_.count(hovered)) lift_[hovered] = 0.0f;
+    for (auto it = lift_.begin(); it != lift_.end();) {
+        float target = it->first == hovered ? 1.0f : 0.0f;
+        float v = it->second;
+        v = target > v ? std::min(target, v + dt) : std::max(target, v - dt);
+        bool moved = v != it->second;
+        it->second = v;
+        if (moved) {
+            any = true;
+            auto pos = std::find(visible_.begin(), visible_.end(), it->first);
+            RECT r;
+            if (pos != visible_.end() &&
+                ListView_GetItemRect(grid_, static_cast<int>(pos - visible_.begin()), &r, LVIR_BOUNDS))
+                InvalidateRect(grid_, &r, FALSE);
+        }
+        if (v <= 0.0f && it->first != hovered) it = lift_.erase(it);
+        else ++it;
+    }
+    return any;
+}
+
+bool Launcher::anyBusy() const {
+    for (const auto& [b, info] : btnInfo_)
+        if (info.busy && IsWindowVisible(b)) return true;
+    return false;
 }
 
 // ---- actions --------------------------------------------------------------
@@ -1348,17 +2282,26 @@ bool Launcher::minimizeOnLaunch() const {
     return user_.minimize >= 0 ? user_.minimize != 0 : cfg_.behavior.minimizeOnLaunch;
 }
 
-bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wstring, std::wstring>>& flashvars) {
+bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wstring, std::wstring>>& given) {
     if (gi < 0 || ai >= cfg_.games[gi].actions.size()) return false;
     const GameSpec& g = cfg_.games[gi];
     const ActionSpec& a = g.actions[ai];
+    // The action's own values first (online mode, your name), then this launch's
+    // (a room code). Empty values are left out.
+    std::vector<std::pair<std::wstring, std::wstring>> flashvars;
+    for (const auto& [key, value] : a.flashvars) {
+        std::wstring v = replaceAll(value, L"${PLAYER_NAME}", user_.playerName);
+        if (!v.empty()) flashvars.emplace_back(key, v);
+    }
+    flashvars.insert(flashvars.end(), given.begin(), given.end());
     ResolvedAction r = lib_.resolve(g, a, user_);
     if (r.state != ActionState::Ready) {
         notice(cfg_.t("notice.notReady", {{L"GAME", g.name}, {L"REASON", stateReason(cfg_, r)}}), theme_.c.warning);
         if (r.state == ActionState::NoSwf) SetFocus(IsWindowVisible(downloadBtn_) ? downloadBtn_ : locateBtn_);
-        else if (r.state == ActionState::NoPlayer) SetFocus(getPlayerBtn_);
+        else if (r.state == ActionState::NoPlayer || r.state == ActionState::NoRuntime) SetFocus(getPlayerBtn_);
         return false;
     }
+    if (r.web) return runWeb(gi, a, r, flashvars);
     // Values for the game (a room code) go in before the game file, the way the
     // player expects options; players without flashvarArg can't take them.
     if (!flashvars.empty() && !r.player->flashvarArg.empty()) {
@@ -1397,14 +2340,19 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
         return false;
     }
     Session s;
+    s.id = ++nextSessionId_;
     s.pid = p.pid;
     s.game = gi;
     s.action = a.id;
     s.player = r.player->name;
     s.started = GetTickCount64();
+    s.startedUnix = unixNow();
+    for (const auto& [key, value] : given)
+        if (key == L"join") s.room = value;
     s.host = a.relay.enabled;
     sessions_.push_back(s);
     watcher_->watch(p.process, p.pid);
+    updatePresence();
 
     GameStats& st = user_.stats(g.id);
     ++st.plays;
@@ -1424,7 +2372,7 @@ void Launcher::onProcessExit(DWORD pid, DWORD code) {
     auto it = std::find_if(sessions_.begin(), sessions_.end(), [&](const Session& s) { return s.pid == pid; });
     if (it == sessions_.end()) return;
     Session s = *it;
-    sessions_.erase(it);
+    endSession(it);
     int64_t secs = static_cast<int64_t>((GetTickCount64() - s.started) / 1000);
     const GameSpec& g = cfg_.games[s.game];
     user_.stats(g.id).seconds += secs;
@@ -1433,11 +2381,13 @@ void Launcher::onProcessExit(DWORD pid, DWORD code) {
                   std::to_wstring(secs) + L" s");
     if (code != 0 && secs < cfg_.behavior.quickExitSeconds)
         notice(cfg_.t("notice.quitFast", {{L"PLAYER", s.player}, {L"CODE", std::to_wstring(code)}}), theme_.c.error);
-    if (s.host && cfg_.behavior.stopRelayWithGame && relay_.running()) {
-        bool otherHost = std::any_of(sessions_.begin(), sessions_.end(), [](const Session& x) { return x.host; });
+    if (s.host && !s.server && cfg_.behavior.stopRelayWithGame && relay_.running()) {
+        bool otherHost =
+            std::any_of(sessions_.begin(), sessions_.end(), [](const Session& x) { return x.host && !x.server; });
         if (!otherHost) stopRelay(true);
     }
     if (sessions_.empty() && IsIconic(hwnd_) && minimizeOnLaunch()) ShowWindow(hwnd_, SW_RESTORE);
+    updatePresence();
     select(selected_);
     InvalidateRect(grid_, nullptr, FALSE);
     InvalidateRect(hwnd_, &status_, FALSE);
@@ -1446,6 +2396,8 @@ void Launcher::onProcessExit(DWORD pid, DWORD code) {
 void Launcher::stopRelay(bool announce) {
     relay_.stop();
     relayGame_ = -1;
+    slotPeers_ = 0;
+    joinFrom_.clear();
     if (announce) notice(cfg_.t("notice.relayStopped"), theme_.c.textMuted);
     layoutDetail();
 }
@@ -1503,6 +2455,10 @@ void Launcher::getPlayer() {
     const GameSpec& g = cfg_.games[selected_];
     for (const auto& a : g.actions) {
         ResolvedAction r = lib_.resolve(g, a, user_);
+        if (r.state == ActionState::NoRuntime && !a.server.website.empty()) {
+            sys::openPath(a.server.website);
+            return;
+        }
         if (r.state == ActionState::NoPlayer && r.player && r.player->install.enabled()) {
             offerInstall(*r.player, false);
             return;
@@ -1604,12 +2560,12 @@ void Launcher::onInstalled() {
         checkOutdated();
         select(selected_);
         InvalidateRect(grid_, nullptr, FALSE);
-        if (r.ok) notice(cfg_.t("download.done", {{L"GAME", name}}), theme_.c.success);
+        if (r.ok) toast(cfg_.t("download.done", {{L"GAME", name}}), theme_.c.success);
         else notice(cfg_.t("download.failed", {{L"GAME", name}, {L"ERROR", r.error}}), theme_.c.error);
         return;
     }
     if (r.ok)
-        notice(cfg_.t("install.done", {{L"PLAYER", r.version.empty() ? name : name + L" " + r.version}}), theme_.c.success);
+        toast(cfg_.t("install.done", {{L"PLAYER", r.version.empty() ? name : name + L" " + r.version}}), theme_.c.success);
     else
         notice(cfg_.t("install.failed", {{L"PLAYER", name}, {L"ERROR", r.error}}), theme_.c.error);
 }
@@ -1730,8 +2686,215 @@ void Launcher::offerGameDownload(const GameSpec& game) {
     InvalidateRect(hwnd_, &status_, FALSE);
 }
 
+std::wstring Launcher::clipboardText() {
+    std::wstring text;
+    // Another program (a clipboard manager, the one that just copied) may hold
+    // the clipboard for a moment; wait briefly instead of reading nothing.
+    bool open = false;
+    for (int i = 0; i < 10 && !(open = OpenClipboard(hwnd_) != FALSE); ++i) Sleep(20);
+    if (!open) return text;
+    if (HANDLE h = GetClipboardData(CF_UNICODETEXT)) {
+        if (auto* p = static_cast<const wchar_t*>(GlobalLock(h))) {
+            text = p;
+            GlobalUnlock(h);
+        }
+    }
+    CloseClipboard();
+    return trim(text);
+}
+
+bool Launcher::runWeb(int gi, const ActionSpec& a, ResolvedAction r,
+                      const std::vector<std::pair<std::wstring, std::wstring>>& flashvars) {
+    const GameSpec& g = cfg_.games[gi];
+    Session s;
+    s.id = ++nextSessionId_;
+    s.game = gi;
+    s.action = a.id;
+    s.player = r.player->name;
+    s.exe = r.playerExe;
+    s.args = r.args;
+    s.workDir = r.workDir;
+    s.url = r.url;
+    if (a.joinLink) {
+        // A friend's game: the link they sent, from the clipboard.
+        std::wstring link = clipboardText();
+        if (!Library::isUrl(link) || link.find_first_of(L" \t\r\n") != std::wstring::npos) {
+            notice(cfg_.t("web.joinNeedsLink", {{L"ACTION", a.label}}), theme_.c.warning);
+            return false;
+        }
+        s.url = link;
+    }
+    if (r.pageLocal) {
+        s.web = std::make_shared<WebServer>();
+        std::wstring err;
+        if (!s.web->start(fs::parent(r.page), stablePort(g.id), err) && !s.web->start(fs::parent(r.page), 0, err)) {
+            notice(cfg_.t("notice.launchFailed", {{L"PLAYER", r.player->name}, {L"ERROR", err}}), theme_.c.error);
+            return false;
+        }
+        s.url = L"http://127.0.0.1:" + std::to_wstring(s.web->port()) + L"/" + fs::fileName(r.page);
+    }
+    // Values for the game (a room code) travel as query parameters.
+    for (const auto& [key, value] : flashvars)
+        s.url += std::wstring(s.url.find(L'?') == std::wstring::npos ? L"?" : L"&") + key + L"=" + value;
+
+    GameStats& st = user_.stats(g.id);
+    ++st.plays;
+    st.lastPlayed = unixNow();
+    save();
+    if (!a.server.enabled()) {
+        if (!launchBrowser(s)) return false;
+        sessions_.push_back(s);
+        notice(a.hint.empty() ? cfg_.t("notice.launched", {{L"GAME", g.name}, {L"PLAYER", s.player}}) : a.hint,
+               theme_.c.success);
+        select(selected_);
+        InvalidateRect(grid_, nullptr, FALSE);
+        return true;
+    }
+    // A server first (hidden, its output read for links), then the browser once
+    // the game answers at its address.
+    s.server = std::make_shared<sys::BackgroundProcess>();
+    HWND wnd = hwnd_;
+    int id = s.id;
+    std::wstring err;
+    if (!s.server->start(r.serverExe, r.serverArgs, r.serverCwd,
+                         [wnd, id](const std::wstring& line) {
+                             logger().info(L"[server] " + line);
+                             PostMessageW(wnd, WM_APP_SERVERLINE, 0, reinterpret_cast<LPARAM>(new ServerLine{id, line}));
+                         },
+                         err)) {
+        notice(cfg_.t("notice.launchFailed", {{L"PLAYER", a.server.name}, {L"ERROR", err}}), theme_.c.error);
+        return false;
+    }
+    s.host = true;
+    s.started = GetTickCount64();
+    sessions_.push_back(s);
+    std::shared_ptr<sys::BackgroundProcess> server = s.server;
+    std::wstring url = r.url;
+    helpers_.emplace_back([wnd, id, server, url] {
+        bool ok = sys::waitForServer(url, 30000, [server] { return server->running(); });
+        PostMessageW(wnd, WM_APP_SERVERREADY, static_cast<WPARAM>(id), ok ? 1 : 0);
+    });
+    notice(cfg_.t("web.starting", {{L"GAME", g.name}}), theme_.c.online);
+    select(selected_);
+    InvalidateRect(grid_, nullptr, FALSE);
+    return true;
+}
+
+bool Launcher::launchBrowser(Session& s) {
+    std::vector<std::wstring> args;
+    for (const auto& a : s.args) args.push_back(replaceAll(a, L"${URL}", s.url));
+    sys::Started p;
+    std::wstring err;
+    if (!sys::startProcess(s.exe, args, s.workDir, p, err)) {
+        notice(cfg_.t("notice.launchFailed", {{L"PLAYER", s.player}, {L"ERROR", err}}), theme_.c.error);
+        return false;
+    }
+    s.pid = p.pid;
+    s.started = GetTickCount64();
+    watcher_->watch(p.process, p.pid);
+    if (minimizeOnLaunch()) ShowWindow(hwnd_, SW_MINIMIZE);
+    return true;
+}
+
+void Launcher::onServerLine(int sessionId, const std::wstring& line) {
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [&](const Session& s) { return s.id == sessionId; });
+    if (it == sessions_.end()) return;
+    const ActionSpec* a = nullptr;
+    for (const auto& x : cfg_.games[it->game].actions)
+        if (x.id == it->action) a = &x;
+    if (!a) return;
+    bool changed = false;
+    auto collect = [&](const std::wstring& pattern, std::vector<std::wstring>& into) {
+        if (pattern.empty()) return;
+        try {
+            std::wregex re(pattern, std::regex::icase);
+            for (std::wsregex_iterator m(line.begin(), line.end(), re), end; m != end; ++m) {
+                std::wstring link = m->str();
+                if (std::find(into.begin(), into.end(), link) == into.end()) {
+                    into.push_back(link);
+                    changed = true;
+                }
+            }
+        } catch (const std::regex_error&) {
+        }
+    };
+    collect(a->server.share, it->shareLinks);
+    collect(a->server.lan, it->lanLinks);
+    if (changed && it->game == selected_) layoutDetail();
+}
+
+void Launcher::onServerReady(int sessionId, bool ok) {
+    auto it = std::find_if(sessions_.begin(), sessions_.end(), [&](const Session& s) { return s.id == sessionId; });
+    if (it == sessions_.end()) return;
+    const GameSpec& g = cfg_.games[it->game];
+    if (!ok) {
+        bool died = it->server && !it->server->running();
+        endSession(it);
+        notice(died ? cfg_.t("web.serverFailed", {{L"GAME", g.name}, {L"ERROR", L"see the log"}})
+                    : cfg_.t("web.serverTimeout", {{L"GAME", g.name}}),
+               theme_.c.error);
+        select(selected_);
+        return;
+    }
+    if (!launchBrowser(*it)) {
+        endSession(it);
+        select(selected_);
+        return;
+    }
+    const ActionSpec* a = nullptr;
+    for (const auto& x : g.actions)
+        if (x.id == it->action) a = &x;
+    notice(a && !a->hint.empty() ? a->hint : cfg_.t("notice.launched", {{L"GAME", g.name}, {L"PLAYER", it->player}}),
+           theme_.c.success);
+    select(selected_);
+    InvalidateRect(grid_, nullptr, FALSE);
+}
+
+void Launcher::endSession(std::vector<Session>::iterator it) {
+    if (it == sessions_.end()) return;
+    // Stopping the server ends everything it started too (the tunnel); the local
+    // web server closes with its last reference.
+    if (it->server) it->server->stop();
+    if (it->web) it->web->stop();
+    sessions_.erase(it);
+}
+
+Launcher::Session* Launcher::webHostSession(int gameIndex) {
+    for (auto& s : sessions_)
+        if (s.game == gameIndex && s.server) return &s;
+    return nullptr;
+}
+
+std::vector<Launcher::HostLine> Launcher::hostView() {
+    std::vector<HostLine> out;
+    if (Session* s = webHostSession(selected_)) {
+        out.push_back({cfg_.t("web.serverRunning"), 0});
+        out.push_back({cfg_.t("web.links"), 1});
+        size_t shown = 0;
+        for (const auto* list : {&s->shareLinks, &s->lanLinks})
+            for (const auto& link : *list)
+                if (shown++ < 3) out.push_back({link, 2});
+        if (!shown) out.push_back({cfg_.t("web.waitingLink"), 1});
+        return out;
+    }
+    if (!(relay_.running() && relayGame_ == selected_)) return out;
+    std::wstring port = std::to_wstring(relay_.port());
+    out.push_back({cfg_.t("host.running", {{L"PORT", port}}), 0});
+    out.push_back({cfg_.t("host.addresses"), 1});
+    if (addresses_.empty()) out.push_back({cfg_.t("host.noAddress", {{L"PORT", port}}), 2});
+    for (size_t i = 0; i < addresses_.size() && i < 3; ++i)
+        out.push_back({addresses_[i].address + L":" + port + L"   " + addresses_[i].adapter, 2});
+    return out;
+}
+
 void Launcher::copyText(const std::wstring& text) {
-    if (!OpenClipboard(hwnd_)) return;
+    // Another program may hold the clipboard for a moment; wait briefly for it.
+    bool open = false;
+    for (int i = 0; i < 10 && !(open = OpenClipboard(hwnd_) != FALSE); ++i) Sleep(20);
+    if (!open) {
+        logger().warn(L"Couldn't open the clipboard to copy " + text);
+        return;
+    }
     EmptyClipboard();
     size_t bytes = (text.size() + 1) * sizeof(wchar_t);
     if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
@@ -1762,11 +2925,15 @@ void Launcher::startRoomPolling() {
                 if (server.empty()) server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
                 std::map<std::string, std::vector<RoomInfo>> found;
                 bool ok = false;
+                int ping = -1;  // the fastest answer this round, in ms
                 for (const auto& g : cfg_.games) {
                     if (g.onlineId.empty() || roomsStop_) continue;
                     std::vector<RoomInfo> list;
                     std::wstring err;
+                    ULONGLONG asked = GetTickCount64();
                     if (listRooms(server, g.onlineId, list, err)) {
+                        int ms = static_cast<int>(GetTickCount64() - asked);
+                        if (ping < 0 || ms < ping) ping = ms;
                         ok = true;
                         found[g.id] = std::move(list);
                     } else {
@@ -1778,6 +2945,7 @@ void Launcher::startRoomPolling() {
                     std::lock_guard<std::mutex> lock(installMu_);
                     pendingRooms_ = std::move(found);
                     pendingRoomsOk_ = ok;
+                    pendingPing_ = ping;
                 }
                 PostMessageW(wnd, WM_APP_ROOMS, 0, 0);
             }
@@ -1793,7 +2961,10 @@ void Launcher::onRooms() {
         std::lock_guard<std::mutex> lock(installMu_);
         found.swap(pendingRooms_);
         ok = pendingRoomsOk_;
+        pingMs_ = pendingPing_;
     }
+    serverAsked_ = true;
+    InvalidateRect(hwnd_, &status_, FALSE);
     auto same = [](const std::vector<RoomInfo>& a, const std::vector<RoomInfo>& b) {
         if (a.size() != b.size()) return false;
         for (size_t i = 0; i < a.size(); ++i)
@@ -1806,28 +2977,18 @@ void Launcher::onRooms() {
     if (!changed) return;  // nothing new: no repaint, no flicker
     rooms_ = std::move(found);
     roomsKnown_ = ok;
+    refreshRoomsNav();
+    layoutRoomsPage();
+    InvalidateRect(hwnd_, &gridRc_, FALSE);
+    if (motion_)
+        for (const auto& [id, list] : rooms_)
+            for (const auto& room : list) codeFrom_.try_emplace(room.code, GetTickCount64());
     InvalidateRect(grid_, nullptr, FALSE);
     layoutDetail();
 }
 
 void Launcher::joinRoom(size_t index) {
-    if (selected_ < 0) return;
-    const GameSpec& g = cfg_.games[selected_];
-    auto it = rooms_.find(g.id);
-    if (it == rooms_.end() || index >= it->second.size()) return;
-    const RoomInfo room = it->second[index];
-    if (room.max > 0 && room.players >= room.max) {
-        notice(cfg_.t("rooms.full", {{L"CODE", room.code}}), theme_.c.warning);
-        return;
-    }
-    size_t action = 0;
-    for (size_t i = 0; i < g.actions.size(); ++i)
-        if (g.actions[i].id == g.joinAction) action = i;
-    copyText(room.code);
-    // The code goes to the game as a FlashVar too, so a mod that reads it can join
-    // by itself; until then the player pastes it into the F9 panel.
-    if (runAction(selected_, action, {{L"join", room.code}}))
-        notice(cfg_.t("rooms.copied", {{L"CODE", room.code}}), theme_.c.success);
+    if (index < tabRows_.size()) joinListedRoom(tabRows_[index].game, tabRows_[index].room);
 }
 
 std::vector<CatalogFile> Launcher::outdatedFor(const GameSpec& game) const {
@@ -1843,18 +3004,18 @@ void Launcher::checkOutdated() {
 }
 
 void Launcher::copyAddress() {
+    if (Session* s = webHostSession(selected_)) {
+        const auto& links = !s->shareLinks.empty() ? s->shareLinks : s->lanLinks;
+        if (!links.empty()) {
+            copyText(links.front());
+            toast(cfg_.t("notice.copied", {{L"ADDRESS", links.front()}}), theme_.c.success);
+        }
+        return;
+    }
     std::wstring addr = (addresses_.empty() ? std::wstring(L"127.0.0.1") : addresses_.front().address) + L":" +
                         std::to_wstring(relay_.port());
-    if (!OpenClipboard(hwnd_)) return;
-    EmptyClipboard();
-    size_t bytes = (addr.size() + 1) * sizeof(wchar_t);
-    if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
-        memcpy(GlobalLock(mem), addr.c_str(), bytes);
-        GlobalUnlock(mem);
-        if (!SetClipboardData(CF_UNICODETEXT, mem)) GlobalFree(mem);
-    }
-    CloseClipboard();
-    notice(cfg_.t("notice.copied", {{L"ADDRESS", addr}}), theme_.c.success);
+    copyText(addr);
+    toast(cfg_.t("notice.copied", {{L"ADDRESS", addr}}), theme_.c.success);
 }
 
 void Launcher::toggleFavorite() {
@@ -1930,6 +3091,8 @@ LRESULT CALLBACK Launcher::gridProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR
                 InvalidateRect(h, &r, FALSE);
             self->hoverItem_ = item;
             if (item >= 0 && ListView_GetItemRect(h, item, &r, LVIR_BOUNDS)) InvalidateRect(h, &r, FALSE);
+            self->liftTick_ = GetTickCount64();
+            self->wake();
         }
     } else if (m == WM_SETFOCUS || m == WM_KILLFOCUS) {
         InvalidateRect(h, nullptr, FALSE);  // focus ring on the focused card
@@ -1945,19 +3108,21 @@ LRESULT CALLBACK Launcher::searchProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
     // The hint is drawn here instead of with EM_SETCUEBANNER: Windows draws that in
     // the system gray, which is only 3.1:1 on the dark search box.
     LRESULT r = DefSubclassProc(h, m, w, l);
-    if (m == WM_PAINT && GetWindowTextLengthW(h) == 0) {
+    // WM_PRINT too: the opening entrance draws the box into its picture.
+    bool print = m == WM_PRINT || m == WM_PRINTCLIENT;
+    if ((m == WM_PAINT || print) && GetWindowTextLengthW(h) == 0) {
         auto* self = reinterpret_cast<Launcher*>(ref);
-        HDC dc = GetDC(h);
+        HDC dc = print ? reinterpret_cast<HDC>(w) : GetDC(h);
         RECT rc;
         GetClientRect(h, &rc);
         rc.left += self->theme_.s(4);
         HGDIOBJ old = SelectObject(dc, self->theme_.body);
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, self->theme_.c.textMuted.ref());
-        std::wstring cue = self->cfg_.t("search.cue");
+        std::wstring cue = self->cfg_.t(h == self->search_ ? "search.cue" : "roomsPage.code");
         DrawTextW(dc, cue.c_str(), static_cast<int>(cue.size()), &rc, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
         SelectObject(dc, old);
-        ReleaseDC(h, dc);
+        if (!print) ReleaseDC(h, dc);
     }
     return r;
 }
@@ -1981,6 +3146,9 @@ LRESULT CALLBACK Launcher::buttonProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
 }
 
 LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
+    if (intro_ && (m == WM_LBUTTONDOWN || m == WM_RBUTTONDOWN || m == WM_MOUSEWHEEL || m == WM_KEYDOWN ||
+                   m == WM_SYSKEYDOWN))
+        endIntro();
     switch (m) {
         case WM_SIZE:
             if (w != SIZE_MINIMIZED) relayout();
@@ -2004,6 +3172,12 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
         }
         case WM_SETTINGCHANGE:
         case WM_SYSCOLORCHANGE:
+            motion_ = !snapshot_ && systemAnimations();
+            if (!motion_) {  // turned off mid-way: jump to the end
+                titleFrom_ = 0;
+                for (auto& [code, from] : codeFrom_) from = 0;
+                joinFrom_.clear();
+            }
             theme_.build(theme_.dpi);
             applyFonts();
             artCache_.clear();
@@ -2014,7 +3188,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_PAINT: {
             PAINTSTRUCT ps;
             HDC dc = BeginPaint(hwnd_, &ps);
-            paint(dc);
+            paint(dc, ps.rcPaint);
             EndPaint(hwnd_, &ps);
             return 0;
         }
@@ -2094,22 +3268,71 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 InvalidateRect(hwnd_, &searchBox_, FALSE);
             } else if (id == kIdPlayer && code == CBN_SELCHANGE) {
                 onPlayerChoice();
+            } else if (id == kIdPageGame && code == CBN_SELCHANGE) {
+                pageScroll_ = 0;
+                layoutRoomsPage();
+                InvalidateRect(hwnd_, &gridRc_, FALSE);
+            } else if ((id == kIdTabCode || id == kIdPageCode) && (code == EN_SETFOCUS || code == EN_KILLFOCUS)) {
+                InvalidateRect(hwnd_, id == kIdTabCode ? &dl_.codeBox : &pageCodeBox_, FALSE);
             } else if (code == BN_CLICKED) {
                 if (id >= kIdAction0 && id < kIdRoom0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
                 else if (id == kIdGetPlayer) getPlayer();
-                else if (id == kIdStopHost) stopRelay(true);
+                else if (id == kIdStopHost) {
+                    if (Session* s = webHostSession(selected_)) {
+                        auto it = std::find_if(sessions_.begin(), sessions_.end(),
+                                               [&](const Session& x) { return x.id == s->id; });
+                        endSession(it);
+                        notice(cfg_.t("notice.relayStopped"), theme_.c.textMuted);
+                        select(selected_);
+                    } else {
+                        stopRelay(true);
+                    }
+                }
                 else if (id == kIdCopy) copyAddress();
                 else if (id == kIdDownload && selected_ >= 0) offerGameDownload(cfg_.games[selected_]);
                 else if (id == kIdSettings) openSettings();
-                else if (id >= kIdRoom0 && id < kIdRoom0 + 3) joinRoom(static_cast<size_t>(id - kIdRoom0));
+                else if (id >= kIdRoom0 && id < kIdPageRoom0) joinRoom(static_cast<size_t>(id - kIdRoom0));
+                else if (id >= kIdPageRoom0 && id < kIdPageRoomEnd) {
+                    size_t i = static_cast<size_t>(id - kIdPageRoom0);
+                    if (i < pageRows_.size()) joinListedRoom(pageRows_[i].game, pageRows_[i].room);
+                } else if (id == kIdTabPlay || id == kIdTabRooms) {
+                    detailTab_ = id == kIdTabRooms ? 1 : 0;
+                    layoutDetail();
+                } else if (id == kIdMore) {
+                    showMore_ = !showMore_;
+                    layoutDetail();
+                } else if (id == kIdQuick) quickPlay();
+                else if (id == kIdTabCodeJoin) joinByCode(tabCodeEdit_, selected_);
+                else if (id == kIdPageCodeJoin) joinByCode(pageCodeEdit_, -1);
+                else if (id == kIdPageHideFull) {
+                    pageScroll_ = 0;
+                    layoutRoomsPage();
+                    InvalidateRect(hwnd_, &gridRc_, FALSE);
+                }
                 else if (id == IDOK && selected_ >= 0) runAction(selected_, 0);  // Enter outside the grid
             }
             return 0;
         }
+        case WM_MOUSEWHEEL:
+            if (roomsPage()) {
+                pageScroll_ -= GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
+                layoutRoomsPage();
+                InvalidateRect(hwnd_, &gridRc_, FALSE);
+                return 0;
+            }
+            break;
         case WM_TIMER:
+            if (w == kFrameTimer) {
+                onFrame();
+                return 0;
+            }
+            if (toastFrom_ && !motion_ && since(toastFrom_) > kToastMs) {  // no frames run without animations
+                toastFrom_ = 0;
+                ShowWindow(toast_, SW_HIDE);
+            }
             if (!sessions_.empty() || (noticeUntil_ && GetTickCount64() >= noticeUntil_)) {
                 if (GetTickCount64() >= noticeUntil_) noticeUntil_ = 0;
                 InvalidateRect(hwnd_, &status_, FALSE);
@@ -2126,6 +3349,14 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_APP_ROOMS:
             onRooms();
+            return 0;
+        case WM_APP_SERVERLINE: {
+            std::unique_ptr<ServerLine> line(reinterpret_cast<ServerLine*>(l));
+            onServerLine(line->session, line->text);
+            return 0;
+        }
+        case WM_APP_SERVERREADY:
+            onServerReady(static_cast<int>(w), l != 0);
             return 0;
         case WM_APP_CATALOG: {
             std::string raw;
@@ -2159,9 +3390,14 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                     break;
                 }
             return 0;
-        case WM_APP_RELAY:
+        case WM_APP_RELAY: {
+            size_t peers = relay_.running() ? relay_.snapshot().peers.size() : 0;
+            if (motion_)
+                for (size_t i = slotPeers_; i < peers; ++i) joinFrom_[static_cast<int>(i)] = GetTickCount64();
+            slotPeers_ = peers;
             layoutDetail();
             return 0;
+        }
         case WM_CLOSE: {
             WINDOWPLACEMENT wp{sizeof wp};
             if (GetWindowPlacement(hwnd_, &wp)) {
@@ -2202,6 +3438,35 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
             return 1;
         }
     }
+    // HTML5: the local web server or the game's own server comes first.
+    sys::BackgroundProcess server;
+    WebServer web;
+    if (r.web) {
+        std::wstring url = r.url, err;
+        if (action.joinLink) {
+            message = L"\"" + action.label + L"\" opens a friend's link and needs the launcher window.";
+            return 3;
+        }
+        if (r.pageLocal) {
+            if (!web.start(fs::parent(r.page), stablePort(game.id), err) && !web.start(fs::parent(r.page), 0, err)) {
+                message = cfg.t("notice.launchFailed", {{L"PLAYER", r.player->name}, {L"ERROR", err}});
+                return 1;
+            }
+            url = L"http://127.0.0.1:" + std::to_wstring(web.port()) + L"/" + fs::fileName(r.page);
+        }
+        if (action.server.enabled()) {
+            if (!server.start(r.serverExe, r.serverArgs, r.serverCwd,
+                              [](const std::wstring& line) { logger().info(L"[server] " + line); }, err)) {
+                message = cfg.t("notice.launchFailed", {{L"PLAYER", action.server.name}, {L"ERROR", err}});
+                return 1;
+            }
+            if (!sys::waitForServer(url, 30000, [&server] { return server.running(); })) {
+                message = cfg.t("web.serverTimeout", {{L"GAME", game.name}});
+                return 1;
+            }
+        }
+        for (auto& arg : r.args) arg = replaceAll(arg, L"${URL}", url);
+    }
     sys::Started p;
     std::wstring err;
     if (!sys::startProcess(r.playerExe, r.args, r.workDir, p, err)) {
@@ -2214,7 +3479,7 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
     saveUserData(user, userPath);
     message = action.hint.empty() ? cfg.t("notice.launched", {{L"GAME", game.name}, {L"PLAYER", r.player->name}})
                                   : action.hint;
-    if (relay.running()) {
+    if (relay.running() || r.web) {  // the relay or the game's server must outlive the game
         ULONGLONG start = GetTickCount64();
         WaitForSingleObject(p.process, INFINITE);
         st.seconds += static_cast<int64_t>((GetTickCount64() - start) / 1000);

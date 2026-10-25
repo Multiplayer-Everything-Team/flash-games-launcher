@@ -33,6 +33,35 @@ struct NetAddress {
 // Up, non-loopback IPv4 addresses, physical adapters first.
 std::vector<NetAddress> localAddresses();
 
+// A background program next to a game, such as an HTML5 mod's co-op server:
+// started hidden inside a job object, so it and everything it starts (a tunnel)
+// end together, even if the launcher crashes. Every line it prints goes to
+// `onLine` on a reader thread.
+class BackgroundProcess {
+public:
+    using LineFn = std::function<void(const std::wstring&)>;
+    BackgroundProcess() = default;
+    ~BackgroundProcess();
+    BackgroundProcess(const BackgroundProcess&) = delete;
+    BackgroundProcess& operator=(const BackgroundProcess&) = delete;
+
+    bool start(const std::wstring& exe, const std::vector<std::wstring>& args, const std::wstring& workDir,
+               LineFn onLine, std::wstring& error);
+    void stop();  // ends the whole process tree
+    bool running() const;
+    DWORD pid() const { return pid_; }
+
+private:
+    HANDLE job_ = nullptr, process_ = nullptr, read_ = nullptr;
+    DWORD pid_ = 0;
+    std::thread reader_;
+};
+
+// Polls until something accepts connections at `url`'s host and port (an
+// http(s) address), up to `timeoutMs`. False on timeout or when `alive` says
+// the server already quit.
+bool waitForServer(const std::wstring& url, int timeoutMs, const std::function<bool()>& alive);
+
 // Waits for any number of processes on one thread and calls `onExit` there
 // (pid, exit code). Closes the handles it was given.
 class ProcessWatcher {

@@ -1,6 +1,7 @@
 #include "theme.h"
 
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 #include "core/log.h"
@@ -115,6 +116,29 @@ std::unique_ptr<Bitmap> loadImageFile(const std::wstring& path) {
     return copy;
 }
 
+std::unique_ptr<Bitmap> loadImageBytes(const std::string& bytes) {
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
+    if (!mem) return nullptr;
+    memcpy(GlobalLock(mem), bytes.data(), bytes.size());
+    GlobalUnlock(mem);
+    IStream* stream = nullptr;
+    if (FAILED(CreateStreamOnHGlobal(mem, TRUE, &stream))) {
+        GlobalFree(mem);
+        return nullptr;
+    }
+    std::unique_ptr<Bitmap> decoded(Bitmap::FromStream(stream));
+    std::unique_ptr<Bitmap> copy;
+    if (decoded && decoded->GetLastStatus() == Ok && decoded->GetWidth() > 0) {
+        // Copied out while the stream is alive: GDI+ reads it lazily.
+        copy = std::make_unique<Bitmap>(decoded->GetWidth(), decoded->GetHeight(), PixelFormat32bppPARGB);
+        Graphics g(copy.get());
+        g.DrawImage(decoded.get(), 0, 0, decoded->GetWidth(), decoded->GetHeight());
+    }
+    decoded.reset();
+    stream->Release();
+    return copy;
+}
+
 static std::wstring initialsOf(const std::wstring& name) {
     std::wstring out;
     for (const auto& word : split(name, L' ')) {
@@ -202,10 +226,10 @@ std::unique_ptr<Bitmap> coverArt(const std::wstring& name, const fl::Color& from
     return bmp;
 }
 
-void drawCover(Graphics& g, Bitmap& img, const RectF& box, float radius, bool roundBottom) {
+void drawCover(Graphics& g, Bitmap& img, const RectF& box, float radius, bool roundBottom, float focus) {
     float w = static_cast<float>(img.GetWidth()), h = static_cast<float>(img.GetHeight());
     float scale = std::max(box.Width / w, box.Height / h);
-    RectF src((w - box.Width / scale) / 2, (h - box.Height / scale) / 2, box.Width / scale, box.Height / scale);
+    RectF src((w - box.Width / scale) / 2, (h - box.Height / scale) * focus, box.Width / scale, box.Height / scale);
     GraphicsPath p;
     if (roundBottom) {
         roundRectPath(p, box, radius);
@@ -264,6 +288,8 @@ void Theme::init(const Config& cfg) {
     if (fontInstalled(display_ + L" SemiBold")) display_ += L" SemiBold";
     else if (!fontInstalled(display_)) display_ = family_;
     if (!fontInstalled(displayCondensed_)) displayCondensed_ = display_;
+    for (const wchar_t* face : {L"Segoe Fluent Icons", L"Segoe MDL2 Assets"})
+        if (iconFace_.empty() && fontInstalled(face)) iconFace_ = face;
     HINSTANCE inst = GetModuleHandleW(nullptr);
     iconBig = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON),
                                             GetSystemMetrics(SM_CYICON), 0));
@@ -272,7 +298,7 @@ void Theme::init(const Config& cfg) {
 }
 
 void Theme::release() {
-    for (HFONT* f : {&body, &strong, &caption, &tiny, &title, &brand, &heading, &name, &button}) {
+    for (HFONT* f : {&body, &strong, &caption, &tiny, &title, &brand, &heading, &name, &button, &icon}) {
         if (*f) DeleteObject(*f);
         *f = nullptr;
     }
@@ -320,6 +346,7 @@ void Theme::build(UINT newDpi) {
     brand = makeFace(display_, pt * 1.45f, FW_SEMIBOLD);
     name = makeFace(displayCondensed_, pt * 1.35f, FW_SEMIBOLD);
     button = makeFace(display_, pt * 1.25f, FW_SEMIBOLD);
+    if (!iconFace_.empty()) icon = makeFace(iconFace_, pt * 1.2f, FW_NORMAL);
     brBackground = CreateSolidBrush(c.background.ref());
     brSurface = CreateSolidBrush(c.surface.ref());
     brSidebar = CreateSolidBrush(c.sidebar.ref());

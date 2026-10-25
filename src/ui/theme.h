@@ -20,6 +20,8 @@ struct Theme {
     // button (action labels) in the display font.
     HFONT body = nullptr, strong = nullptr, caption = nullptr, tiny = nullptr, title = nullptr, brand = nullptr,
           heading = nullptr, name = nullptr, button = nullptr;
+    // Segoe Fluent Icons (Windows 11) or Segoe MDL2 Assets (Windows 10); null when neither exists.
+    HFONT icon = nullptr;
     HBRUSH brBackground = nullptr, brSurface = nullptr, brSidebar = nullptr;
     HICON iconBig = nullptr, iconSmall = nullptr;
 
@@ -38,7 +40,7 @@ private:
     void release();
     const Config* cfg_ = nullptr;
     ThemeColors configured_;
-    std::wstring family_, display_, displayCondensed_;
+    std::wstring family_, display_, displayCondensed_, iconFace_;
 };
 
 Gdiplus::Color gc(const Color& c, uint8_t alpha = 255);
@@ -57,9 +59,13 @@ int textWidth(HDC dc, HFONT font, const std::wstring& text);
 std::wstring fitText(HDC dc, HFONT font, const std::wstring& text, int width, int maxHeight);
 
 std::unique_ptr<Gdiplus::Bitmap> loadImageFile(const std::wstring& path);
+// The same from bytes in memory (a cover built into the exe).
+std::unique_ptr<Gdiplus::Bitmap> loadImageBytes(const std::string& bytes);
 // Generated cover art: the game's initials as pixel blocks on its own color.
 std::unique_ptr<Gdiplus::Bitmap> coverArt(const std::wstring& name, const Color& from, const Color& to, int w, int h);
 // Draws `img` scaled to cover `box` (cropping the overflow), clipped to rounded corners.
-void drawCover(Gdiplus::Graphics& g, Gdiplus::Bitmap& img, const Gdiplus::RectF& box, float radius, bool roundBottom);
+// `focus`: which part stays in view when the height is cropped (0 top, 1 bottom).
+void drawCover(Gdiplus::Graphics& g, Gdiplus::Bitmap& img, const Gdiplus::RectF& box, float radius, bool roundBottom,
+               float focus = 0.5f);
 
 }  // namespace fl::ui

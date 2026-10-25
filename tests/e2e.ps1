@@ -10,6 +10,8 @@ param(
   [Parameter(Mandatory)] [string]$Root
 )
 $ErrorActionPreference = 'Stop'
+# Animations off, whatever Windows says: checks must not depend on frame timing.
+$env:FL_MOTION = '0'
 $failures = 0
 function Check([bool]$ok, [string]$what) {
   if ($ok) { Write-Host "[ OK ] $what" } else { Write-Host "[FAIL] $what"; $script:failures++ }
@@ -22,6 +24,13 @@ function Run([string[]]$argList) {
 function PortOpen([int]$port) {
   $c = New-Object System.Net.Sockets.TcpClient
   try { $c.Connect('127.0.0.1', $port); return $true } catch { return $false } finally { $c.Close() }
+}
+# Another program can hold the clipboard for a moment; try again instead of failing.
+function SetClip([string]$text) {
+  for ($i = 0; $i -lt 20; $i++) {
+    try { Set-Clipboard -Value $text; return } catch { Start-Sleep -Milliseconds 100 }
+  }
+  Set-Clipboard -Value $text
 }
 function WaitFor([scriptblock]$cond, [int]$ms = 5000) {
   $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -317,20 +326,47 @@ $rw = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\roo
 try {
   WaitFor { $rw.Refresh(); $rw.MainWindowHandle -ne 0 } 10000 | Out-Null
   $h = $rw.MainWindowHandle
-  $join = $null; $full = $null
+  $join = $null; $full = $null; $roomsTab = $null
+  $upd = $null
+  WaitFor { $script:upd = [Acc]::Controls($h) | Where-Object { $_.Name -like 'Update game files*' } | Select-Object -First 1; $null -ne $script:upd } 10000 | Out-Null
+  Check ($null -ne $upd) 'a newer build in the catalog shows Update game files'
+  # Rooms live under the details panel's Rooms tab, named with their count.
+  WaitFor { $script:roomsTab = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Rooms (2)' } | Select-Object -First 1; $null -ne $script:roomsTab } 10000 | Out-Null
+  Check ($null -ne $roomsTab) 'the details panel has a Rooms tab with the room count'
+  if ($roomsTab) { [Acc]::Do($roomsTab.Hwnd) }
   WaitFor { $script:join = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room ABCDE' } | Select-Object -First 1; $null -ne $script:join } 10000 | Out-Null
   $full = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room FULL1' } | Select-Object -First 1
-  Check ($null -ne $join) 'the details panel lists open rooms with Join buttons'
+  Check ($null -ne $join) 'the Rooms tab lists open rooms with Join buttons'
   Check ($null -ne $full -and -not [Win2]::IsWindowEnabled($full.Hwnd)) "a full room's Join button is disabled"
-  $upd = [Acc]::Controls($h) | Where-Object { $_.Name -like 'Update game files*' } | Select-Object -First 1
-  Check ($null -ne $upd) 'a newer build in the catalog shows Update game files'
   if ($join) {
     [Acc]::Do($join.Hwnd)
     Check (WaitFor { (Test-Path "$work\args.txt") -and ((Get-Content "$work\args.txt") -contains '-Pjoin=ABCDE') }) 'Join passes the room code to the player (-Pjoin=ABCDE)'
     $args3 = @(Get-Content "$work\args.txt" -ErrorAction SilentlyContinue)
     Check ($args3.Count -ge 2 -and $args3[-1] -like '*dl.swf') "the game file stays last ($($args3 -join ' | '))"
-    Check ((Get-Clipboard) -eq 'ABCDE') 'Join copies the room code'
+    Check (WaitFor { ($(try { Get-Clipboard } catch { '' })) -eq 'ABCDE' }) 'Join copies the room code'
   }
+  # Quick play joins the busiest room that still has space (ABCDE; FULL1 is full).
+  Start-Sleep -Milliseconds 800
+  Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+  $playTab = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Play' } | Select-Object -First 1
+  if ($playTab) { [Acc]::Do($playTab.Hwnd) }
+  $quick = $null
+  WaitFor { $script:quick = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Quick play' } | Select-Object -First 1; $null -ne $script:quick } | Out-Null
+  if ($quick) {
+    [Acc]::Do($quick.Hwnd)
+    Check (WaitFor { (Test-Path "$work\args.txt") -and ((Get-Content "$work\args.txt") -contains '-Pjoin=ABCDE') }) 'Quick play joins the busiest open room'
+  } else { Check $false 'Quick play button found' }
+  # The sidebar's Rooms page lists every game's rooms with their own Join buttons.
+  $navList = [Acc]::Controls($h) | Where-Object { $_.Class -eq 'ListBox' } | Select-Object -First 1
+  if ($navList) {
+    [Acc]::SendMessage($navList.Hwnd, 0x0186, [IntPtr]3, [IntPtr]::Zero) | Out-Null  # LB_SETCURSEL: Rooms
+    [Acc]::SendMessage($h, 0x0111, [IntPtr](100 -bor (1 -shl 16)), $navList.Hwnd) | Out-Null  # WM_COMMAND LBN_SELCHANGE
+    # The Play tab is open again, so a visible Join button is the page's own.
+    Check (WaitFor { @([Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join room ABCDE' }).Count -ge 1 }) 'the Rooms page lists the open rooms'
+    Check ($null -ne ([Acc]::Controls($h) | Where-Object { $_.Name -eq 'Join by code' } | Select-Object -First 1)) 'the Rooms page has Join by code'
+    [Acc]::SendMessage($navList.Hwnd, 0x0186, [IntPtr]0, [IntPtr]::Zero) | Out-Null
+    [Acc]::SendMessage($h, 0x0111, [IntPtr](100 -bor (1 -shl 16)), $navList.Hwnd) | Out-Null
+  } else { Check $false 'sidebar found' }
   $setBtn = [Acc]::Controls($h) | Where-Object { $_.Name -eq 'Settings' } | Select-Object -First 1
   if ($setBtn) {
     [Acc]::Do($setBtn.Hwnd)
@@ -411,6 +447,103 @@ Check ($settings -match '"plays": [1-9]') 'play count is saved'
   Check $false "window automation: $($_.Exception.Message)"
 } finally {
   if (-not $gui.HasExited) { Stop-Process -Id $gui.Id -Force }
+}
+
+# ---- HTML5: a browser player, a local page, a game server and a friend's link ----
+# The "browser" is the fake player too; the "server" is launcher_tests.exe
+# --fake-server, which prints a tunnel link the way the PB2 co-op server does.
+$wport = 48700 + ($PID % 200)
+New-Item -ItemType Directory -Force "$work\games\webpage", "$work\games\webgame" | Out-Null
+Set-Content "$work\games\webpage\index.html" '<h1>web demo</h1>'
+Set-Content "$work\games\webgame\server.js" '// stand-in'
+$webConfig = @"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players",
+             "data": "`${LAUNCHER_DIR}\\wdata", "flashpoint": [] },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"], "args": ["--fake-player"] },
+               { "id": "browser", "name": "Fake Browser", "kind": "browser", "paths": ["$($fake -replace '\\','\\')"],
+                 "args": ["--fake-player", "--app=`${URL}"] } ],
+  "categories": [ { "id": "online", "name": "Online multiplayer" } ],
+  "games": [
+    { "id": "web", "name": "Web Demo", "players": "1-8 players", "categories": ["online"],
+      "actions": [
+        { "id": "host", "label": "Host co-op", "file": "`${GAMES_DIR}\\webgame\\server.js",
+          "server": { "name": "Fake server", "exe": ["$($fake -replace '\\','\\')"], "args": ["--fake-server", "$wport"],
+                      "url": "http://127.0.0.1:$wport/", "share": "https://[a-z0-9-]+\\.trycloudflare\\.com" } },
+        { "id": "page", "label": "Play page", "page": "`${GAMES_DIR}\\webpage\\index.html" },
+        { "id": "join", "label": "Join with a link", "joinLink": true }
+      ] }
+  ]
+}
+"@
+Set-Content "$work\web.json" $webConfig -Encoding UTF8
+$r = Run @('--validate', '--config', "`"$work\web.json`""); Check ($r.Code -eq 0) "HTML5 test config validates $($r.Out.Trim())"
+
+# A local page: served from 127.0.0.1 while the browser runs, gone after.
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$env:FL_FAKE_MS = '4000'
+$pg = Start-Process -FilePath $Launcher -ArgumentList @('--launch', 'web:page', '--config', "`"$work\web.json`"") -PassThru
+$app = $null
+WaitFor { $script:app = Get-Content "$work\args.txt" -ErrorAction SilentlyContinue | Where-Object { $_ -like '--app=*' } | Select-Object -First 1; $null -ne $script:app } | Out-Null
+Check ($app -match '^--app=http://127\.0\.0\.1:\d+/index\.html$') "a local page opens in the browser player ($app)"
+$pageUrl = if ($app) { $app.Substring(6) } else { 'http://127.0.0.1:1/' }
+$body = try { (Invoke-WebRequest -UseBasicParsing $pageUrl -TimeoutSec 5).Content } catch { '' }
+Check ($body -match 'web demo') 'the launcher serves the page while the game runs'
+$pg.WaitForExit(15000) | Out-Null
+Check ($pg.HasExited -and $pg.ExitCode -eq 0) 'the page action ends with the browser'
+$pagePort = if ($pageUrl -match ':(\d+)/') { [int]$Matches[1] } else { 1 }
+Check (-not (PortOpen $pagePort)) 'the page server stops with it'
+
+# A game server: started first, the browser opens its URL, and it stops after.
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$env:FL_FAKE_MS = '1500'
+$r = Run @('--launch', 'web:host', '--config', "`"$work\web.json`"")
+Check ($r.Code -eq 0) "Host co-op runs headless (exit $($r.Code))"
+Check ((Get-Content "$work\args.txt" -ErrorAction SilentlyContinue) -contains "--app=http://127.0.0.1:$wport/") 'the browser opens the server URL'
+Check (WaitFor { -not (PortOpen $wport) }) 'the game server stops when the browser closes'
+$r = Run @('--launch', 'web:join', '--config', "`"$work\web.json`"")
+Check ($r.Code -eq 3) 'Join with a link needs the window'
+
+# The window: share link, Copy, Stop hosting, and joining from the clipboard.
+$env:FL_FAKE_MS = '60000'
+Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+$ww = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\web.json`"") -PassThru
+try {
+  WaitFor { $ww.Refresh(); $ww.MainWindowHandle -ne 0 } 10000 | Out-Null
+  $wh = $ww.MainWindowHandle
+  $hostCoop = $null
+  WaitFor { $script:hostCoop = Ctl $wh 'Host co-op'; $null -ne $script:hostCoop } | Out-Null
+  if ($hostCoop) {
+    [Acc]::Do($hostCoop.Hwnd)
+    Check (WaitFor { PortOpen $wport } 10000) 'Host co-op starts the game server'
+    Check (WaitFor { (Get-Content "$work\args.txt" -ErrorAction SilentlyContinue) -contains "--app=http://127.0.0.1:$wport/" } 10000) 'then opens the browser on it'
+    $copy = $null
+    WaitFor { $script:copy = Ctl $wh 'Copy address'; $null -ne $script:copy } | Out-Null
+    if ($copy) {
+      SetClip 'nothing yet'
+      [Acc]::Do($copy.Hwnd)
+      # The launcher may hold the clipboard open for a moment; retry instead of failing.
+      Check (WaitFor { ($(try { Get-Clipboard } catch { '' })) -eq 'https://fake-test-link.trycloudflare.com' }) 'Copy gives friends the internet link the server printed'
+    } else { Check $false 'hosting box shows Copy for an HTML5 server' }
+    $stopWeb = Ctl $wh 'Stop hosting'
+    if ($stopWeb) {
+      [Acc]::Do($stopWeb.Hwnd)
+      Check (WaitFor { -not (PortOpen $wport) }) 'Stop hosting stops the game server'
+    } else { Check $false 'hosting box shows Stop hosting for an HTML5 server' }
+  } else { Check $false 'Host co-op button found' }
+
+  Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+  SetClip 'https://friend-link.trycloudflare.com/'
+  $joinBtn = Ctl $wh 'Join with a link'
+  if ($joinBtn) {
+    [Acc]::Do($joinBtn.Hwnd)
+    Check (WaitFor { (Get-Content "$work\args.txt" -ErrorAction SilentlyContinue) -contains '--app=https://friend-link.trycloudflare.com/' }) 'Join with a link opens the copied link'
+  } else { Check $false 'Join with a link button found' }
+} finally {
+  Stop-Process -Id $ww.Id -Force -ErrorAction SilentlyContinue
+  # Browsers started by the window outlive it on purpose; end the fake ones.
+  Get-CimInstance Win32_Process -Filter "Name = 'launcher_tests.exe'" |
+    Where-Object { $_.CommandLine -like '*--fake-*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue

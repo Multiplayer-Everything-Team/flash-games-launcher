@@ -43,6 +43,8 @@ UserData loadUserData(const std::wstring& path) {
     if (const json::Value* o = root.find("online"); o && o->isBool()) d.online = o->boolean();
     d.defaultPlayer = str(root, "defaultPlayer");
     d.gamesDir = widen(str(root, "gamesDir"));
+    d.playerName = widen(str(root, "playerName"));
+    if (const json::Value* o = root.find("showOriginals"); o && o->isBool()) d.showOriginals = o->boolean();
     if (const json::Value* w = root.find("window"); w && w->isObject()) {
         d.x = static_cast<int>(num(*w, "x"));
         d.y = static_cast<int>(num(*w, "y"));
@@ -79,6 +81,8 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
     root.set("online", d.online);
     root.set("defaultPlayer", d.defaultPlayer);
     root.set("gamesDir", narrow(d.gamesDir));
+    root.set("playerName", narrow(d.playerName));
+    root.set("showOriginals", d.showOriginals);
     json::Value w = json::Value::object();
     w.set("x", d.x);
     w.set("y", d.y);

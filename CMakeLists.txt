@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MultiplayerFlashLauncher VERSION 1.1.0 LANGUAGES CXX RC)
+project(MultiplayerFlashLauncher VERSION 1.2.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,17 +17,21 @@ endif()
 # ---- core: no UI, shared by the launcher and the tests --------------------
 add_library(launcher_core STATIC
   src/core/config.cpp
+  src/core/discord.cpp
+  src/core/embedded.cpp
   src/core/fs.cpp
   src/core/install.cpp
   src/core/json.cpp
   src/core/library.cpp
   src/core/log.cpp
+  src/core/motion.cpp
   src/core/process.cpp
   src/core/relay.cpp
   src/core/rooms.cpp
   src/core/settings.cpp
   src/core/strings.cpp
   src/core/vars.cpp
+  src/core/webserver.cpp
 )
 target_include_directories(launcher_core PUBLIC src)
 target_link_libraries(launcher_core PUBLIC bcrypt shell32 ole32 uuid advapi32 user32 ws2_32 iphlpapi winhttp)
@@ -43,6 +47,18 @@ endif()
 # Version shown in the exe's Properties > Details, and passed to the code.
 set(V "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
 file(APPEND "${APP_RC}" "1 VERSIONINFO\nFILEVERSION ${V}\nPRODUCTVERSION ${V}\nBEGIN\n BLOCK \"StringFileInfo\"\n BEGIN\n  BLOCK \"040904B0\"\n  BEGIN\n   VALUE \"CompanyName\", \"Multiplayer Everything\"\n   VALUE \"FileDescription\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"FileVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"ProductName\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"ProductVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"OriginalFilename\", \"${LAUNCHER_NAME}.exe\"\n  END\n END\n BLOCK \"VarFileInfo\"\n BEGIN\n  VALUE \"Translation\", 0x409, 1200\n END\nEND\n")
+
+# launcher.json and the covers go into the exe as well (src/core/embedded.h), so
+# the launcher works as a single file; files next to the exe still win.
+file(GLOB EMBEDDED_COVERS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/launcher/covers/*")
+set(EMBEDDED_FILES "${CMAKE_SOURCE_DIR}/launcher/launcher.json" ${EMBEDDED_COVERS})
+foreach(f ${EMBEDDED_FILES})
+  file(RELATIVE_PATH rel "${CMAKE_SOURCE_DIR}/launcher" "${f}")
+  string(TOUPPER "${rel}" name)
+  string(REGEX REPLACE "[^A-Z0-9]" "_" name "${name}")
+  file(APPEND "${APP_RC}" "F_${name} RCDATA \"${f}\"\n")
+endforeach()
+set_source_files_properties("${APP_RC}" PROPERTIES OBJECT_DEPENDS "${EMBEDDED_FILES}")
 
 add_executable(launcher WIN32
   src/app/main.cpp
@@ -69,4 +85,5 @@ set_tests_properties(end_to_end PROPERTIES LABELS "ui" RUN_SERIAL TRUE)
 
 # Run straight from the build folder: the launcher reads launcher.json next to the exe.
 add_custom_command(TARGET launcher POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/launcher/launcher.json" "$<TARGET_FILE_DIR:launcher>/launcher.json")
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/launcher/launcher.json" "$<TARGET_FILE_DIR:launcher>/launcher.json"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/launcher/covers" "$<TARGET_FILE_DIR:launcher>/covers")

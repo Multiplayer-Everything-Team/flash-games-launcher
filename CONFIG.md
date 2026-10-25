@@ -1,6 +1,8 @@
 # launcher.json reference
 
 `launcher.json` sits next to `FlashLauncher.exe` (or pass `--config <file>`).
+Without one, the exe uses the copy built into it at compile time; the same goes for
+cover images, so the exe works on its own.
 It is JSON with comments (`//`, `/* */`) and trailing commas allowed. Unknown
 keys are reported as warnings by `FlashLauncher.exe --validate`, so typos show
 up. Keys starting with `_` are ignored (use them for notes).
@@ -20,6 +22,8 @@ Any path or argument can use these:
 | `${SWF}`, `${SWF_DIR}` | The chosen game file and its folder (player arguments only) |
 | `${PORT}` | The action's relay port |
 | `${TITLE}`, `${SUBTITLE}` | `branding.title` / `branding.subtitle` |
+| `${PLAYER_NAME}` | The name set in Settings (`flashvars` only) |
+| `${URL}`, `${FILE}`, `${FILE_DIR}` | HTML5 actions: the page to open, and the action's file and its folder |
 | `${env:NAME}` | Environment variable, e.g. `${env:ProgramFiles}` |
 | `${folder:NAME}` | Desktop, Documents, LocalAppData, RoamingAppData, ProgramFiles, Profile, Temp... |
 
@@ -33,8 +37,9 @@ Any path or argument can use these:
 | `behavior` | | See below |
 | `downloads` | | See below |
 | `rooms` | | See below |
+| `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
 | `players` | required | Flash players, tried in this order |
-| `categories` | `[]` | Sidebar groups: `{ "id", "name" }` |
+| `categories` | `[]` | Sidebar groups: `{ "id", "name", "icon" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe) |
 | `games` | required | The library |
 | `text` | | Overrides for any UI string (run `--validate` to catch unknown keys) |
 
@@ -106,6 +111,7 @@ name until the check passes. The launcher keeps the last catalog it read in
 | `paths` | Candidates, first existing wins. Absolute paths may use `*` in the file name (the highest version wins); a bare name like `ruffle.exe` is searched on PATH. |
 | `args` | Arguments before the game's own. `${SWF}` is added at the end unless an argument mentions it. |
 | `flashvarArg` | How the player passes a value into the game, e.g. `"-P${KEY}=${VALUE}"` for Ruffle. Players without it can't receive room codes. |
+| `kind` | `"flash"` (default) or `"browser"` (Edge, Chrome: HTML5 games, `${URL}` in `args`) |
 
 ### players[].install
 
@@ -129,14 +135,15 @@ doesn't match.
 | Key | |
 |---|---|
 | `id` | Unique; also the key in settings |
-| `name`, `description`, `controls` | Shown in the details panel |
+| `name`, `description` | Shown in the details panel (`controls` is accepted but no longer shown) |
 | `players` | Player-count text, e.g. `"1-4 players"` |
 | `maxPlayers` | Player slots to show; default: the highest number in `players` |
-| `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room |
+| `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room. Gives the game a *Rooms* tab and *Quick play*. |
 | `categories` | Category ids |
 | `color`, `colorEnd` | Gradient of the generated cover art |
-| `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute |
-| `actions` | Buttons; the first is the primary one (Enter / double-click) |
+| `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute. Images in `launcher/covers` are built into the exe. |
+| `imageFocus` | `0`-`1`, default `0.5`: which part of the cover stays in view when it is cropped (0 top, 1 bottom) |
+| `actions` | Buttons; the first shown is the primary one (Enter / double-click) |
 
 ### actions[]
 
@@ -150,6 +157,17 @@ doesn't match.
 | `players` | Allowed player ids, in order; default all |
 | `overrides` | Per player id: `{ "swf": [...], "args": [...] }` replacing the action's own |
 | `relay` | `{ "port": 7777 }` makes this a host action: the built-in relay starts first |
+| `flashvars` | Values passed into the game through the player's `flashvarArg`, e.g. `{ "online": "1", "name": "${PLAYER_NAME}" }`. Empty values are left out; *Join* adds `join=<code>`, *Quick play* with no room open adds `host=1`. |
+| `more` | `true`: listed under *Other ways to connect* (direct IP, LAN) |
+| `edition` | `"original"`: the unmodded game, shown only when Settings asks for originals |
+
+HTML5 actions open a page in a browser player (`players[].kind` = `"browser"`)
+instead of a `.swf`: `page` (a local `.html`, served by the launcher on 127.0.0.1,
+or a URL), `file` (files the game needs, like `swf`), `server` (a program started
+hidden first, such as a co-op server: `name`, `website`, `exe`, `args`, `cwd`,
+`url` it answers on, and `share`/`lan` patterns for the links to show friends), or
+`joinLink: true` (open the http(s) link on the clipboard). See
+`docs/html5-example.jsonc`.
 
 Example, a new local multiplayer game:
 

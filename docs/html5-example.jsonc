@@ -1,0 +1,102 @@
+// HTML5 support, kept out of the shipped launcher.json for now: the two
+// browser players (add them to "players") and Plazma Burst 2 co-op (add it to
+// "games"). The PB2 files are in github.com/multiplayereverything/html5-games;
+// the co-op server needs Node.js. See CONFIG.md, "HTML5 games".
+{
+  "players": [
+    // HTML5 games open in a browser app window (no tabs or address bar). Each
+    // game gets its own browser profile, so the launcher can tell when it closes
+    // and the game's saves stay separate.
+    {
+      "id": "edge",
+      "kind": "browser",
+      "name": "Microsoft Edge",
+      "website": "https://www.microsoft.com/edge",
+      "paths": [
+        "${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe",
+        "${env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
+      ],
+      "args": ["--app=${URL}", "--user-data-dir=${DATA_DIR}\\browser\\${GAME_ID}", "--no-first-run",
+               "--no-default-browser-check", "--window-size=1280,800"]
+    },
+    {
+      "id": "chrome",
+      "kind": "browser",
+      "name": "Google Chrome",
+      "website": "https://www.google.com/chrome/",
+      "paths": [
+        "${env:ProgramFiles}\\Google\\Chrome\\Application\\chrome.exe",
+        "${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe",
+        "${env:LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe"
+      ],
+      "args": ["--app=${URL}", "--user-data-dir=${DATA_DIR}\\browser\\${GAME_ID}", "--no-first-run",
+               "--no-default-browser-check", "--window-size=1280,800"]
+    }
+  ],
+
+  "games": [
+    {
+      // HTML5. The co-op mod is a small Node.js server that serves the game and
+      // runs the co-op; the launcher starts it, opens the game in a browser window
+      // and stops it (and its Cloudflare tunnel) when that window closes.
+      "id": "pb2",
+      "name": "Plazma Burst 2",
+      "players": "1-8 players (online co-op)",
+      "categories": ["online", "coop"],
+      "color": "#18A9D8",
+      "colorEnd": "#123B63",
+      "image": "covers\\pb2.jpg",
+      "description": "The Plazma Burst 2 campaign (all 42 levels) in co-op. Each friend gets their own character; if someone goes down a teammate can revive them, and the level restarts only if the whole team is down. The host picks the level and difficulty in the co-op lobby.",
+      "actions": [
+        {
+          "id": "host",
+          "label": "Host co-op",
+          "description": "Starts the co-op server and an internet link",
+          "hint": "In the game: CO-OP CAMPAIGN, Host Lobby. Send friends the link shown under Friends join at.",
+          "file": [
+            "${GAMES_DIR}\\pb2\\pb2-coop\\server\\server.js",
+            "C:\\New folder (3)\\pb2-coop\\server\\server.js",
+            "C:\\New folder (3)\\dist\\PB2-Coop-0.2.0\\pb2-coop\\server\\server.js"
+          ],
+          "server": {
+            "name": "Node.js",
+            "website": "https://nodejs.org/",
+            "exe": ["${FILE_DIR}\\..\\..\\node\\node.exe", "node.exe"],
+            "args": ["server\\server.js", "2053", "--tunnel"],
+            "cwd": "${FILE_DIR}\\..",
+            "url": "http://localhost:2053/",
+            "share": "https://[a-z0-9-]+\\.trycloudflare\\.com",
+            "lan": "http://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+:2053/"
+          }
+        },
+        {
+          "id": "lan",
+          "label": "Host on this network",
+          "description": "Friends on the same Wi-Fi join; no internet link",
+          "hint": "In the game: CO-OP CAMPAIGN, Host Lobby. Friends on your network open the address shown under Friends join at.",
+          "file": [
+            "${GAMES_DIR}\\pb2\\pb2-coop\\server\\server.js",
+            "C:\\New folder (3)\\pb2-coop\\server\\server.js",
+            "C:\\New folder (3)\\dist\\PB2-Coop-0.2.0\\pb2-coop\\server\\server.js"
+          ],
+          "server": {
+            "name": "Node.js",
+            "website": "https://nodejs.org/",
+            "exe": ["${FILE_DIR}\\..\\..\\node\\node.exe", "node.exe"],
+            "args": ["server\\server.js", "2053"],
+            "cwd": "${FILE_DIR}\\..",
+            "url": "http://localhost:2053/",
+            "lan": "http://[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+:2053/"
+          }
+        },
+        {
+          "id": "join",
+          "label": "Join with a link",
+          "description": "Copy the link a friend sent, then press this",
+          "hint": "In the game: CO-OP CAMPAIGN, then Join next to your friend's lobby.",
+          "joinLink": true
+        }
+      ]
+    }
+  ]
+}

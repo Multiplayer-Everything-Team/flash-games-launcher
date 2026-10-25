@@ -1,11 +1,20 @@
 // Config parsing/validation, file and player lookup, command lines, settings.
+#include <cmath>
+
 #include "core/config.h"
+#include "core/discord.h"
+#include "core/embedded.h"
 #include "core/install.h"
 #include "core/library.h"
+#include "core/motion.h"
 #include "core/process.h"
 #include "core/rooms.h"
+#include "core/webserver.h"
 #include "core/settings.h"
 #include "test.h"
+// win.h first.
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 using namespace fl;
 
@@ -269,4 +278,178 @@ TEST(room_list_parsing) {
     CHECK(rooms[2].code == L"QX3TB" && rooms[2].name.empty());
     CHECK(parseRoomList("LIST|", rooms) && rooms.empty());  // no rooms open
     CHECK(!parseRoomList("E|unknown game", rooms));
+}
+
+TEST(html5_action_resolves_to_a_browser) {
+    TempDir dir("lib-web");
+    writeText(dir / L"players\\edge.exe", "x");
+    writeText(dir / L"players\\ruffle.exe", "x");
+    writeText(dir / L"mod\\server\\server.js", "x");
+    writeText(dir / L"node\\node.exe", "x");
+    std::string players = R"([{ "id": "ruffle", "paths": ["${PLAYERS_DIR}\\ruffle.exe"] },
+        { "id": "edge", "kind": "browser", "paths": ["${PLAYERS_DIR}\\edge.exe"], "args": ["--app=${URL}"] }])";
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "pb2", "actions": [
+        { "id": "host", "file": "${LAUNCHER_DIR}\\mod\\server\\server.js",
+          "server": { "name": "Node.js", "exe": ["${FILE_DIR}\\..\\..\\node\\node.exe"], "args": ["server\\server.js", "2053"],
+                      "cwd": "${FILE_DIR}\\..", "url": "http://localhost:2053/", "share": "https://[a-z]+\\.example" } },
+        { "id": "join", "joinLink": true },
+        { "id": "page", "page": "${LAUNCHER_DIR}\\web\\index.html" } ] }])", players),
+                              dir.path());
+    if (!r.ok()) fprintf(stderr, "%ls\n", formatIssues(r.issues).c_str());
+    REQUIRE(r.ok());
+    Library lib(r.config, baseVars(dir));
+    UserData user;
+    const auto& g = r.config.games[0];
+    ResolvedAction host = lib.resolve(g, g.actions[0], user);
+    REQUIRE(host.state == ActionState::Ready);
+    CHECK(host.web && host.player->id == "edge");  // never Ruffle for an HTML5 action
+    CHECK(fs::fileName(host.serverExe) == L"node.exe");
+    CHECK(fs::normalize(host.serverCwd) == fs::normalize(dir / L"mod"));
+    CHECK(host.url == L"http://localhost:2053/");
+    REQUIRE(host.args.size() == 1);
+    CHECK(host.args[0] == L"--app=${URL}");  // filled in when the game starts
+    CHECK(lib.resolve(g, g.actions[1], user).state == ActionState::Ready);
+    CHECK(lib.resolve(g, g.actions[2], user).state == ActionState::NoSwf);  // no index.html yet
+    writeText(dir / L"web\\index.html", "<p>hi</p>");
+    ResolvedAction page = lib.resolve(g, g.actions[2], user);
+    CHECK(page.state == ActionState::Ready && page.pageLocal);
+
+    DeleteFileW((dir / L"node\\node.exe").c_str());
+    ResolvedAction noNode = lib.resolve(g, g.actions[0], user);
+    CHECK(noNode.state == ActionState::NoRuntime);
+}
+
+TEST(config_rejects_html5_action_with_flash_player) {
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "g", "actions": [ { "id": "p", "page": "https://x.example/", "players": ["ruffle"] } ] }])",
+                                            R"([{ "id": "ruffle", "paths": ["r.exe"] }, { "id": "edge", "kind": "browser", "paths": ["e.exe"] }])"),
+                              L"C:\\x");
+    CHECK(!r.ok());
+}
+
+static std::string httpGet(int port, const std::string& path, const std::string& extra = "") {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(static_cast<u_short>(port));
+    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+    std::string out;
+    if (connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0) {
+        std::string req = "GET " + path + " HTTP/1.1\r\nHost: x\r\n" + extra + "\r\n";
+        send(s, req.data(), static_cast<int>(req.size()), 0);
+        char buf[4096];
+        int n;
+        while ((n = recv(s, buf, sizeof buf, 0)) > 0) out.append(buf, n);
+    }
+    closesocket(s);
+    WSACleanup();
+    return out;
+}
+
+TEST(web_server_serves_only_its_folder) {
+    TempDir dir("web");
+    writeText(dir / L"game\\index.html", "<h1>game</h1>");
+    writeText(dir / L"game\\data\\level 1.json", "0123456789");
+    writeText(dir / L"secret.txt", "no");
+    WebServer web;
+    std::wstring err;
+    REQUIRE(web.start(dir / L"game", 0, err));
+    std::string page = httpGet(web.port(), "/");
+    CHECK(page.find("200 OK") != std::string::npos && page.find("text/html") != std::string::npos &&
+          page.find("<h1>game</h1>") != std::string::npos);
+    CHECK(httpGet(web.port(), "/data/level%201.json").find("0123456789") != std::string::npos);
+    std::string range = httpGet(web.port(), "/data/level%201.json", "Range: bytes=2-4\r\n");
+    CHECK(range.find("206 Partial") != std::string::npos && range.find("\r\n\r\n234") != std::string::npos);
+    CHECK(httpGet(web.port(), "/../secret.txt").find("404") != std::string::npos);
+    CHECK(httpGet(web.port(), "/%2e%2e/secret.txt").find("404") != std::string::npos);
+    CHECK(httpGet(web.port(), "/..%5csecret.txt").find("404") != std::string::npos);
+    web.stop();
+    CHECK(mimeType(L"x.wasm") == "application/wasm");
+    CHECK(mimeType(L"x.JS").rfind("text/javascript", 0) == 0);
+}
+
+TEST(motion_curves_start_and_end_on_their_values) {
+    using namespace fl::motion;
+    CHECK(smoothstep(0) == 0 && smoothstep(1) == 1 && smoothstep(-3) == 0 && smoothstep(9) == 1);
+    CHECK(easeOutCubic(0) == 0 && easeOutCubic(1) == 1 && easeOutCubic(0.5f) > 0.5f);
+    CHECK(singleBounce(0) == 0 && std::abs(singleBounce(1) - 1) < 1e-6f);
+    CHECK(std::abs(singleBounce(0.7f) - 1.25f) < 1e-6f);  // the overshoot peak
+    for (int i = 0; i < 4; ++i)
+        for (uint64_t ms = 0; ms < 3200; ms += 100) {
+            float w = wave(ms, i);
+            CHECK(w >= 0 && w <= 1);
+        }
+    CHECK(wave(0, 0) != wave(0, 1));  // neighbours are out of step
+}
+
+TEST(scramble_keeps_shape_and_locks_left_to_right) {
+    using namespace fl::motion;
+    std::wstring s = scramble(L"Gun Mayhem 2", 0, 7);
+    REQUIRE(s.size() == 12);
+    CHECK(s[3] == L' ' && s[10] == L' ');
+    CHECK(s[0] >= L'A' && s[0] <= L'Z' && s[1] >= L'a' && s[1] <= L'z' && s[11] >= L'0' && s[11] <= L'9');
+    CHECK(scramble(L"Gun Mayhem 2", 1, 7) == L"Gun Mayhem 2");
+    CHECK(scramble(L"VK7Q2", 0.6f, 3).substr(0, 3) == L"VK7");
+    CHECK(scramble(L"VK7Q2", 0, 1) != scramble(L"VK7Q2", 0, 2));
+}
+
+TEST(online_first_action_options_parse) {
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "g", "online": { "id": "g1", "join": "online" }, "actions": [
+        { "id": "online", "swf": "a.swf", "flashvars": { "online": "1", "name": "${PLAYER_NAME}" } },
+        { "id": "host", "swf": "a.swf", "more": true },
+        { "id": "play", "swf": "b.swf", "edition": "original" } ] }])"),
+                              L"C:\\x");
+    if (!r.ok()) fprintf(stderr, "%ls\n", formatIssues(r.issues).c_str());
+    REQUIRE(r.ok());
+    const auto& a = r.config.games[0].actions;
+    REQUIRE(a[0].flashvars.size() == 2);
+    CHECK(a[0].flashvars[0].first == L"online" && a[0].flashvars[1].second == L"${PLAYER_NAME}");
+    CHECK(!a[0].more && a[1].more && !a[1].original && a[2].original);
+    CHECK(r.config.games[0].joinAction == "online");
+    for (const auto& i : r.issues) CHECK(i.message.find(L"unknown") == std::wstring::npos);  // PLAYER_NAME is known
+}
+
+TEST(category_icons_and_discord_are_checked) {
+    std::string base = minimalConfig(R"([{ "id": "g", "actions": [ { "id": "p", "swf": "a.swf" } ] }])");
+    // `cats` replaces the helper's own category list; `extra` goes in front.
+    auto with = [&](const std::string& cats, const std::string& extra) {
+        std::string j = base;
+        std::string mine = R"("categories": [{ "id": "online" }])";
+        j.replace(j.find(mine), mine.size(), R"("categories": )" + cats);
+        j.insert(j.find('{') + 1, extra);
+        return loadConfig(j, L"C:\\x");
+    };
+    LoadResult ok = with(R"([ { "id": "online", "icon": "E774" } ])", R"("discord": { "clientId": "1234567890" },)");
+    if (!ok.ok()) fprintf(stderr, "%ls\n", formatIssues(ok.issues).c_str());
+    REQUIRE(ok.ok());
+    CHECK(ok.config.categories[0].icon == std::wstring(1, static_cast<wchar_t>(0xE774)));
+    CHECK(ok.config.discord.clientId == L"1234567890");
+    CHECK(!with(R"([ { "id": "online", "icon": "star" } ])", "").ok());
+    CHECK(!with(R"([ { "id": "online" } ])", R"("discord": { "clientId": "abc" },)").ok());
+}
+
+TEST(discord_presence_messages) {
+    std::string hello = discordHandshake(L"42");
+    CHECK(hello.find("\"v\":1") != std::string::npos && hello.find("\"client_id\":\"42\"") != std::string::npos);
+    Presence p;
+    p.details = L"Playing Gun Mayhem 2";
+    p.state = L"Room VK7Q2";
+    p.start = 1700000000;
+    std::string set = discordActivity(&p, 99, 3);
+    CHECK(set.find("\"cmd\":\"SET_ACTIVITY\"") != std::string::npos);
+    CHECK(set.find("\"pid\":99") != std::string::npos && set.find("\"nonce\":\"3\"") != std::string::npos);
+    CHECK(set.find("\"details\":\"Playing Gun Mayhem 2\"") != std::string::npos);
+    CHECK(set.find("\"start\":1700000000") != std::string::npos);
+    std::string clear = discordActivity(nullptr, 99, 4);
+    CHECK(clear.find("\"activity\":null") != std::string::npos);
+}
+
+TEST(embedded_names_match_the_resource_script) {
+    // CMakeLists.txt names the resources the same way.
+    CHECK(embeddedName(L"launcher.json") == L"F_LAUNCHER_JSON");
+    CHECK(embeddedName(L"covers\\gunmayhem2.png") == L"F_COVERS_GUNMAYHEM2_PNG");
+    CHECK(embeddedName(L"covers/Pb2.jpg") == L"F_COVERS_PB2_JPG");
+    std::string none;
+    CHECK(!readEmbedded(L"covers\\nope.png", none));  // the test exe has no resources
 }

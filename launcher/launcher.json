@@ -26,6 +26,10 @@
     "server": "195.60.166.57:25569"
   },
 
+  // Discord shows "Playing <game>" while a game runs. Put the application id
+  // from discord.com/developers here; empty turns it off.
+  "discord": { "clientId": "" },
+
   "downloads": {
     "catalog": "https://raw.githubusercontent.com/multiplayereverything/flash-games/main/catalog.json"
   },
@@ -73,10 +77,11 @@
   ],
 
   "categories": [
-    { "id": "online", "name": "Online multiplayer" },
-    { "id": "local", "name": "Local multiplayer" },
-    { "id": "coop", "name": "Co-op" },
-    { "id": "versus", "name": "Versus" }
+    // "icon": a Segoe Fluent Icons glyph for the sidebar.
+    { "id": "online", "name": "Online multiplayer", "icon": "E774" },
+    { "id": "local", "name": "Local multiplayer", "icon": "E765" },
+    { "id": "coop", "name": "Co-op", "icon": "E716" },
+    { "id": "versus", "name": "Versus", "icon": "E945" }
   ],
 
   "games": [
@@ -84,28 +89,48 @@
       "id": "gunmayhem2",
       "name": "Gun Mayhem 2: More Mayhem",
       "players": "1-4 players",
-      "online": { "id": "gm2", "join": "join" },
+      "online": { "id": "gm2", "join": "online" },
       "categories": ["online", "local", "versus"],
       "color": "#FF6A3D",
       "colorEnd": "#B4234E",
+      "image": "covers\\gunmayhem2.png",
+      "imageFocus": 0.1,
       "description": "Knock each other off floating platforms with guns, in free-for-all or team matches against friends and bots. The online mod adds internet play: the host is Player 1 and friends join as Players 2, 3 and 4.",
-      "controls": "Player 1: arrow keys, Z shoot, X throw bomb. Player 2: WASD, T shoot, Y throw bomb. Keys can be changed in the game's options. F9 opens the online panel.",
       "actions": [
         {
-          "id": "play",
-          "label": "Play",
-          "description": "Local multiplayer on one keyboard",
+          "id": "online",
+          "label": "Play online",
+          "description": "Host or join a room, no IP needed",
+          "hint": "In the game press F9 and set MODE to ONLINE: HOST gives you a room code, or type a friend's code and press JOIN.",
           "swf": [
-            "${GAMES_DIR}\\gunmayhem2.swf",
-            "${FLASHPOINT}\\Data\\Games\\gunmayhem2\\content\\cache.armorgames.com\\files\\games\\gun-mayhem-2-more-ma-13824.swf",
-            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\work\\gm2_orig.swf"
+            "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
+            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+          },
+          // Handed to the game at start; the mod's F9 panel uses them once it reads them.
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "local",
+          "label": "Play on one keyboard",
+          "description": "Up to 4 players on this PC",
+          "swf": [
+            "${GAMES_DIR}\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ]
         },
         {
           "id": "host",
-          "label": "Host online",
-          "description": "Starts the relay on port 7777",
-          "hint": "In the game press F9 and click HOST. Friends join with the address shown under Hosting.",
+          "label": "Host with your IP",
+          "description": "Direct connect: starts the relay on port 7777",
+          "hint": "In the game press F9, set MODE to DIRECT and click HOST. Friends join with the address shown under Hosting.",
+          "more": true,
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
@@ -120,9 +145,10 @@
         },
         {
           "id": "join",
-          "label": "Join online",
-          "description": "Connect to a friend's game",
-          "hint": "In the game press F9, type the host's address (for example 192.168.1.20:7777) and click JOIN.",
+          "label": "Join by IP",
+          "description": "Direct connect to a friend's address",
+          "hint": "In the game press F9, set MODE to DIRECT, type the host's address (for example 192.168.1.20:7777) and click JOIN.",
+          "more": true,
           "swf": [
             "${GAMES_DIR}\\gunmayhem2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\dist\\gunmayhem2_online.swf",
@@ -130,8 +156,20 @@
           ],
           "overrides": {
             "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
             "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
           }
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "The Armor Games release, without the online mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\gunmayhem2.swf",
+            "${FLASHPOINT}\\Data\\Games\\gunmayhem2\\content\\cache.armorgames.com\\files\\games\\gun-mayhem-2-more-ma-13824.swf",
+            "${FLASHPOINT}\\Data\\Games\\gm2-mod\\work\\gm2_orig.swf"
+          ]
         }
       ]
     },
@@ -139,27 +177,51 @@
       "id": "stealthhunter2",
       "name": "Stealth Hunter 2",
       "players": "1-4 players (online co-op)",
-      "online": { "id": "sh2", "join": "join" },
+      "online": { "id": "sh2", "join": "online" },
       "categories": ["online", "coop"],
       "color": "#2BD4C5",
       "colorEnd": "#1B3A6B",
+      "image": "covers\\stealthhunter2.png",
+      "imageFocus": 0.62,
       "description": "Sneak through guarded bases, pick locks and take out guards without raising the alarm. The co-op mod lets up to four players play the campaign together: the host runs the world, everyone goes through doors together, and if anyone dies the team restarts the mission.",
-      "controls": "Arrows/WASD move, Shift sneak, Space action, C secondary, 1-6 weapons, Z quick weapon, X inventory. F9 opens the online panel.",
       "actions": [
         {
-          "id": "play",
-          "label": "Play",
-          "description": "The original single-player campaign",
+          "id": "online",
+          "label": "Play online",
+          "description": "Host or join a co-op room, no IP needed",
+          "hint": "Press F9 (or ONLINE CO-OP on the title screen) and set MODE to ONLINE: HOST gives you a room code, or type a friend's code and press JOIN.",
           "swf": [
-            "${GAMES_DIR}\\stealth_hunter_2.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\stealth_hunter_2.swf"
+            "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // Flash Player needs the build with the network flag set.
+            "flash": {
+              "swf": [
+                "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
+                "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online_direct.swf"
+              ]
+            }
+          },
+          // Handed to the game at start ("join" is added when you pick a room).
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "solo",
+          "label": "Play solo",
+          "description": "The campaign on your own",
+          "swf": [
+            "${GAMES_DIR}\\stealthhunter2_online.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ]
         },
         {
           "id": "host",
-          "label": "Host co-op",
-          "description": "Starts the relay on port 7778",
-          "hint": "Press F9 (or ONLINE CO-OP on the title screen), type a name and press HOST. Then start a level.",
+          "label": "Host with your IP",
+          "description": "Direct connect: starts the relay on port 7778",
+          "hint": "Press F9, set MODE to DIRECT, type a name and press HOST. Then start a level.",
+          "more": true,
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
@@ -178,15 +240,17 @@
         },
         {
           "id": "join",
-          "label": "Join co-op",
-          "description": "Connect to a friend's game",
-          "hint": "Press F9, type a name and the host's address (IP or IP:7778), then press JOIN.",
+          "label": "Join by IP",
+          "description": "Direct connect to a friend's address",
+          "hint": "Press F9, set MODE to DIRECT, type a name and the host's address (IP or IP:7778), then press JOIN.",
+          "more": true,
           "swf": [
             "${GAMES_DIR}\\stealthhunter2_online.swf",
             "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
           ],
           "overrides": {
             "ruffle": { "args": ["--tcp-connections", "allow"] },
+            // Flash Player needs the build with the network flag set.
             "flash": {
               "swf": [
                 "${GAMES_DIR}\\stealthhunter2_online_direct.swf",
@@ -194,6 +258,16 @@
               ]
             }
           }
+        },
+        {
+          "id": "play",
+          "label": "Play the original",
+          "description": "The single-player game, without the co-op mod",
+          "edition": "original",
+          "swf": [
+            "${GAMES_DIR}\\stealth_hunter_2.swf",
+            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\stealth_hunter_2.swf"
+          ]
         }
       ]
     },
@@ -205,7 +279,6 @@
       "color": "#F2B544",
       "colorEnd": "#C2410C",
       "description": "The original platform shoot-out: grab a gun and knock your friend off the map.",
-      "controls": "Shown on the game's title screen.",
       "actions": [
         { "id": "play", "label": "Play", "description": "Local multiplayer on one keyboard", "swf": ["${GAMES_DIR}\\gunmayhem.swf"] }
       ]
@@ -218,7 +291,6 @@
       "color": "#FF4D4D",
       "colorEnd": "#2F6FEB",
       "description": "Two players share one keyboard and solve temple puzzles together: fire and water must each reach their own door.",
-      "controls": "Fireboy: arrow keys. Watergirl: W, A, D.",
       "actions": [
         { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\fireboywatergirl.swf"] }
       ]
@@ -226,14 +298,39 @@
     {
       "id": "badicecream",
       "name": "Bad Ice-Cream",
-      "players": "1-2 players",
-      "categories": ["local", "coop"],
+      "players": "1-2 players (online co-op)",
+      "online": { "id": "bic", "join": "online" },
+      "categories": ["online", "local", "coop"],
       "color": "#B983FF",
       "colorEnd": "#3CCB7F",
-      "description": "Collect all the fruit in each maze while building and breaking ice walls to stay away from the monsters. Better with a friend.",
-      "controls": "Shown on the game's title screen.",
+      "image": "covers\\badicecream.png",
+      "imageFocus": 0.6,
+      "description": "Collect all the fruit in each maze while building and breaking ice walls to stay away from the monsters. Better with a friend. The online mod adds internet co-op: the host is Player 1 and picks the levels, the friend joins as Player 2.",
       "actions": [
-        { "id": "play", "label": "Play", "description": "Co-op on one keyboard", "swf": ["${GAMES_DIR}\\badicecream.swf"] }
+        {
+          "id": "online",
+          "label": "Play online",
+          "description": "Host or join a room, no IP needed",
+          "hint": "In the game press F9: HOST gives you a room code, or type a friend's code and press JOIN. Move with arrows or WASD, ice with Space or F.",
+          "swf": [
+            "${GAMES_DIR}\\BadIceCream_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\bad-ice-cream\\mod\\dist\\BadIceCream_online.swf"
+          ],
+          "overrides": {
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
+          },
+          // Handed to the game at start ("join" is added when you pick a room).
+          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+        },
+        {
+          "id": "local",
+          "label": "Play on one keyboard",
+          "description": "Co-op for two on this PC",
+          "swf": [
+            "${GAMES_DIR}\\BadIceCream_online.swf",
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\bad-ice-cream\\mod\\dist\\BadIceCream_online.swf"
+          ]
+        }
       ]
     },
     {
@@ -244,7 +341,6 @@
       "color": "#9AA1AC",
       "colorEnd": "#3A2A1E",
       "description": "Two players fight off waves of zombies together on one keyboard.",
-      "controls": "Shown on the game's title screen.",
       "actions": [
         { "id": "play", "label": "Play", "description": "Two players on one keyboard", "swf": ["${GAMES_DIR}\\boxhead2play.swf"] }
       ]

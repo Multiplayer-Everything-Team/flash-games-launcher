@@ -134,11 +134,14 @@ const PlayerStatus* Library::player(const std::string& id) const {
 
 std::vector<const PlayerSpec*> Library::allowedPlayers(const ActionSpec& a, const std::string& preferred) const {
     std::vector<const PlayerSpec*> out;
+    // Flash files go to Flash players, HTML5 pages to browsers.
+    const char* kind = a.isWeb() ? "browser" : "flash";
     if (a.players.empty()) {
-        for (const auto& p : cfg_.players) out.push_back(&p);
+        for (const auto& p : cfg_.players)
+            if (p.kind == kind) out.push_back(&p);
     } else {
         for (const auto& id : a.players)
-            if (auto p = cfg_.findPlayer(id)) out.push_back(p);
+            if (auto p = cfg_.findPlayer(id); p && p->kind == kind) out.push_back(p);
     }
     auto it = std::find_if(out.begin(), out.end(), [&](const PlayerSpec* p) { return p->id == preferred; });
     if (it != out.end()) std::rotate(out.begin(), it, it + 1);  // the user's choice goes first
@@ -160,6 +163,8 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
         auto it = stats->swf.find(a.id);
         if (it != stats->swf.end() && fs::isFile(it->second)) userSwf = it->second;
     }
+    std::string preferredPlayer = stats && !stats->player.empty() ? stats->player : user.defaultPlayer;
+    if (a.isWeb()) return resolveWeb(r, a, v, userSwf, preferredPlayer);
 
     bool anyPlayer = false, anySwf = false;
     ResolvedAction fallback;  // best partial match, reported when nothing is ready
@@ -211,12 +216,72 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
     return fallback;
 }
 
+ResolvedAction Library::resolveWeb(ResolvedAction r, const ActionSpec& a, Vars v, const std::wstring& userFile,
+                                   const std::string& preferred) const {
+    r.web = true;
+    // The file the game needs (a server script, a game folder's index.html...).
+    std::wstring file = userFile;
+    if (file.empty() && !a.swf.empty()) file = findFirst(a.swf, v);
+    if (!file.empty()) {
+        for (const wchar_t* name : {L"FILE", L"SWF"}) v.set(name, file);
+        for (const wchar_t* name : {L"FILE_DIR", L"SWF_DIR"}) v.set(name, fs::parent(file));
+    }
+    r.swf = file;
+    r.userSwf = !userFile.empty();
+    if (!a.page.empty()) {
+        r.page = findFirst(a.page, v);
+        r.pageLocal = !r.page.empty() && !isUrl(r.page);
+        if (r.swf.empty()) r.swf = r.page;
+        r.swfIsUrl = isUrl(r.page);
+    }
+    // Browser: the first allowed one that is installed.
+    for (const PlayerSpec* p : allowedPlayers(a, preferred)) {
+        const PlayerStatus* st = player(p->id);
+        if (!r.player || (st && st->found() && r.playerExe.empty())) {
+            r.player = p;
+            r.playerExe = st && st->found() ? st->exe : std::wstring();
+        }
+    }
+    if ((!a.swf.empty() && file.empty()) || (!a.page.empty() && r.page.empty())) {
+        r.state = ActionState::NoSwf;
+        return r;
+    }
+    if (r.playerExe.empty()) {
+        r.state = ActionState::NoPlayer;
+        return r;
+    }
+    if (a.server.enabled()) {
+        r.serverExe = findFirst(a.server.exe, v);
+        if (r.serverExe.empty()) {
+            r.state = ActionState::NoRuntime;
+            return r;
+        }
+        for (const auto& arg : a.server.args) r.serverArgs.push_back(v.expand(arg));
+        r.serverCwd = fs::normalize(a.server.cwd.empty() ? v.get(L"FILE_DIR") : v.expand(a.server.cwd));
+        r.url = v.expand(a.server.url);
+    } else if (!r.page.empty() && !r.pageLocal) {
+        r.url = r.page;
+    }
+    // ${URL} stays unexpanded here: a served page's port, a room code or a
+    // friend's link are only known when the game starts.
+    bool mentionsUrl = false;
+    for (const auto& arg : r.player->args) {
+        if (arg.find(L"${URL}") != std::wstring::npos) mentionsUrl = true;
+        r.args.push_back(v.expand(arg));
+    }
+    for (const auto& arg : a.args) r.args.push_back(v.expand(arg));
+    if (!mentionsUrl) r.args.push_back(L"${URL}");
+    r.workDir = r.pageLocal ? fs::parent(r.page) : fs::parent(r.playerExe);
+    r.state = ActionState::Ready;
+    return r;
+}
+
 ActionState Library::gameState(const GameSpec& g, const UserData& user) const {
     ActionState best = ActionState::NoSwf;
     for (const auto& a : g.actions) {
         ActionState s = resolve(g, a, user).state;
         if (s == ActionState::Ready) return s;
-        if (s == ActionState::NoPlayer) best = s;
+        if (s == ActionState::NoPlayer || s == ActionState::NoRuntime) best = s;
     }
     return best;
 }

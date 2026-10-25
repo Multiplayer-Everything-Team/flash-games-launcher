@@ -91,6 +91,8 @@ struct InstallSpec {
 
 struct PlayerSpec {
     std::string id;
+    // "flash" plays .swf files; "browser" (Edge, Chrome) opens HTML5 games at ${URL}.
+    std::string kind = "flash";
     std::wstring name, website;
     InstallSpec install;
     // Candidates, first match wins: absolute paths (a '*' is allowed in the file
@@ -113,19 +115,46 @@ struct RelaySpec {
     int port = 7777;
 };
 
+// A program an HTML5 action runs next to the game, such as a mod's co-op server:
+// started hidden, its output read for links to share, stopped with the game.
+struct ServerSpec {
+    std::wstring name = L"Server";  // shown when the program is missing ("Node.js")
+    std::wstring website;
+    std::vector<std::wstring> exe;   // candidates, like a player's paths
+    std::vector<std::wstring> args;
+    std::wstring cwd;                // default: the folder of the action's file
+    std::wstring url;                // the game's address once the server is up
+    std::wstring share, lan;         // regexes: links in the output to show friends
+    bool enabled() const { return !exe.empty(); }
+};
+
 struct ActionSpec {
     std::string id;
     std::wstring label, description, hint;
-    std::vector<std::wstring> swf;      // candidates; http(s):// URLs are passed as-is
+    // Flash: the .swf candidates (http(s):// URLs are passed as-is). HTML5: any
+    // file the game needs ("file" in launcher.json), such as the server script.
+    std::vector<std::wstring> swf;
+    // HTML5: the page to open, a local .html (served by the launcher) or a URL.
+    std::vector<std::wstring> page;
+    ServerSpec server;
+    bool joinLink = false;  // HTML5: open the http(s) link on the clipboard (a friend's game)
     std::vector<std::wstring> args;     // added after the player's own args
     std::vector<std::string> players;   // allowed players in order of preference; empty = all
     std::map<std::string, PlayerOverride> overrides;  // per player id
     RelaySpec relay;                    // "host" actions start the built-in relay
+    // Values handed to the game at start through the player's flashvarArg, such
+    // as {"online": "1", "name": "${PLAYER_NAME}"}. A mod that doesn't read them ignores them.
+    std::vector<std::pair<std::wstring, std::wstring>> flashvars;
+    bool more = false;      // listed under "Other ways to connect" (direct IP, LAN)
+    bool original = false;  // "edition": "original": the unmodded game, shown only when Settings asks
+    bool isWeb() const { return !page.empty() || server.enabled() || joinLink; }
 };
 
 struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
+    // Which part of the cover stays in view when it is cropped: 0 top, 1 bottom.
+    float imageFocus = 0.5f;
     int maxPlayers = 0;  // player slots to light; 0 = highest number in playerCount
     // Rooms on the central server: the mod's id there ("gm2") and the action
     // that joins a room. Empty id: the game has no online rooms.
@@ -138,6 +167,13 @@ struct GameSpec {
 struct Category {
     std::string id;
     std::wstring name;
+    std::wstring icon;  // one Segoe Fluent Icons glyph, written as hex in launcher.json ("E774")
+};
+
+// Discord Rich Presence ("Playing Gun Mayhem 2"): the application id from
+// discord.com/developers. Empty: the launcher never talks to Discord.
+struct Discord {
+    std::wstring clientId;
 };
 
 struct Config {
@@ -147,6 +183,7 @@ struct Config {
     Behavior behavior;
     Downloads downloads;
     Rooms rooms;
+    Discord discord;
     std::vector<PlayerSpec> players;
     std::vector<Category> categories;
     std::vector<GameSpec> games;

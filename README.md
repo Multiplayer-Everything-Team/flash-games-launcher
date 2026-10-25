@@ -1,9 +1,9 @@
 # Multiplayer Everything: Flash Launcher
 
 One window for every multiplayer Flash game in the *Multiplayer Everything*
-family. Pick a game, press **Play**, **Host online** or **Join online**, and the
+family. Pick a game, press **Play online**, pick a room or **Quick play**, and the
 launcher starts it in Ruffle or Flash Player with the right file and settings.
-Native C++20/Win32, no dependencies, one small `.exe`.
+Native C++20/Win32, no dependencies, and the whole launcher is one `.exe`.
 
 Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.com/invite/P2MSSUf5GX).
 
@@ -22,16 +22,29 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 - **Player slots.** Every game shows how many players it takes, in the players'
   own colors (P1 red, P2 blue, P3 green, P4 yellow). While you host, the slots fill
   with the names of the people who joined.
-- **Open rooms.** Online games show how many rooms are open on the Multiplayer
-  Everything central server ("2 rooms open"), and the details panel lists them
-  with a *Join* button. Join copies the room code and starts the game; paste the
-  code in the game's F9 panel. (The code is also passed to the game, ready for mods
-  that read it.) The list refreshes every 30 seconds.
+- **Online first.** Online games lead with *Play online*: rooms with a code on the
+  Multiplayer Everything central server, no IP addresses and no port forwarding.
+  *Quick play* joins the busiest open room, or starts the game ready to host when
+  none is open. Direct IP (Radmin, LAN) is still there under *Other ways to connect*.
+- **Rooms.** The *Rooms* page in the sidebar lists every open room of every game
+  (filter by game, hide full rooms, search), with the number of players online next
+  to it. Each online game also has a *Rooms* tab. *Join* (or *Join by code*) copies
+  the code and starts the game with it; mods that read it join by themselves,
+  otherwise paste it in the game's F9 panel. The bottom bar shows whether the server
+  answers and how fast. Lists refresh every 30 seconds.
+- **One file.** `launcher.json` and the cover images are built into
+  `FlashLauncher.exe`, so the exe is all you need to send someone. A `launcher.json`
+  or `covers\` folder next to the exe still wins, for your own changes.
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
-- **Settings.** Minimize while playing, default player, online features on or off,
-  where game files are kept, and the log folder (button at the bottom of the sidebar,
-  or Ctrl+,).
+- **Settings.** Your name for online rooms, minimize while playing, default player,
+  showing the original (unmodded) versions, online features on or off, where game
+  files are kept, and the log folder (button at the bottom of the sidebar, or Ctrl+,).
+- **Discord.** With a Discord application id in `launcher.json`, Discord shows what
+  you are playing and the room code (off until an id is set).
+- **Calm motion.** A short entrance when the window opens, cards that lift under
+  the mouse, open player slots that breathe while you host. All of it follows
+  Windows' *Animation effects* setting.
 - **Hosting without extra windows.** *Host online* starts a built-in relay (the
   same protocol as the mods' `gm2_relay.py` / `sh2_relay.py`, so no Python is
   needed) and shows who is connected plus the addresses friends should type,
@@ -48,24 +61,29 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 
 | Game | Actions | Notes |
 |---|---|---|
-| Gun Mayhem 2: More Mayhem | Play, Host online, Join online | Up to 4 players. Online play uses the Gun Mayhem 2 Online mod (relay port 7777). |
-| Stealth Hunter 2 | Play, Host co-op, Join co-op | The original is single player; the Stealth Hunter 2 Online mod adds co-op for up to 4 (relay port 7778). |
+| Gun Mayhem 2: More Mayhem | Play online, Quick play, Play on one keyboard | Up to 4 players, with the Gun Mayhem 2 Online mod. Direct IP: relay port 7777. |
+| Stealth Hunter 2 | Play online, Quick play, Play solo | The Stealth Hunter 2 Online mod adds co-op for up to 4. Direct IP: relay port 7778. |
+| Bad Ice-Cream | Play online, Quick play, Play on one keyboard | Two players, with the Bad Ice-Cream Online mod (Nitrome's game). |
 | Gun Mayhem | Play | Local multiplayer on one keyboard. |
 | Fireboy and Watergirl in the Forest Temple | Play | Two-player co-op on one keyboard. |
-| Bad Ice-Cream | Play | Co-op on one keyboard. |
 | Boxhead: 2Play Rooms | Play | Co-op on one keyboard. |
+
+The original, unmodded versions of the modded games are hidden; Settings can show
+them (*Play the original*).
 
 **Getting the games.** When a game file is missing, the game shows *Download game
 files*: the launcher fetches them from [multiplayereverything/flash-games](https://github.com/multiplayereverything/flash-games),
 checks each file against the SHA-256 in that repository's catalog, and saves it in
-`games\`. Right now that covers Gun Mayhem 2 and Stealth Hunter 2, each original
-and online (the repository's README lists how far each build is tested). You can also put your own `.swf` files in `games\` (names are in
+`games\`. Right now that covers Gun Mayhem 2, Stealth Hunter 2 and Bad Ice-Cream
+(the repository's README lists how far each build is tested). You can also put your own `.swf` files in `games\` (names are in
 `games\README.txt`), use *Locate game file...*, or install Flashpoint, whose copies
 are picked up automatically.
 
 ## Install and play
 
-1. Download `MultiplayerFlashLauncher.zip` from Releases (or build it, below) and unzip it anywhere.
+1. Download `FlashLauncher.exe` from Releases (or the `.zip` with the editable
+   `launcher.json` and covers next to it) and put it in its own folder: game files
+   are saved in a `games\` folder beside it.
 2. Run `FlashLauncher.exe`. If no Flash player is found it offers to install
    Ruffle; say yes. (Or install [Ruffle](https://ruffle.rs/downloads) yourself.)
    Flashpoint users already have Flash Player 32; the launcher finds it.
@@ -74,14 +92,19 @@ Flash Player itself can't be installed automatically: Adobe stopped distributing
 it, so there is no official download left. Install [Flashpoint](https://flashpointarchive.org/downloads)
 if a game needs Flash Player instead of Ruffle.
 
-**Hosting:** select the game, press *Host online*, then in the game press **F9**
-and click **HOST**. Give friends an address from the *Hosting* box. Windows may
-ask to allow `FlashLauncher.exe` through the firewall the first time: allow it,
-or friends can't connect. Over the internet, everyone joins the same virtual LAN
-(Radmin VPN, ZeroTier, Tailscale) or the host forwards the game's TCP port.
+**Hosting:** set your name in Settings once. Select the game, press *Play online*,
+then in the game press **F9**, set MODE to ONLINE and click **HOST**. Send friends
+the room code it shows; the room also appears in everyone's *Rooms* list.
 
-**Joining:** press *Join online*, then **F9** in the game, type the host's
-address and click **JOIN**.
+**Joining:** pick the room on the *Rooms* page or the game's *Rooms* tab and press
+*Join* (or type the code under *Join by code*). The code is on your clipboard:
+in the game press **F9**, paste it and click **JOIN**, if the game hasn't joined
+by itself.
+
+**Direct IP** (*Other ways to connect*): *Host with your IP* starts the built-in
+relay and shows the addresses friends type, including Radmin VPN, ZeroTier or
+Tailscale. Windows may ask to allow `FlashLauncher.exe` through the firewall the
+first time: allow it, or friends can't connect.
 
 Keyboard: arrow keys move through the grid, **Enter** plays, **Ctrl+F**
 searches, **Ctrl+,** opens Settings, **F5** rescans for players and game files,
@@ -117,16 +140,17 @@ and its window through the accessibility API with a fake player, and installs a
 fake player and fake game files from a local test server (checksums, failed
 reinstall, first-run prompt, the window's download button). `-Dist` makes
 `dist\MultiplayerFlashLauncher\` and its `.zip`, and refuses to package any
-`.swf` or player binary.
+`.swf` or player binary; it also copies the single-file `dist\FlashLauncher.exe`.
 
 ## Repository
 
 | Path | Contents |
 |---|---|
-| `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, player install, settings |
+| `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, downloads, rooms, settings, Discord, built-in files |
 | `src/ui/` | The launcher window and its theme |
 | `src/app/` | Entry point and command line |
-| `launcher/` | What ships next to the exe: `launcher.json`, `games\`, `players\` |
+| `launcher/` | `launcher.json` and `covers\` (both also built into the exe), `games\`, `players\` |
+| `docs/html5-example.jsonc` | HTML5 support (browser players, Plazma Burst 2 co-op), kept out of the shipped list for now |
 | `tests/` | C++ tests and the end-to-end script |
 | [CONFIG.md](CONFIG.md) | Every `launcher.json` option |
 

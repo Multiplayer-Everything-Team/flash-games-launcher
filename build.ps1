@@ -42,7 +42,8 @@ $exe = Join-Path $build 'FlashLauncher.exe'
 Write-Host "Built $exe"
 
 if ($Dist) {
-  # Only our own files: the exe, the config and the empty games/players folders.
+  # The exe carries launcher.json and the covers inside it, so it is all people
+  # need; the folder also gets the editable copies next to it.
   # Game SWFs and player binaries are never shipped.
   $out = Join-Path $root 'dist\MultiplayerFlashLauncher'
   if (Test-Path $out) { Remove-Item -Recurse -Force $out }
@@ -55,5 +56,6 @@ if ($Dist) {
   $zip = Join-Path $root 'dist\MultiplayerFlashLauncher.zip'
   if (Test-Path $zip) { Remove-Item $zip }
   Compress-Archive -Path $out -DestinationPath $zip
-  Write-Host "Packaged $zip"
+  Copy-Item $exe (Join-Path $root 'dist\FlashLauncher.exe')  # the one-file version
+  Write-Host "Packaged $zip and dist\FlashLauncher.exe"
 }

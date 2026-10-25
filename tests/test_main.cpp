@@ -6,6 +6,7 @@
 #include "test.h"
 // win.h first.
 #include <shellapi.h>
+#include <winsock2.h>
 
 int g_checkFailures = 0;
 
@@ -63,8 +64,36 @@ static int fakePlayer() {
     return 0;
 }
 
+// Stand-in for an HTML5 game's server (tests\e2e.ps1): prints a tunnel-style
+// link the way the PB2 co-op server does, then answers every HTTP request with
+// "ok" until it is stopped.
+static int fakeServer(int port) {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    SOCKET l = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<u_short>(port));
+    if (bind(l, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0 || listen(l, 16) != 0) return 1;
+    printf("Fake server running.\n  Internet:  https://fake-test-link.trycloudflare.com   <- send this\n");
+    printf("  Same Wi-Fi/LAN:   http://10.1.2.3:%d/\n", port);
+    fflush(stdout);
+    for (;;) {
+        SOCKET c = accept(l, nullptr, nullptr);
+        if (c == INVALID_SOCKET) break;
+        char buf[2048];
+        recv(c, buf, sizeof buf, 0);
+        const char reply[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+        send(c, reply, sizeof reply - 1, 0);
+        closesocket(c);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && strcmp(argv[1], "--fake-player") == 0) return fakePlayer();
+    if (argc > 2 && strcmp(argv[1], "--fake-server") == 0) return fakeServer(atoi(argv[2]));
     const char* filter = argc > 1 ? argv[1] : nullptr;
     TempDir logs("logs");
     fl::logger().open(logs / L"tests.log");

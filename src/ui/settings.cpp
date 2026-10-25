@@ -27,6 +27,8 @@ enum : int {
     kSetLog,
     kSetWeb,
     kSetClose,
+    kSetOriginals,
+    kSetName,
 };
 
 // Static text roles, kept in the control's user data so WM_CTLCOLORSTATIC knows
@@ -127,11 +129,19 @@ void Launcher::openSettings() {
         if (cfg_.players[i].id == user_.defaultPlayer) sel = static_cast<int>(i) + 1;
     }
     SendMessageW(setPlayer_, CB_SETCURSEL, sel, 0);
+    setOriginals_ = button(kSetOriginals, BtnStyle::Check, cfg_.t("settings.originals"));
+    SendMessageW(setOriginals_, BM_SETCHECK, user_.showOriginals ? BST_CHECKED : BST_UNCHECKED, 0);
 
     label(cfg_.t("settings.online"), kRoleHeading);
     setOnline_ = button(kSetOnline, BtnStyle::Check, cfg_.t("settings.onlineToggle"));
     SendMessageW(setOnline_, BM_SETCHECK, user_.online ? BST_CHECKED : BST_UNCHECKED, 0);
     label(cfg_.t("settings.onlineNote"), kRoleMuted);
+    label(cfg_.t("settings.name"), kRoleText);  // the field's accessible name comes from this label
+    setName_ = CreateWindowExW(0, L"EDIT", user_.playerName.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0,
+                               10, 10, w, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSetName)), inst, nullptr);
+    SendMessageW(setName_, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), FALSE);
+    SendMessageW(setName_, EM_LIMITTEXT, 20, 0);
+    label(cfg_.t("settings.nameNote"), kRoleMuted);
 
     label(cfg_.t("settings.folders"), kRoleHeading);
     label(cfg_.t("settings.gamesDir"), kRoleText);
@@ -175,6 +185,8 @@ void Launcher::layoutSettings() {
     int lw = t.s(130);
     place(nextLabel(), pad, y + t.s(5), lw, t.s(22));  // Default player
     place(setPlayer_, pad + lw, y, inner - lw, t.s(240));
+    y += t.s(44);
+    place(setOriginals_, pad, y, inner, t.s(32));
     y += t.s(48);
 
     heading();  // Online
@@ -185,7 +197,13 @@ void Launcher::layoutSettings() {
     GetWindowTextW(note, buf, 512);
     int noteH = textHeight(dc, t.caption, buf, inner - t.s(28));
     place(note, pad + t.s(28), y, inner - t.s(28), noteH);  // lined up with the checkbox label
-    y += noteH + t.s(18);
+    y += noteH + t.s(14);
+    place(nextLabel(), pad, y + t.s(6), lw, t.s(22));  // Your name
+    int fieldH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE) + t.s(10);
+    place(setName_, pad + lw, y, inner - lw, fieldH);
+    y += fieldH + t.s(6);
+    place(nextLabel(), pad + lw, y, inner - lw, t.s(20));  // what the name is for
+    y += t.s(20) + t.s(18);
 
     heading();  // Folders
     place(nextLabel(), pad, y, inner, t.s(22));  // Game files
@@ -279,6 +297,10 @@ LRESULT Launcher::settingsHandle(HWND h, UINT m, WPARAM w, LPARAM l) {
             SetBkColor(dc, t.c.surface.ref());
             return reinterpret_cast<LRESULT>(t.brSurface);
         }
+        case WM_CTLCOLOREDIT:
+            SetTextColor(reinterpret_cast<HDC>(w), t.c.text.ref());
+            SetBkColor(reinterpret_cast<HDC>(w), t.c.background.ref());
+            return reinterpret_cast<LRESULT>(t.brBackground);
         case WM_CTLCOLORLISTBOX:
             SetTextColor(reinterpret_cast<HDC>(w), t.c.text.ref());
             SetBkColor(reinterpret_cast<HDC>(w), t.c.surface.ref());
@@ -305,8 +327,24 @@ LRESULT Launcher::settingsHandle(HWND h, UINT m, WPARAM w, LPARAM l) {
                 refreshAll();
                 return 0;
             }
+            if (id == kSetName && code == EN_CHANGE) {
+                // "|" separates fields in the mods' messages; keep it out of names.
+                wchar_t typed[64] = L"";
+                GetWindowTextW(setName_, typed, 64);
+                std::wstring name;
+                for (const wchar_t* c = typed; *c; ++c)
+                    if (*c != L'|') name += *c;
+                user_.playerName = trim(name);
+                save();
+                return 0;
+            }
             if (code != BN_CLICKED) break;
             switch (id) {
+                case kSetOriginals:
+                    user_.showOriginals = checked(setOriginals_);
+                    save();
+                    refreshAll();
+                    return 0;
                 case kSetMinimize:
                     user_.minimize = checked(setMinimize_) ? 1 : 0;
                     save();
