@@ -26,7 +26,7 @@ of the game, installs the mod into it, keeps it up to date, and can take it out 
 putting back every game file it replaced. Native C++20/Win32, no dependencies, and the
 whole app is one `.exe`.
 
-Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.com/invite/P2MSSUf5GX).
+Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.gg/jnnyz2vqB5).
 
 ![Library](docs/screenshots/01-library.png)
 
