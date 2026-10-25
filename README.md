@@ -5,6 +5,8 @@ family. Pick a game, press **Play**, **Host online** or **Join online**, and the
 launcher starts it in Ruffle or Flash Player with the right file and settings.
 Native C++20/Win32, no dependencies, one small `.exe`.
 
+Questions, bugs, or looking for people to play with? Join the [Multiplayer Everything Discord](https://discord.com/invite/P2MSSUf5GX).
+
 ![Library](docs/screenshots/01-library.png)
 
 ## What it does
