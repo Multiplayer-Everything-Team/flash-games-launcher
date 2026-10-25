@@ -210,11 +210,11 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"phase.shortcuts", L"Removing shortcuts"},
         {"phase.finishing", L"Finishing up"},
         {"phase.rollback", L"Undoing changes\u2026"},
-        {"update.title", L"Flash Launcher ${VERSION} is installed"},
+        {"update.title", L"Multiplayer Everything Launcher ${VERSION} is installed"},
         {"update.body", L"Restart the launcher to use the new version. It takes a second."},
         {"update.restart", L"Restart now"},
         {"update.later", L"Later"},
-        {"update.nextTime", L"Flash Launcher ${VERSION} is installed and starts next time."},
+        {"update.nextTime", L"Multiplayer Everything Launcher ${VERSION} is installed and starts next time."},
         {"settings.autoUpdate", L"Update the launcher automatically"},
         {"discord.room", L"Room ${CODE}"},
         {"search.cue", L"Search games  (Ctrl+F)"},
@@ -282,7 +282,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"settings.open", L"Open"},
         {"settings.reset", L"Use default"},
         {"settings.log", L"Open log folder"},
-        {"settings.about", L"Flash Launcher ${VERSION}"},
+        {"settings.about", L"Multiplayer Everything Launcher ${VERSION}"},
         {"settings.github", L"Project page"},
         {"settings.close", L"Close"},
         {"settings.pickFolder", L"Choose the folder for game files"},
@@ -742,7 +742,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         if (!c.updates.source.github.empty() && c.updates.source.github.find('/') == std::string::npos)
             s.error(L"github", L"must look like \"owner/repo\"");
         if (!c.updates.source.github.empty() && c.updates.source.asset.empty())
-            s.error(L"asset", L"give the release file name, e.g. \"FlashLauncher.exe\"");
+            s.error(L"asset", L"give the release file name, e.g. \"MultiplayerEverythingLauncher.exe\"");
     }
     {
         Section s(top.get("discord", Type::Object), L"discord", issues);

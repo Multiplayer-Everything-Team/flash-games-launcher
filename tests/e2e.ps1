@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  End-to-end checks against the real FlashLauncher.exe: command line, launching
+  End-to-end checks against the real MultiplayerEverythingLauncher.exe: command line, launching
   with exact arguments, the built-in relay, and the window driven through UI
   Automation (as a screen reader would). Uses a fake player (launcher_tests.exe
   --fake-player) and a fake game folder in %TEMP%; never touches real games.
@@ -111,7 +111,7 @@ $env:FL_FAKE_OUT = "$work\args.txt"
 
 # ---- command line ---------------------------------------------------------
 $r = Run @('--help'); Check ($r.Code -eq 0 -and $r.Out -match '--launch') '--help prints usage'
-$r = Run @('--version'); Check ($r.Code -eq 0 -and $r.Out -match 'Flash Launcher \d+\.\d+\.\d+') "--version prints the version ($($r.Out.Trim()))"
+$r = Run @('--version'); Check ($r.Code -eq 0 -and $r.Out -match 'Multiplayer Everything Launcher \d+\.\d+\.\d+') "--version prints the version ($($r.Out.Trim()))"
 $r = Run @('--bogus'); Check ($r.Code -eq 3) 'unknown option exits 3'
 $r = Run @('--validate', '--config', "`"$Root\launcher\launcher.json`""); Check ($r.Code -eq 0 -and $r.Out -match 'OK') 'shipped launcher.json validates'
 $r = Run @('--validate', '--config', "`"$work\launcher.json`""); Check ($r.Code -eq 0) 'test config validates'
@@ -237,39 +237,39 @@ Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
 # another exe, so the swap is easy to see.
 $upd = Join-Path $work 'upd'
 New-Item -ItemType Directory -Force $upd, "$www\dl", "$www\repos\test\launcher\releases" | Out-Null
-Copy-Item $Launcher "$upd\FlashLauncher.exe"
-Copy-Item $fake "$www\dl\FlashLauncher.exe"
-$newSha = (Get-FileHash "$www\dl\FlashLauncher.exe" -Algorithm SHA256).Hash.ToLower()
-$newSize = (Get-Item "$www\dl\FlashLauncher.exe").Length
+Copy-Item $Launcher "$upd\MultiplayerEverythingLauncher.exe"
+Copy-Item $fake "$www\dl\MultiplayerEverythingLauncher.exe"
+$newSha = (Get-FileHash "$www\dl\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash.ToLower()
+$newSize = (Get-Item "$www\dl\MultiplayerEverythingLauncher.exe").Length
 function ReleaseJson([string]$tag, [string]$digest) {
-  '{ "tag_name": "' + $tag + '", "assets": [ { "name": "FlashLauncher.exe", "size": ' + $newSize +
-  ', "digest": "sha256:' + $digest + '", "browser_download_url": "http://127.0.0.1:' + $httpPort + '/dl/FlashLauncher.exe" } ] }'
+  '{ "tag_name": "' + $tag + '", "assets": [ { "name": "MultiplayerEverythingLauncher.exe", "size": ' + $newSize +
+  ', "digest": "sha256:' + $digest + '", "browser_download_url": "http://127.0.0.1:' + $httpPort + '/dl/MultiplayerEverythingLauncher.exe" } ] }'
 }
 @"
 {
   "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
-  "updates": { "github": "test/launcher", "asset": "FlashLauncher.exe", "api": "http://127.0.0.1:$httpPort" },
+  "updates": { "github": "test/launcher", "asset": "MultiplayerEverythingLauncher.exe", "api": "http://127.0.0.1:$httpPort" },
   "players": [ { "id": "fake", "name": "Fake Player", "paths": ["x.exe"] } ],
   "games": [ { "id": "demo", "name": "Demo Game", "actions": [ { "id": "play", "label": "Play", "swf": "demo.swf" } ] } ]
 }
 "@ | Set-Content "$upd\update.json" -Encoding UTF8
-$before = (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash
+$before = (Get-FileHash "$upd\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash
 function RunUpd() {
-  $p = Start-Process -FilePath "$upd\FlashLauncher.exe" -ArgumentList @('--update', '--config', "`"$upd\update.json`"") -Wait -PassThru -NoNewWindow `
+  $p = Start-Process -FilePath "$upd\MultiplayerEverythingLauncher.exe" -ArgumentList @('--update', '--config', "`"$upd\update.json`"") -Wait -PassThru -NoNewWindow `
          -RedirectStandardOutput "$work\uout.txt" -RedirectStandardError "$work\uerr.txt"
   return @{ Code = $p.ExitCode; Out = (Get-Content "$work\uout.txt" -Raw) + (Get-Content "$work\uerr.txt" -Raw) }
 }
 Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v0.9.0' $newSha) -Encoding ASCII
 $r = RunUpd
-Check ($r.Code -eq 0 -and $r.Out -match 'Up to date' -and (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash -eq $before) "an older release changes nothing ($($r.Out.Trim()))"
+Check ($r.Code -eq 0 -and $r.Out -match 'Up to date' -and (Get-FileHash "$upd\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash -eq $before) "an older release changes nothing ($($r.Out.Trim()))"
 Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v99.0.0' ('0' * 64)) -Encoding ASCII
 $r = RunUpd
-Check ($r.Code -ne 0 -and (Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash -eq $before -and -not (Test-Path "$upd\FlashLauncher.exe.new")) 'a newer release with the wrong checksum is refused'
+Check ($r.Code -ne 0 -and (Get-FileHash "$upd\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash -eq $before -and -not (Test-Path "$upd\MultiplayerEverythingLauncher.exe.new")) 'a newer release with the wrong checksum is refused'
 Set-Content "$www\repos\test\launcher\releases\latest" (ReleaseJson 'v99.0.0' $newSha) -Encoding ASCII
 $r = RunUpd
 Check ($r.Code -eq 0 -and $r.Out -match 'Updated to v99.0.0') "a newer release is installed ($($r.Out.Trim()))"
-Check ((Get-FileHash "$upd\FlashLauncher.exe" -Algorithm SHA256).Hash.ToLower() -eq $newSha) 'the new exe is in place'
-Check ((Test-Path "$upd\FlashLauncher.exe.old") -and (Get-FileHash "$upd\FlashLauncher.exe.old" -Algorithm SHA256).Hash -eq $before) 'the running exe was set aside as .old'
+Check ((Get-FileHash "$upd\MultiplayerEverythingLauncher.exe" -Algorithm SHA256).Hash.ToLower() -eq $newSha) 'the new exe is in place'
+Check ((Test-Path "$upd\MultiplayerEverythingLauncher.exe.old") -and (Get-FileHash "$upd\MultiplayerEverythingLauncher.exe.old" -Algorithm SHA256).Hash -eq $before) 'the running exe was set aside as .old'
 
 # ---- downloading missing game files from the catalog -----------------------
 New-Item -ItemType Directory -Force "$www\games\demo2" | Out-Null
@@ -410,7 +410,7 @@ try {
   if ($setBtn) {
     [Acc]::Do($setBtn.Hwnd)
     $setWnd = [IntPtr]::Zero
-    WaitFor { $script:setWnd = [Top]::Find([uint32]$rw.Id, 'MultiplayerFlashLauncherSettings'); $script:setWnd -ne [IntPtr]::Zero } 5000 | Out-Null
+    WaitFor { $script:setWnd = [Top]::Find([uint32]$rw.Id, 'MultiplayerEverythingLauncherSettings'); $script:setWnd -ne [IntPtr]::Zero } 5000 | Out-Null
     Check ($setWnd -ne [IntPtr]::Zero) 'Settings opens'
     if ($setWnd -ne [IntPtr]::Zero) {
       # The window exists a moment before its controls do.
@@ -419,7 +419,7 @@ try {
       if ($min) { [Acc]::Do($min.Hwnd) }
       Check (WaitFor { (Get-Content "$work\rdata\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"minimize": 1' }) 'a Settings checkbox applies and saves at once'
       [Win2]::PostMessage($setWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
-      Check (WaitFor { [Top]::Find([uint32]$rw.Id, 'MultiplayerFlashLauncherSettings') -eq [IntPtr]::Zero } 5000) 'Settings closes'
+      Check (WaitFor { [Top]::Find([uint32]$rw.Id, 'MultiplayerEverythingLauncherSettings') -eq [IntPtr]::Zero } 5000) 'Settings closes'
       Check ([Win2]::IsWindowEnabled($h)) 'the library is usable again after Settings closes'
     }
   } else { Check $false 'Settings button found' }

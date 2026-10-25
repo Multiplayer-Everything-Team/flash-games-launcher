@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
-project(MultiplayerFlashLauncher VERSION 1.3.0 LANGUAGES CXX RC)
+project(MultiplayerEverythingLauncher VERSION 1.2.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static CRT: the launcher is a single self-contained .exe.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-set(LAUNCHER_NAME "FlashLauncher" CACHE STRING "Output name of the launcher executable")
+set(LAUNCHER_NAME "MultiplayerEverythingLauncher" CACHE STRING "Output name of the launcher executable")
 set(LAUNCHER_ICON "${CMAKE_SOURCE_DIR}/assets/app.ico" CACHE FILEPATH "Executable icon")
 
 add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
@@ -53,7 +53,7 @@ else()
 endif()
 # Version shown in the exe's Properties > Details, and passed to the code.
 set(V "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
-file(APPEND "${APP_RC}" "1 VERSIONINFO\nFILEVERSION ${V}\nPRODUCTVERSION ${V}\nBEGIN\n BLOCK \"StringFileInfo\"\n BEGIN\n  BLOCK \"040904B0\"\n  BEGIN\n   VALUE \"CompanyName\", \"Multiplayer Everything\"\n   VALUE \"FileDescription\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"FileVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"ProductName\", \"Multiplayer Everything Flash Launcher\"\n   VALUE \"ProductVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"OriginalFilename\", \"${LAUNCHER_NAME}.exe\"\n  END\n END\n BLOCK \"VarFileInfo\"\n BEGIN\n  VALUE \"Translation\", 0x409, 1200\n END\nEND\n")
+file(APPEND "${APP_RC}" "1 VERSIONINFO\nFILEVERSION ${V}\nPRODUCTVERSION ${V}\nBEGIN\n BLOCK \"StringFileInfo\"\n BEGIN\n  BLOCK \"040904B0\"\n  BEGIN\n   VALUE \"CompanyName\", \"Multiplayer Everything\"\n   VALUE \"FileDescription\", \"Multiplayer Everything Launcher\"\n   VALUE \"FileVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"ProductName\", \"Multiplayer Everything Launcher\"\n   VALUE \"ProductVersion\", \"${PROJECT_VERSION}\"\n   VALUE \"OriginalFilename\", \"${LAUNCHER_NAME}.exe\"\n  END\n END\n BLOCK \"VarFileInfo\"\n BEGIN\n  VALUE \"Translation\", 0x409, 1200\n END\nEND\n")
 
 # launcher.json and the covers go into the exe as well (src/core/embedded.h), so
 # the launcher works as a single file; files next to the exe still win.

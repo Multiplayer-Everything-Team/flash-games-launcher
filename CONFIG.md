@@ -1,10 +1,10 @@
 # launcher.json reference
 
-`launcher.json` sits next to `FlashLauncher.exe` (or pass `--config <file>`).
+`launcher.json` sits next to `MultiplayerEverythingLauncher.exe` (or pass `--config <file>`).
 Without one, the exe uses the copy built into it at compile time; the same goes for
 cover images, so the exe works on its own.
 It is JSON with comments (`//`, `/* */`) and trailing commas allowed. Unknown
-keys are reported as warnings by `FlashLauncher.exe --validate`, so typos show
+keys are reported as warnings by `MultiplayerEverythingLauncher.exe --validate`, so typos show
 up. Keys starting with `_` are ignored (use them for notes).
 
 ## Variables
@@ -38,7 +38,7 @@ Any path or argument can use these:
 | `downloads` | | See below |
 | `rooms` | | See below |
 | `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
-| `updates` | | `{ "github": "owner/repo", "asset": "FlashLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. |
+| `updates` | | `{ "github": "owner/repo", "asset": "MultiplayerEverythingLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. |
 | `players` | required | Flash players, tried in this order |
 | `categories` | `[]` | Sidebar groups: `{ "id", "name", "icon" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe) |
 | `games` | required | The library |
@@ -50,7 +50,7 @@ Any path or argument can use these:
 |---|---|
 | `title` | `"Multiplayer Everything"` |
 | `website` | the launcher's GitHub page: opened by *Project page* in Settings |
-| `subtitle` | `"Flash Launcher"` |
+| `subtitle` | `"Multiplayer Everything Launcher"` |
 | `windowTitle` | `"${TITLE} ${SUBTITLE}"` |
 | `theme` | `"dark"` (or `"light"`) |
 | `colors` | Overrides per role: `background`, `surface`, `surfaceHover`, `sidebar`, `sidebarText`, `sidebarTextMuted`, `primary`, `primaryHover`, `onPrimary`, `text`, `textMuted`, `border`, `focus`, `success`, `warning`, `error`, `online` (`"#RRGGBB"`). Keep text at 4.5:1 contrast or better. |
@@ -65,7 +65,7 @@ Any path or argument can use these:
 |---|---|
 | `games` | `"${LAUNCHER_DIR}\\games"` |
 | `players` | `"${LAUNCHER_DIR}\\players"` |
-| `data` | `"${env:LOCALAPPDATA}\\MultiplayerEverything\\FlashLauncher"` |
+| `data` | `"${env:LOCALAPPDATA}\\MultiplayerEverything\\MultiplayerEverythingLauncher"` |
 | `flashpoint` | `["C:\\Flashpoint", "D:\\Flashpoint", "${folder:Profile}\\Flashpoint"]` |
 
 ### behavior

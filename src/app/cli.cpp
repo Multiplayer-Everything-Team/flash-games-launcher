@@ -66,7 +66,7 @@ Args parseArgs(int argc, wchar_t** argv) {
 }
 
 std::wstring usageText() {
-    return LR"(Usage: FlashLauncher.exe [options]
+    return LR"(Usage: MultiplayerEverythingLauncher.exe [options]
 
 Without options the launcher window opens. The configuration is
 launcher.json next to the exe.

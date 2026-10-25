@@ -38,7 +38,7 @@ struct WindowSpec {
 
 struct Branding {
     std::wstring title = L"Multiplayer Everything";
-    std::wstring subtitle = L"Flash Launcher";
+    std::wstring subtitle = L"Multiplayer Everything Launcher";
     std::wstring website = L"https://github.com/multiplayereverything/multiplayer-mods-launcher";
     std::wstring windowTitle = L"${TITLE} ${SUBTITLE}";
     std::wstring theme = L"dark";  // dark | light
@@ -57,7 +57,7 @@ struct Branding {
 struct Paths {
     std::wstring games = L"${LAUNCHER_DIR}\\games";
     std::wstring players = L"${LAUNCHER_DIR}\\players";
-    std::wstring data = L"${env:LOCALAPPDATA}\\MultiplayerEverything\\FlashLauncher";
+    std::wstring data = L"${env:LOCALAPPDATA}\\MultiplayerEverything\\MultiplayerEverythingLauncher";
     // First folder that contains FPSoftware becomes ${FLASHPOINT}.
     std::vector<std::wstring> flashpoint = {L"C:\\Flashpoint", L"D:\\Flashpoint", L"${folder:Profile}\\Flashpoint"};
 };

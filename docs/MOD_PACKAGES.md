@@ -46,10 +46,10 @@ then recognises its installs (same install record, same folders) and can update 
 ## 4. Try it for real, on a copy
 
 ```bat
-FlashLauncher.exe --mods
-FlashLauncher.exe --install-mod <id> --game-dir "D:\Copy of the game"
-FlashLauncher.exe --repair-mod <id> --game-dir "D:\Copy of the game"
-FlashLauncher.exe --uninstall-mod <id> --game-dir "D:\Copy of the game"
+MultiplayerEverythingLauncher.exe --mods
+MultiplayerEverythingLauncher.exe --install-mod <id> --game-dir "D:\Copy of the game"
+MultiplayerEverythingLauncher.exe --repair-mod <id> --game-dir "D:\Copy of the game"
+MultiplayerEverythingLauncher.exe --uninstall-mod <id> --game-dir "D:\Copy of the game"
 ```
 
 After the uninstall the game folder must be byte-identical to how it started. `tests\e2e.ps1` does

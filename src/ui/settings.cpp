@@ -16,7 +16,7 @@ namespace fl::ui {
 
 namespace {
 
-constexpr wchar_t kSettingsClass[] = L"MultiplayerFlashLauncherSettings";
+constexpr wchar_t kSettingsClass[] = L"MultiplayerEverythingLauncherSettings";
 
 enum : int {
     kSetMinimize = 500,

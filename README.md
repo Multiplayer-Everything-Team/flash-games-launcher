@@ -44,11 +44,11 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
   otherwise paste it in the game's F9 panel. The bottom bar shows whether the server
   answers and how fast. Lists refresh every 30 seconds.
 - **Updates itself.** At start the launcher checks the newest release here; when
-  there is a newer one it downloads `FlashLauncher.exe`, checks it against the
+  there is a newer one it downloads `MultiplayerEverythingLauncher.exe`, checks it against the
   SHA-256 GitHub publishes for it, swaps it in and offers to restart (while a game
   runs, it just starts next time). Settings can turn it off; `--update` does it now.
 - **One file.** `launcher.json` and the cover images are built into
-  `FlashLauncher.exe`, so the exe is all you need to send someone. A `launcher.json`
+  `MultiplayerEverythingLauncher.exe`, so the exe is all you need to send someone. A `launcher.json`
   or `covers\` folder next to the exe still wins, for your own changes.
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
@@ -115,10 +115,10 @@ are picked up automatically.
 
 ## Install and play
 
-1. Download `FlashLauncher.exe` from Releases (or the `.zip` with the editable
+1. Download `MultiplayerEverythingLauncher.exe` from Releases (or the `.zip` with the editable
    `launcher.json` and covers next to it) and put it in its own folder: game files
    are saved in a `games\` folder beside it.
-2. Run `FlashLauncher.exe`. If no Flash player is found it offers to install
+2. Run `MultiplayerEverythingLauncher.exe`. If no Flash player is found it offers to install
    Ruffle; say yes. (Or install [Ruffle](https://ruffle.rs/downloads) yourself.)
    Flashpoint users already have Flash Player 32; the launcher finds it.
 
@@ -137,7 +137,7 @@ by itself.
 
 **Direct IP** (*Other ways to connect*): *Host with your IP* starts the built-in
 relay and shows the addresses friends type, including Radmin VPN, ZeroTier or
-Tailscale. Windows may ask to allow `FlashLauncher.exe` through the firewall the
+Tailscale. Windows may ask to allow `MultiplayerEverythingLauncher.exe` through the firewall the
 first time: allow it, or friends can't connect.
 
 Keyboard: arrow keys move through the grid, **Enter** plays, **Ctrl+F**
@@ -147,21 +147,21 @@ searches, **Ctrl+,** opens Settings, **F5** rescans for players and game files,
 ## Command line
 
 ```
-FlashLauncher.exe --list                       every game and whether it can start
-FlashLauncher.exe --launch gunmayhem2:host     start an action without the window
-FlashLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
-FlashLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
-FlashLauncher.exe --download-game all          download every game file the catalog has
-FlashLauncher.exe --rooms gunmayhem2           list the open rooms on the central server
-FlashLauncher.exe --update                     install the newest launcher release now
-FlashLauncher.exe --mods                       the PC mods: game found, installed version, newest version
-FlashLauncher.exe --install-mod spooky-together  install or update a PC mod (add --game-dir "<folder>" to point at the game)
-FlashLauncher.exe --repair-mod spooky-together   put back missing or damaged files
-FlashLauncher.exe --uninstall-mod spooky-together  remove it and restore the game's files
-FlashLauncher.exe --validate                   check launcher.json
+MultiplayerEverythingLauncher.exe --list                       every game and whether it can start
+MultiplayerEverythingLauncher.exe --launch gunmayhem2:host     start an action without the window
+MultiplayerEverythingLauncher.exe --relay 7777                 run only the relay (a dedicated relay PC)
+MultiplayerEverythingLauncher.exe --install-player ruffle      install Ruffle into players\ruffle
+MultiplayerEverythingLauncher.exe --download-game all          download every game file the catalog has
+MultiplayerEverythingLauncher.exe --rooms gunmayhem2           list the open rooms on the central server
+MultiplayerEverythingLauncher.exe --update                     install the newest launcher release now
+MultiplayerEverythingLauncher.exe --mods                       the PC mods: game found, installed version, newest version
+MultiplayerEverythingLauncher.exe --install-mod spooky-together  install or update a PC mod (add --game-dir "<folder>" to point at the game)
+MultiplayerEverythingLauncher.exe --repair-mod spooky-together   put back missing or damaged files
+MultiplayerEverythingLauncher.exe --uninstall-mod spooky-together  remove it and restore the game's files
+MultiplayerEverythingLauncher.exe --validate                   check launcher.json
 ```
 
-`FlashLauncher.exe --help` lists everything. Settings and the log live in
+`MultiplayerEverythingLauncher.exe --help` lists everything. Settings and the log live in
 `%LOCALAPPDATA%\MultiplayerEverything\FlashLauncher\`.
 
 ## Build
@@ -178,8 +178,8 @@ the relay against real sockets) and `tests\e2e.ps1`, which drives the real exe
 and its window through the accessibility API with a fake player, and installs a
 fake player and fake game files from a local test server (checksums, failed
 reinstall, first-run prompt, the window's download button). `-Dist` makes
-`dist\MultiplayerFlashLauncher\` and its `.zip`, and refuses to package any
-`.swf` or player binary; it also copies the single-file `dist\FlashLauncher.exe`.
+`dist\MultiplayerEverythingLauncher\` and its `.zip`, and refuses to package any
+`.swf` or player binary; it also copies the single-file `dist\MultiplayerEverythingLauncher.exe`.
 
 ## Repository
 

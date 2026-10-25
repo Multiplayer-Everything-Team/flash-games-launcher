@@ -54,7 +54,7 @@ void out(const std::wstring& s) { write(STD_OUTPUT_HANDLE, s); }
 void fail(const std::wstring& msg) {
     logger().error(msg);
     if (g_console) write(STD_ERROR_HANDLE, msg + L"\n");
-    else MessageBoxW(nullptr, msg.c_str(), L"Flash Launcher", MB_OK | MB_ICONERROR);
+    else MessageBoxW(nullptr, msg.c_str(), L"Multiplayer Everything Launcher", MB_OK | MB_ICONERROR);
 }
 
 std::wstring fullPath(const std::wstring& p) {
@@ -212,7 +212,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 0;
     }
     if (a.version) {
-        out(std::wstring(L"Multiplayer Everything Flash Launcher ") + LAUNCHER_VERSION + L"\n");
+        out(std::wstring(L"Multiplayer Everything Launcher ") + LAUNCHER_VERSION + L"\n");
         return 0;
     }
 

@@ -5,7 +5,7 @@
   .\build.ps1                 # Release build
   .\build.ps1 -Test           # build and run all tests
   .\build.ps1 -Config Debug
-  .\build.ps1 -Dist           # build, then make dist\MultiplayerFlashLauncher\ and its .zip
+  .\build.ps1 -Dist           # build, then make dist\MultiplayerEverythingLauncher\ and its .zip
 #>
 param(
   [ValidateSet('Release', 'Debug')] [string]$Config = 'Release',
@@ -38,24 +38,24 @@ $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 if ($code -ne 0) { throw "Build or tests failed (exit $code)" }
 
-$exe = Join-Path $build 'FlashLauncher.exe'
+$exe = Join-Path $build 'MultiplayerEverythingLauncher.exe'
 Write-Host "Built $exe"
 
 if ($Dist) {
   # The exe carries launcher.json and the covers inside it, so it is all people
   # need; the folder also gets the editable copies next to it.
   # Game SWFs and player binaries are never shipped.
-  $out = Join-Path $root 'dist\MultiplayerFlashLauncher'
+  $out = Join-Path $root 'dist\MultiplayerEverythingLauncher'
   if (Test-Path $out) { Remove-Item -Recurse -Force $out }
   New-Item -ItemType Directory -Force $out | Out-Null
   Copy-Item $exe $out
   Copy-Item (Join-Path $root 'launcher\*') $out -Recurse
-  Get-ChildItem $out -Recurse -Include *.swf, *.exe | Where-Object { $_.Name -ne 'FlashLauncher.exe' } | ForEach-Object {
+  Get-ChildItem $out -Recurse -Include *.swf, *.exe | Where-Object { $_.Name -ne 'MultiplayerEverythingLauncher.exe' } | ForEach-Object {
     throw "Refusing to package $($_.FullName): game files and player binaries must not be shipped."
   }
-  $zip = Join-Path $root 'dist\MultiplayerFlashLauncher.zip'
+  $zip = Join-Path $root 'dist\MultiplayerEverythingLauncher.zip'
   if (Test-Path $zip) { Remove-Item $zip }
   Compress-Archive -Path $out -DestinationPath $zip
-  Copy-Item $exe (Join-Path $root 'dist\FlashLauncher.exe')  # the one-file version
-  Write-Host "Packaged $zip and dist\FlashLauncher.exe"
+  Copy-Item $exe (Join-Path $root 'dist\MultiplayerEverythingLauncher.exe')  # the one-file version
+  Write-Host "Packaged $zip and dist\MultiplayerEverythingLauncher.exe"
 }

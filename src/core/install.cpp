@@ -52,7 +52,7 @@ bool httpGet(const std::wstring& url, const std::function<bool(const char*, size
         error = L"Bad download address: " + url;
         return false;
     }
-    Handle session(WinHttpOpen(L"MultiplayerEverything-FlashLauncher/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    Handle session(WinHttpOpen(L"MultiplayerEverything-Launcher/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) {
         error = lastError(L"WinHttpOpen");

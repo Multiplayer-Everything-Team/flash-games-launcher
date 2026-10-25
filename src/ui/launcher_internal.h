@@ -23,7 +23,7 @@ namespace detail {
 
 using namespace Gdiplus;
 
-constexpr wchar_t kClass[] = L"MultiplayerFlashLauncher";
+constexpr wchar_t kClass[] = L"MultiplayerEverythingLauncher";
 constexpr UINT WM_APP_EXIT = WM_APP + 1;   // wParam pid, lParam exit code
 constexpr UINT WM_APP_RELAY = WM_APP + 2;  // relay peers changed
 constexpr UINT WM_APP_INSTALL = WM_APP + 3;   // player install progress
@@ -103,7 +103,7 @@ constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] =
                   kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945";
 constexpr wchar_t kIconInstall[] = L"\uE896", kIconUpdate[] = L"\uE777", kIconRepair[] = L"\uE90F",
                   kIconUninstall[] = L"\uE74D";
-constexpr wchar_t kToastClass[] = L"MultiplayerFlashLauncherToast";
+constexpr wchar_t kToastClass[] = L"MultiplayerEverythingLauncherToast";
 constexpr ULONGLONG kToastMs = 4000;
 
 // 96-DPI layout units.
