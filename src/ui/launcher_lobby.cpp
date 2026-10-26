@@ -171,6 +171,7 @@ void Launcher::openLobby(int gi) {
             c.cx = theme_.s(cols[i].second);
             ListView_InsertColumn(lv, static_cast<int>(i), &c);
         }
+        SetWindowSubclass(lv, lobbyListProc, 0, reinterpret_cast<DWORD_PTR>(this));
         page.push_back(lv);
         return lv;
     };
@@ -818,6 +819,43 @@ void Launcher::startDirectChecks(int port) {
     });
 }
 
+// The lists' column headers and the empty-list line: the dark list theme draws
+// both in a gray too dim to read, so they get the theme's own text colors.
+LRESULT CALLBACK Launcher::lobbyListProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR ref) {
+    auto* self = reinterpret_cast<Launcher*>(ref);
+    const Theme& t = self->theme_;
+    if (m == WM_NOTIFY) {
+        auto* hdr = reinterpret_cast<NMHDR*>(l);
+        if (hdr->hwndFrom == ListView_GetHeader(h) && hdr->code == NM_CUSTOMDRAW) {
+            auto* cd = reinterpret_cast<NMCUSTOMDRAW*>(l);
+            if (cd->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
+                SetTextColor(cd->hdc, t.c.textMuted.ref());
+                return CDRF_DODEFAULT;
+            }
+            return CDRF_DODEFAULT;
+        }
+    }
+    if (m == WM_PAINT && h == self->lbList_ && ListView_GetItemCount(h) == 0) {
+        LRESULT r = DefSubclassProc(h, m, w, l);
+        RECT rc, head{};
+        GetClientRect(h, &rc);
+        if (HWND hd = ListView_GetHeader(h)) GetWindowRect(hd, &head);
+        rc.top += head.bottom - head.top;
+        HDC dc = GetDC(h);
+        HGDIOBJ old = SelectObject(dc, t.body);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, t.c.textMuted.ref());  // 6.9:1 on the list background
+        std::wstring text = self->cfg_.t("lobby.listEmpty");
+        DrawTextW(dc, text.c_str(), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        SelectObject(dc, old);
+        ReleaseDC(h, dc);
+        return r;
+    }
+    if (m == WM_NCDESTROY) RemoveWindowSubclass(h, lobbyListProc, 0);
+    return DefSubclassProc(h, m, w, l);
+}
+
 // ---- messages ---------------------------------------------------------------------
 
 LRESULT CALLBACK Launcher::lobbyProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -914,13 +952,6 @@ LRESULT Launcher::lobbyHandle(HWND h, UINT m, WPARAM w, LPARAM l) {
                     lobbyJoin(code, windowText(lbJoinPw_), false);
                 }
                 return 0;
-            }
-            if (hdr->hwndFrom == lbList_ && hdr->code == LVN_GETEMPTYMARKUP) {
-                auto* em = reinterpret_cast<NMLVEMPTYMARKUP*>(l);
-                em->dwFlags = EMF_CENTERED;
-                wcsncpy_s(em->szMarkup, cfg_.t("lobby.listEmpty").c_str(), _TRUNCATE);
-                SetWindowLongPtrW(h, DWLP_MSGRESULT, TRUE);
-                return TRUE;
             }
             if (hdr->hwndFrom == lbPlayers_ && hdr->code == LVN_ITEMCHANGED) {
                 updateLobbyRoom();

@@ -363,6 +363,7 @@ private:
     // The lobby window (launcher_lobby.cpp) for games with online.lobby: host or
     // join a room, ready up, chat; the host starts and every launcher opens the game.
     static LRESULT CALLBACK lobbyProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    static LRESULT CALLBACK lobbyListProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR self);
     LRESULT lobbyHandle(HWND h, UINT m, WPARAM w, LPARAM l);
     void openLobby(int gameIndex);
     void closeLobby();
