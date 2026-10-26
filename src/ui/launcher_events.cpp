@@ -311,7 +311,20 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_APP_ROOMS:
             onRooms();
+            fillLobbyRooms();
+            if (lobby_ && lobbySnap_.host && pingMs_ >= 0) lobby_->setServerPing(pingMs_);
             return 0;
+        case WM_APP_LOBBY:
+            onLobby();
+            return 0;
+        case WM_APP_LOBBYNET: {
+            std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(l));
+            if (lobby_) {
+                lobbyNetText_ = *text;
+                updateLobbyRoom();
+            }
+            return 0;
+        }
         case WM_APP_MODS:
             onModsFetched();
             return 0;

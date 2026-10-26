@@ -17,6 +17,7 @@
 #include "core/discord.h"
 #include "core/install.h"
 #include "core/library.h"
+#include "core/lobby.h"
 #include "core/mod/manager.h"
 #include "core/process.h"
 #include "core/relay.h"
@@ -34,6 +35,7 @@ struct LauncherOptions {
     std::string select;      // game id to select at start
     int width = 0, height = 0;
     bool demoHost = false;   // snapshot: start the relay for the selected game
+    std::string lobby;       // snapshot: "setup" or "room" renders the lobby window instead
 };
 
 class Launcher {
@@ -354,8 +356,50 @@ private:
     std::set<std::string> rejected_, pendingRejected_;
     bool notOnServer(const GameSpec& g) const;
     std::thread roomsThread_;
+    std::wstring roomServer_;  // the central server the room poll resolved (under installMu_)
     HANDLE roomsWake_ = nullptr;
     std::atomic<bool> roomsStop_{false}, onlineOn_{true};
+
+    // The lobby window (launcher_lobby.cpp) for games with online.lobby: host or
+    // join a room, ready up, chat; the host starts and every launcher opens the game.
+    static LRESULT CALLBACK lobbyProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    LRESULT lobbyHandle(HWND h, UINT m, WPARAM w, LPARAM l);
+    void openLobby(int gameIndex);
+    void closeLobby();
+    void layoutLobby();
+    void showLobbyPage(bool room);
+    void fillLobbyRooms();
+    void lobbyHost();
+    void lobbyJoin(const std::wstring& codeOrAddress, const std::wstring& password, bool direct);
+    void lobbyQuick(int gameIndex);  // join the busiest open room, or host one
+    void onLobby();                  // WM_APP_LOBBY: the session changed
+    void updateLobbyRoom();
+    void launchFromLobby();
+    void startDirectChecks(int port);
+    std::wstring lobbyReasonText(const lobby::Snapshot& s) const;
+    std::string lobbyVersion(int gameIndex);
+    bool usesLobby(int gameIndex) const;
+    void copyDiagnostics();
+    bool askName(bool firstRun);  // false when the player closed it without a name
+    static LRESULT CALLBACK nameProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    HWND lobbyWnd_ = nullptr;
+    int lobbyGame_ = -1;
+    std::unique_ptr<lobby::Session> lobby_;
+    lobby::Snapshot lobbySnap_;
+    DWORD lobbyPid_ = 0;
+    bool lobbyRoomPage_ = false;
+    int lobbyUpnpPort_ = 0;
+    std::thread lobbyNetThread_;
+    std::wstring lobbyNetText_;   // port test / firewall / UPnP results (UI thread)
+    std::wstring lobbyMessage_;   // why the last room ended, shown on the setup page
+    std::map<std::wstring, std::string> swfHashes_;  // file path -> SHA-256, per run
+    HWND lbDirect_ = nullptr, lbRoomName_ = nullptr, lbMax_ = nullptr, lbPublic_ = nullptr, lbHostPw_ = nullptr,
+         lbPort_ = nullptr, lbUpnp_ = nullptr, lbCode_ = nullptr, lbJoinPw_ = nullptr, lbList_ = nullptr;
+    HWND lbTitle_ = nullptr, lbSub_ = nullptr, lbPlayers_ = nullptr, lbChat_ = nullptr, lbChatEdit_ = nullptr,
+         lbInfo_ = nullptr, lbStatus_ = nullptr, lbCodeLabel_ = nullptr;
+    std::vector<HWND> lbSetup_, lbRoom_;  // controls of each page
+    std::vector<HWND> lbLabels_;
+    size_t lbChatShown_ = 0;
 
     HWND settingsWnd_ = nullptr;
     HWND setOriginals_ = nullptr, setName_ = nullptr, setOffline_ = nullptr;

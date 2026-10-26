@@ -84,6 +84,17 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
   Multiplayer Everything central server, no IP addresses and no port forwarding.
   *Quick play* joins the busiest open room, or starts the game ready to host when
   none is open. Direct IP (Radmin, LAN) is still there under *Other ways to connect*.
+- **A lobby for the games.** For mods made for it, *Play online* opens the launcher's
+  own lobby: host a room (on the server or by direct IP, with an optional password) or
+  join one, see who's in it in their P1-P4 colors, chat, and press *I'm ready*. The host
+  presses *Start game* and every launcher opens the game with the room's values; the game
+  starts only once everyone's game has loaded. Dropped players get 30 seconds to come
+  back to their slot, the host can kick or ban, and direct-IP hosts get their addresses
+  (VPNs first), a firewall check, a port test and optional UPnP. The mod itself needs no
+  online panel: it talks to the launcher on `127.0.0.1` ([docs/LOBBY_BRIDGE.md](docs/LOBBY_BRIDGE.md)).
+
+  ![Lobby](docs/screenshots/lobby-room.png)
+
 - **Rooms.** The *Rooms* page in the sidebar lists every open room of every game
   (filter by game, hide full rooms, search), with the number of players online next
   to it. Each online game also has a *Rooms* tab. *Join* (or *Join by code*) copies
@@ -99,6 +110,9 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
   or `covers\` folder next to the exe still wins, for your own changes.
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
+- **Your name.** The first start asks for your player name; others see it in rooms.
+- **Copy diagnostics.** One button bundles the launcher's version, players, network
+  addresses, the room's state and the latest log lines for a bug report (your name left out).
 - **Settings.** Your name for online rooms, minimize while playing, default player,
   showing offline play (solo and one keyboard, off by default) and the original
   (unmodded) versions, online features on or off, automatic updates, where game
@@ -230,6 +244,7 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 | Path | Contents |
 |---|---|
 | `src/core/mod/` | The PC-mod engine (ported from the installer template): game detection, planning, the all-or-nothing install transaction, the install record, package download |
+| `src/core/lobby.*` | The lobby: rooms through the server or direct IP, ready-up, start and the loaded barrier, reconnects, and the localhost bridge the game talks to |
 | `src/core/` | No UI: config, library (players, files, command lines), process watching, relay, downloads, rooms, settings, Discord, built-in files |
 | `src/ui/` | The launcher window and its theme |
 | `src/app/` | Entry point and command line |

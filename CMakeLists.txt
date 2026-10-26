@@ -33,6 +33,8 @@ add_library(launcher_core STATIC
   src/core/log.cpp
   src/core/motion.cpp
   src/core/process.cpp
+  src/core/lobby.cpp
+  src/core/net.cpp
   src/core/relay.cpp
   src/core/rooms.cpp
   src/core/settings.cpp
@@ -77,6 +79,7 @@ add_executable(launcher WIN32
   src/ui/launcher_events.cpp
   src/ui/launcher_headless.cpp
   src/ui/launcher_layout.cpp
+  src/ui/launcher_lobby.cpp
   src/ui/launcher_mods.cpp
   src/ui/launcher_motion.cpp
   src/ui/launcher_online.cpp
@@ -91,7 +94,7 @@ target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 u
 
 # ---- tests ----------------------------------------------------------------
 enable_testing()
-add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_mod.cpp tests/test_relay.cpp)
+add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_mod.cpp tests/test_relay.cpp tests/test_lobby.cpp)
 target_link_libraries(launcher_tests PRIVATE launcher_core shell32)
 add_test(NAME core_and_relay COMMAND launcher_tests)
 add_test(NAME end_to_end

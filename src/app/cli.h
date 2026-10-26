@@ -16,6 +16,7 @@ struct Args {
     std::string select;
     int width = 0, height = 0, relayPort = 0;
     bool list = false, validate = false, help = false, demoHost = false, version = false, update = false;
+    std::wstring lobby;  // --lobby setup|room: snapshot the lobby window
     std::wstring error;
 };
 

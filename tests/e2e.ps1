@@ -12,6 +12,8 @@ param(
 $ErrorActionPreference = 'Stop'
 # Animations off, whatever Windows says: checks must not depend on frame timing.
 $env:FL_MOTION = '0'
+# The first-run name prompt would wait for a person; the lobby section asks for it on purpose.
+$env:FL_NO_NAME_PROMPT = '1'
 $failures = 0
 function Check([bool]$ok, [string]$what) {
   if ($ok) { Write-Host "[ OK ] $what" } else { Write-Host "[FAIL] $what"; $script:failures++ }
@@ -657,6 +659,146 @@ Check ($settings -match '"plays": [1-9]') 'play count is saved'
   Check $false "window automation: $($_.Exception.Message)"
 } finally {
   if (-not $gui.HasExited) { Stop-Process -Id $gui.Id -Force }
+}
+
+# ---- The lobby: name prompt, hosting by direct IP, a friend, start, the bridge ----
+# The friend is this script speaking the launchers' lobby protocol; the "game" is
+# the fake player, which plays the game's side of the bridge from its FlashVars.
+$lport = 48900 + ($PID % 90)
+New-Item -ItemType Directory -Force "$work\lobby\games" | Out-Null
+Set-Content "$work\lobby\games\lob.swf" 'lobby game file'
+$lobHash = (Get-FileHash "$work\lobby\games\lob.swf" -Algorithm SHA256).Hash.ToLower().Substring(0, 16)
+@"
+{
+  "paths": { "games": "`${LAUNCHER_DIR}\\games", "players": "`${LAUNCHER_DIR}\\players", "data": "`${LAUNCHER_DIR}\\data", "flashpoint": [] },
+  "rooms": { "server": "127.0.0.1:1" },
+  "players": [ { "id": "fake", "name": "Fake Player", "paths": ["$($fake -replace '\\','\\')"], "args": ["--fake-player"], "flashvarArg": "-P`${KEY}=`${VALUE}" } ],
+  "games": [ { "id": "lob", "name": "Lobby Game", "players": "1-4 players",
+               "online": { "id": "lob", "join": "online", "lobby": { "version": "2.0", "port": $lport } },
+               "actions": [ { "id": "online", "label": "Play online", "swf": "`${GAMES_DIR}\\lob.swf", "flashvars": { "online": "1" } } ] } ]
+}
+"@ | Set-Content "$work\lobby\launcher.json" -Encoding UTF8
+Copy-Item $Launcher "$work\lobby\"
+$lobbyExe = Join-Path "$work\lobby" (Split-Path $Launcher -Leaf)
+$r = Run @('--validate', '--config', "`"$work\lobby\launcher.json`"")
+Check ($r.Code -eq 0) "lobby test config validates $($r.Out.Trim())"
+
+function LobbySend($w, [string]$json) { $b = [Text.Encoding]::UTF8.GetBytes($json + [char]0); $w.Write($b, 0, $b.Length); $w.Flush() }
+# Next message whose "k" is $kind (others skipped), parsed; $null after $ms.
+function LobbyExpect($c, [string]$kind, [int]$ms = 8000) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.ElapsedMilliseconds -lt $ms) {
+    $i = $c.Buf.IndexOf([char]0)
+    if ($i -ge 0) {
+      $m = $c.Buf.Substring(0, $i); $c.Buf = $c.Buf.Substring($i + 1)
+      try { $o = $m | ConvertFrom-Json } catch { continue }
+      if ($o.k -eq $kind) { return $o }
+      continue
+    }
+    if ($c.Tcp.Available -gt 0) {
+      $b = New-Object byte[] 65536; $n = $c.Stream.Read($b, 0, $b.Length)
+      $c.Buf += [Text.Encoding]::UTF8.GetString($b, 0, $n)
+    } else { Start-Sleep -Milliseconds 50 }
+  }
+  return $null
+}
+
+$env:FL_FAKE_OUT = "$work\lobby\args.txt"
+$env:FL_FAKE_MS = '6000'
+Remove-Item Env:\FL_NO_NAME_PROMPT
+$lw = Start-Process -FilePath $lobbyExe -PassThru
+$env:FL_NO_NAME_PROMPT = '1'
+$bot = $null
+try {
+  # First start: the launcher asks for a player name before anything else.
+  $nameWnd = [IntPtr]::Zero
+  WaitFor { $script:nameWnd = [Top]::Find([uint32]$lw.Id, 'MultiplayerEverythingLauncherName'); $script:nameWnd -ne [IntPtr]::Zero } 10000 | Out-Null
+  Check ($nameWnd -ne [IntPtr]::Zero) 'the first start asks for a player name'
+  if ($nameWnd -ne [IntPtr]::Zero) {
+    $nameEdit = $null
+    WaitFor { $script:nameEdit = OfClass $nameWnd 'Edit'; $null -ne $script:nameEdit } | Out-Null
+    [Acc]::SendMessage($nameEdit.Hwnd, 0x000C, [IntPtr]::Zero, 'Tester') | Out-Null  # WM_SETTEXT
+    $cont = Ctl $nameWnd 'Continue'
+    if ($cont) { [Acc]::Do($cont.Hwnd) }
+    Check (WaitFor { (Get-Content "$work\lobby\data\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"playerName": "Tester"' }) 'the name is saved'
+  }
+  WaitFor { $lw.Refresh(); $lw.MainWindowHandle -ne 0 } 10000 | Out-Null
+  $lh = $lw.MainWindowHandle
+  $playOnline = $null
+  WaitFor { $script:playOnline = Ctl $lh 'Play online'; $null -ne $script:playOnline } | Out-Null
+  if ($playOnline) { [Acc]::Do($playOnline.Hwnd) }
+  $lobWnd = [IntPtr]::Zero
+  WaitFor { $script:lobWnd = [Top]::Find([uint32]$lw.Id, 'MultiplayerEverythingLauncherLobby'); $script:lobWnd -ne [IntPtr]::Zero } 5000 | Out-Null
+  Check ($lobWnd -ne [IntPtr]::Zero) 'Play online opens the lobby window for a lobby game'
+  if ($lobWnd -ne [IntPtr]::Zero) {
+    $direct = $null
+    WaitFor { $script:direct = [Acc]::Controls($lobWnd) | Where-Object { $_.Name -like 'Direct IP*' } | Select-Object -First 1; $null -ne $script:direct } | Out-Null
+    if ($direct) { [Acc]::Do($direct.Hwnd) }
+    $portEdit = $null
+    WaitFor { $script:portEdit = Ctl $lobWnd 'Port'; $null -ne $script:portEdit } | Out-Null
+    Check ($null -ne $portEdit) 'Direct IP shows the port field'
+    $hostRoom = Ctl $lobWnd 'Host room'
+    if ($hostRoom) { [Acc]::Do($hostRoom.Hwnd) }
+    Check (WaitFor { PortOpen $lport }) "Host room listens for friends on port $lport"
+    Check ($null -ne (Ctl $lobWnd 'Start game')) 'the room page has Start game'
+
+    # A friend joins, gets a slot, gets ready.
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    $tcp.Connect('127.0.0.1', $lport)
+    $bot = @{ Tcp = $tcp; Stream = $tcp.GetStream(); Buf = '' }
+    LobbySend $bot.Stream ('{"k":"hello","proto":1,"name":"Bot","token":"bot-token-0123456789","version":"2.0#' + $lobHash + '"}')
+    $welcome = LobbyExpect $bot 'welcome'
+    Check ($null -ne $welcome -and $welcome.slot -eq 1) "the friend is welcomed as P2 (slot $($welcome.slot))"
+    $lob = LobbyExpect $bot 'lobby'
+    Check ($null -ne $lob -and @($lob.players).Count -eq 2 -and $lob.players[0].name -eq 'Tester') 'the lobby lists the host by name and the friend'
+    $players = $null
+    WaitFor { $script:players = [Acc]::Controls($lobWnd) | Where-Object { $_.Class -eq 'SysListView32' } | Select-Object -First 1; $null -ne $script:players } | Out-Null
+    Check (WaitFor { [int][Acc]::SendMessage($players.Hwnd, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero) -eq 2 }) 'the host sees two players'
+    LobbySend $bot.Stream '{"k":"ready","v":true}'
+    LobbySend $bot.Stream '{"k":"chat","text":"ready!"}'
+    Check ($null -ne (LobbyExpect $bot 'chat')) 'chat goes round'
+    Start-Sleep -Milliseconds 500
+
+    # The host starts: the launcher opens the game with the room's FlashVars, and the
+    # game gets "go" only once the friend's game is loaded too.
+    [Acc]::Do((Ctl $lobWnd 'Start game').Hwnd)
+    $start = LobbyExpect $bot 'start'
+    Check ($null -ne $start -and $start.seed -ge 0) "the friend gets start with a seed ($($start.seed))"
+    Check (WaitFor { (Get-Content "$work\lobby\args.txt" -ErrorAction SilentlyContinue) -contains '-Prole=host' }) 'the launcher starts the game as host'
+    # The arguments, without the fake game's notes from the bridge that follow them.
+    $largs = @(Get-Content "$work\lobby\args.txt" -ErrorAction SilentlyContinue | Where-Object { $_ -notlike 'BRIDGE *' })
+    Check (($largs -contains '-Pslot=0') -and ($largs | Where-Object { $_ -match '^-PbridgePort=\d+$' }) -and ($largs | Where-Object { $_ -match '^-PsessionToken=[0-9a-f]{32}$' }) -and ($largs -contains "-Pseed=$($start.seed)")) "FlashVars carry slot, bridgePort, sessionToken and seed ($($largs -join ' '))"
+    Check ($largs[-1] -like '*lob.swf') 'the game file stays last'
+    Check (WaitFor { (Get-Content "$work\lobby\args.txt" -Raw -ErrorAction SilentlyContinue) -match '"t":"welcome","slot":0,"role":"host"' }) 'the game is welcomed on the bridge as slot 0, host'
+    Start-Sleep -Milliseconds 400
+    Check (-not ((Get-Content "$work\lobby\args.txt" -Raw) -match 'BRIDGE \{"t":"go"')) 'no go while the friend is still loading'
+    LobbySend $bot.Stream '{"k":"loaded"}'
+    Check (WaitFor { (Get-Content "$work\lobby\args.txt" -Raw) -match 'BRIDGE \{"t":"go"' }) 'go once everyone is loaded'
+    $g = LobbyExpect $bot 'g'
+    Check ($null -ne $g -and $g.from -eq 0 -and $g.d -eq 'hello from the game') 'the game reaches the friend through the bridge'
+    LobbySend $bot.Stream '{"k":"g","dst":0,"d":{"x":7}}'
+    Check (WaitFor { (Get-Content "$work\lobby\args.txt" -Raw) -match '"t":"msg","from":1,"d":\{"x":7\}' }) "the friend's message reaches the game"
+
+    $diag = Ctl $lobWnd 'Copy diagnostics'
+    if ($diag) {
+      [Acc]::Do($diag.Hwnd)
+      Check (WaitFor { ($(try { Get-Clipboard -Raw } catch { '' })) -match 'Lobby: direct, host' }) 'Copy diagnostics puts a report on the clipboard'
+      Check (-not (($(try { Get-Clipboard -Raw } catch { '' })) -match 'Tester')) 'the report leaves out the player name'
+    } else { Check $false 'Copy diagnostics button found' }
+
+    # The game closes (the fake player's time is up): everyone is back in the lobby.
+    Check ($null -ne (LobbyExpect $bot 'end' 12000)) 'the host game closing ends the round for everyone'
+    $leave = Ctl $lobWnd 'Leave room'
+    if ($leave) { [Acc]::Do($leave.Hwnd) }
+    Check ($null -ne (LobbyExpect $bot 'closed')) 'Leave room tells the friend the room closed'
+    Check (WaitFor { -not (PortOpen $lport) }) 'and stops listening'
+  }
+} catch {
+  Check $false "lobby automation: $($_.Exception.Message)"
+} finally {
+  if ($bot) { $bot.Tcp.Close() }
+  Stop-Process -Id $lw.Id -Force -ErrorAction SilentlyContinue
+  $env:FL_FAKE_OUT = "$work\args.txt"
 }
 
 # ---- HTML5: a browser player, a local page, a game server and a friend's link ----

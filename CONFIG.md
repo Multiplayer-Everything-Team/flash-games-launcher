@@ -144,7 +144,7 @@ doesn't match.
 | `mod` | Makes this a **PC game mod** instead of a Flash game: see "PC game mods" below. Such a game has no `actions` (the launcher makes Install, Update, Launch, Repair and Uninstall itself). |
 | `players` | Player-count text, e.g. `"1-4 players"` |
 | `maxPlayers` | Player slots to show; default: the highest number in `players` |
-| `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room. Gives the game a *Rooms* tab and *Quick play*. |
+| `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room. Gives the game a *Rooms* tab and *Quick play*. Add `"lobby": { "version": "1.3", "port": 7790 }` for a mod that uses the launcher's lobby and localhost bridge: *Play online* then opens the lobby window (host or join, ready-up, start), and the game gets `room`, `role`, `slot`, `bridgePort`, `sessionToken` and `seed` FlashVars. See [docs/LOBBY_BRIDGE.md](docs/LOBBY_BRIDGE.md). |
 | `categories` | Category ids |
 | `color`, `colorEnd` | Gradient of the generated cover art |
 | `image` | Optional cover image (PNG/JPG), relative to `launcher.json` or absolute. Images in `launcher/covers` are built into the exe. |

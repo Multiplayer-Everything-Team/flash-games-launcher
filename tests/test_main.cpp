@@ -42,25 +42,82 @@ std::string readText(const std::wstring& path) {
 
 bool exists(const std::wstring& path) { return fl::fs::exists(path); }
 
+static void appendOut(const std::string& text) {
+    wchar_t out[1024] = L"";
+    GetEnvironmentVariableW(L"FL_FAKE_OUT", out, 1024);
+    if (!*out) return;
+    FILE* f = _wfopen(out, L"ab");
+    if (f) {
+        fwrite(text.data(), 1, text.size(), f);
+        fclose(f);
+    }
+}
+
+// A game on the launcher's lobby bridge: hello with the session token, "loaded"
+// once welcomed, then it notes what arrives ("BRIDGE {welcome...}", "BRIDGE go",
+// "BRIDGE {msg...}") until `untilTick`.
+static void fakeBridgeGame(int port, const std::string& token, ULONGLONG untilTick) {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(static_cast<u_short>(port));
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0) {
+        appendOut("BRIDGE connect failed\n");
+        return;
+    }
+    DWORD timeout = 200;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
+    auto sendMsg = [&](const std::string& m) {
+        std::string d = m + std::string(1, '\0');
+        send(s, d.data(), static_cast<int>(d.size()), 0);
+    };
+    sendMsg("{\"t\":\"hello\",\"token\":\"" + token + "\"}");
+    std::string buf;
+    while (GetTickCount64() < untilTick) {
+        char tmp[4096];
+        int n = recv(s, tmp, sizeof tmp, 0);
+        if (n == 0) break;
+        if (n > 0) buf.append(tmp, n);
+        size_t nul;
+        while ((nul = buf.find('\0')) != std::string::npos) {
+            std::string m = buf.substr(0, nul);
+            buf.erase(0, nul + 1);
+            appendOut("BRIDGE " + m + "\n");
+            if (m.find("\"t\":\"welcome\"") != std::string::npos) sendMsg("{\"t\":\"loaded\"}");
+            if (m.find("\"t\":\"go\"") != std::string::npos)
+                sendMsg("{\"t\":\"send\",\"to\":-1,\"d\":\"hello from the game\"}");
+        }
+    }
+    closesocket(s);
+    WSACleanup();
+}
+
 // Stand-in for a Flash player in tests\e2e.ps1: appends its arguments (one per
 // line) to %FL_FAKE_OUT%, stays open for %FL_FAKE_MS% milliseconds, exits 0.
+// Given the lobby's FlashVars (-PbridgePort=, -PsessionToken=) it also plays the
+// game's side of the bridge meanwhile.
 static int fakePlayer() {
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::string lines;
-    for (int i = 2; i < argc; ++i) lines += fl::narrow(argv[i]) + "\n";
-    LocalFree(argv);
-    wchar_t out[1024] = L"", ms[32] = L"";
-    GetEnvironmentVariableW(L"FL_FAKE_OUT", out, 1024);
-    GetEnvironmentVariableW(L"FL_FAKE_MS", ms, 32);
-    if (*out) {
-        FILE* f = _wfopen(out, L"ab");
-        if (f) {
-            fwrite(lines.data(), 1, lines.size(), f);
-            fclose(f);
-        }
+    std::string lines, token;
+    int bridgePort = 0;
+    for (int i = 2; i < argc; ++i) {
+        std::string arg = fl::narrow(argv[i]);
+        lines += arg + "\n";
+        if (arg.rfind("-PbridgePort=", 0) == 0) bridgePort = atoi(arg.c_str() + 13);
+        if (arg.rfind("-PsessionToken=", 0) == 0) token = arg.substr(15);
     }
-    Sleep(static_cast<DWORD>(_wtoi(ms)));
+    LocalFree(argv);
+    wchar_t ms[32] = L"";
+    GetEnvironmentVariableW(L"FL_FAKE_MS", ms, 32);
+    appendOut(lines);
+    ULONGLONG until = GetTickCount64() + static_cast<ULONGLONG>(_wtoi(ms));
+    if (bridgePort) fakeBridgeGame(bridgePort, token, until);
+    ULONGLONG now = GetTickCount64();
+    if (now < until) Sleep(static_cast<DWORD>(until - now));
     return 0;
 }
 

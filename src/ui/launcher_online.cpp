@@ -229,9 +229,13 @@ void Launcher::paintRoomRow(Graphics& g, const RoomRow& row, bool showGame, int 
         drawText(g, n, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
         right -= t.s(56);
     }
-    if (!room.name.empty() && right > x) {
+    // Lobby rooms say whether they're playing already or need a password.
+    std::wstring about = room.name;
+    if (room.inGame()) about += (about.empty() ? L"" : L", ") + cfg_.t("rooms.playing");
+    if (room.locked) about += (about.empty() ? L"" : L", ") + cfg_.t("rooms.locked");
+    if (!about.empty() && right > x) {
         RECT nr{x, r.top, right, r.bottom};
-        drawText(g, room.name, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+        drawText(g, about, nr, t.caption, t.c.textMuted, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     }
 }
 
@@ -264,6 +268,12 @@ void Launcher::joinListedRoom(int gi, const RoomInfo& room) {
         return;
     }
     const GameSpec& g = cfg_.games[gi];
+    if (usesLobby(gi)) {
+        openLobby(gi);
+        if (lobby_ && lobby_->running()) return;
+        lobbyJoin(room.code, L"", false);
+        return;
+    }
     copyText(room.code);
     if (g.mod) {
         // The mod has no way to take a code from the launcher yet: the player pastes it in the game.
@@ -322,6 +332,10 @@ void Launcher::joinByCode(HWND edit, int gi) {
 
 void Launcher::quickPlay() {
     if (selected_ < 0) return;
+    if (usesLobby(selected_)) {
+        lobbyQuick(selected_);
+        return;
+    }
     const GameSpec& g = cfg_.games[selected_];
     const RoomInfo* busiest = nullptr;
     if (auto it = rooms_.find(g.id); it != rooms_.end())

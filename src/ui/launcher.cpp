@@ -27,6 +27,8 @@ Launcher::Launcher(const Config& cfg, Library& lib, UserData& user, std::wstring
     : cfg_(cfg), lib_(lib), user_(user), userPath_(std::move(userPath)) {}
 
 Launcher::~Launcher() {
+    closeLobby();
+    if (lobbyNetThread_.joinable()) lobbyNetThread_.join();
     installCancel_ = true;
     if (installThread_.joinable()) installThread_.join();
     if (catalogThread_.joinable()) catalogThread_.join();
@@ -92,6 +94,43 @@ int Launcher::run(const LauncherOptions& opt) {
         }
         onRooms();
     }
+    std::vector<std::unique_ptr<lobby::Session>> demoGuests;
+    if (snapshot_ && !opt.lobby.empty() && selected_ >= 0 && usesLobby(selected_)) {
+        openLobby(selected_);
+        if (opt.lobby == "room") {
+            // A direct room with two friends in it, the way it looks while you wait.
+            if (user_.playerName.empty()) user_.playerName = L"Hana";
+            SendMessageW(lbDirect_, BM_SETCHECK, BST_CHECKED, 0);
+            SetWindowTextW(lbPort_, L"47991");
+            lobbyHost();
+            lobbyNetText_ = cfg_.t("lobby.portOpen", {{L"PORT", L"47991"}});
+            const wchar_t* names[] = {L"Ann", L"Bob"};
+            for (const wchar_t* n : names) {
+                lobby::Options o;
+                o.transport = lobby::Transport::Direct;
+                o.server = L"127.0.0.1:47991";
+                o.gameId = cfg_.games[selected_].onlineId;
+                o.version = lobbyVersion(selected_);
+                o.playerName = n;
+                auto s = std::make_unique<lobby::Session>();
+                std::wstring err;
+                if (s->start(o, err)) demoGuests.push_back(std::move(s));
+                Sleep(300);
+            }
+            if (!demoGuests.empty()) {
+                demoGuests[0]->setReady(true);
+                demoGuests[0]->sendChat(L"ready when you are");
+            }
+            for (int i = 0; i < 40; ++i) {
+                MSG msg;
+                while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                Sleep(25);
+            }
+        }
+    }
     if (snapshot_) {
         auto pump = [] {
             for (int i = 0; i < 15; ++i) {
@@ -104,12 +143,13 @@ int Launcher::run(const LauncherOptions& opt) {
             }
         };
         pump();
+        HWND target = lobbyWnd_ ? lobbyWnd_ : hwnd_;
         RECT cr;
-        GetClientRect(hwnd_, &cr);
-        HDC screen = GetDC(hwnd_);
+        GetClientRect(target, &cr);
+        HDC screen = GetDC(target);
         Buffer buf(screen, cr.right, cr.bottom);
-        ReleaseDC(hwnd_, screen);
-        PrintWindow(hwnd_, buf.dc, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
+        ReleaseDC(target, screen);
+        PrintWindow(target, buf.dc, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
         SelectObject(buf.dc, buf.old);  // GDI+ must not read a bitmap still selected into a DC
         CLSID png;
         int code = 1;
@@ -120,9 +160,14 @@ int Launcher::run(const LauncherOptions& opt) {
         }
         buf.old = SelectObject(buf.dc, buf.bmp);
         relay_.stop();
+        demoGuests.clear();
+        if (lobbyWnd_) DestroyWindow(lobbyWnd_);
         DestroyWindow(hwnd_);
         return code;
     }
+
+    // Everyone online needs a name; ask once, on the very first start.
+    if (user_.playerName.empty() && !getenv("FL_NO_NAME_PROMPT")) askName(true);
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -158,6 +203,7 @@ int Launcher::run(const LauncherOptions& opt) {
                 continue;
             }
         }
+        if (lobbyWnd_ && IsChild(lobbyWnd_, msg.hwnd) && IsDialogMessageW(lobbyWnd_, &msg)) continue;
         if (IsDialogMessageW(hwnd_, &msg)) continue;
         TranslateMessage(&msg);
         DispatchMessageW(&msg);

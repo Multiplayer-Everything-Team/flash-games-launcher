@@ -162,6 +162,14 @@ struct ActionSpec {
     bool isMod() const { return !modOp.empty(); }
 };
 
+// The launcher's own lobby (core/lobby.h) for a mod that talks to the localhost
+// bridge instead of the server: rooms, ready-up and start happen in the launcher.
+struct LobbySpec {
+    bool enabled = false;
+    std::wstring version = L"1";  // the mod's version; the game file's hash is added to it
+    int port = 7790;              // Direct IP hosting listens here
+};
+
 struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
@@ -171,6 +179,7 @@ struct GameSpec {
     // Rooms on the central server: the mod's id there ("gm2") and the action
     // that joins a room. Empty id: the game has no online rooms.
     std::string onlineId, joinAction;
+    LobbySpec lobby;
     std::vector<std::string> categories;
     bool comingSoon = false;  // listed with "Coming soon" and no buttons (its mod isn't built yet)
     // A PC game mod: installed into the game's folder instead of played in Ruffle.

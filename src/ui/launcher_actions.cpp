@@ -48,6 +48,12 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
     const GameSpec& g = cfg_.games[gi];
     const ActionSpec& a = g.actions[ai];
     if (a.isMod()) return runModAction(gi, a);
+    // A mod on the launcher's lobby plays online through the lobby window; the
+    // lobby calls back here with the room's values once the host starts.
+    if (usesLobby(gi) && ai == joinActionIndex(g) && given.empty()) {
+        openLobby(gi);
+        return true;
+    }
     FlashVars flashvars = gameValues(a, user_.playerName, given);
     ResolvedAction r = lib_.resolve(g, a, user_);
     if (r.state != ActionState::Ready) {
@@ -115,6 +121,10 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
 }
 
 void Launcher::onProcessExit(DWORD pid, DWORD code) {
+    if (pid && pid == lobbyPid_) {
+        lobbyPid_ = 0;
+        if (lobby_) lobby_->gameExited();
+    }
     auto it = std::find_if(sessions_.begin(), sessions_.end(), [&](const Session& s) { return s.pid == pid; });
     if (it == sessions_.end()) return;
     Session s = *it;
@@ -687,7 +697,11 @@ void Launcher::startRoomPolling() {
         std::wstring server;
         while (!roomsStop_) {
             if (onlineOn_) {
-                if (server.empty()) server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
+                if (server.empty()) {
+                    server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
+                    std::lock_guard<std::mutex> lock(installMu_);
+                    roomServer_ = server;
+                }
                 std::map<std::string, std::vector<RoomInfo>> found;
                 bool ok = false;
                 int ping = -1;  // the fastest answer this round, in ms

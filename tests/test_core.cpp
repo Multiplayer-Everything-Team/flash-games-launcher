@@ -282,6 +282,33 @@ TEST(room_list_parsing) {
     CHECK(!parseRoomList("E|unknown game", rooms));
 }
 
+TEST(room_list_v2_carries_lobby_details) {
+    std::vector<RoomInfo> rooms;
+    REQUIRE(parseRoomList("ROOMS|SKT75,2,3,1,ingame,NL,42,1.0#abc,Friday, late;OLD11,1,4,0,,,-1,v1,Old room", rooms));
+    REQUIRE(rooms.size() == 2);
+    CHECK(rooms[0].code == L"SKT75" && rooms[0].players == 2 && rooms[0].max == 3 && rooms[0].locked);
+    CHECK(rooms[0].inGame() && rooms[0].region == L"NL" && rooms[0].hostPing == 42 && rooms[0].version == L"1.0#abc");
+    CHECK(rooms[0].name == L"Friday, late");
+    CHECK(!rooms[1].locked && !rooms[1].inGame() && rooms[1].hostPing == -1 && rooms[1].name == L"Old room");
+}
+
+TEST(config_lobby_block) {
+    LoadResult r = loadConfig(minimalConfig(R"([
+        { "id": "a", "online": { "id": "gm2", "join": "p", "lobby": { "version": "1.3", "port": 7800 } },
+          "actions": [{ "id": "p", "swf": "a.swf" }] },
+        { "id": "b", "online": { "id": "sh2", "join": "p", "lobby": { "enabled": false } }, "actions": [{ "id": "p", "swf": "b.swf" }] },
+        { "id": "c", "actions": [{ "id": "p", "swf": "c.swf" }] }
+    ])"), L"C:\\x");
+    REQUIRE(r.ok());
+    CHECK(r.config.games[0].lobby.enabled && r.config.games[0].lobby.version == L"1.3" && r.config.games[0].lobby.port == 7800);
+    CHECK(!r.config.games[1].lobby.enabled);
+    CHECK(!r.config.games[2].lobby.enabled && r.config.games[2].lobby.port == 7790);
+    LoadResult bad = loadConfig(minimalConfig(R"([
+        { "id": "a", "online": { "join": "p", "lobby": {} }, "actions": [{ "id": "p", "swf": "a.swf" }] }
+    ])"), L"C:\\x");
+    CHECK(!bad.ok());
+}
+
 TEST(html5_action_resolves_to_a_browser) {
     TempDir dir("lib-web");
     writeText(dir / L"players\\edge.exe", "x");
