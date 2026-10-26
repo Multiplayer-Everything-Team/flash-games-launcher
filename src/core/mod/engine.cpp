@@ -178,6 +178,7 @@ PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const 
         if (src.empty() || !res.exists(src)) {
             r.error = cfg.t("error.payloadMissing", p.vars, {{L"FILE", comp.source}});
             r.detail = L"Component '" + widen(comp.id) + L"' source not found in " + res.describe();
+            r.packageDamaged = true;
             return r;
         }
         bool single = res.stat(src).has_value();
@@ -280,6 +281,7 @@ namespace {
 struct Cancelled {};
 struct Failure {
     std::wstring message, detail;
+    bool damagedPackage = false;
 };
 
 constexpr uint64_t kFileUnits = 64 * 1024;  // progress weight of one file operation
@@ -673,7 +675,7 @@ std::string Engine::copyPayload(const FilePlan& f, const std::wstring& dest, Met
     auto reader = res_->open(f.sourceRel);
     if (!reader)
         throw Failure{t("error.payloadMissing", {{L"FILE", f.sourceRel}}),
-                      L"Cannot open " + f.sourceRel + L" in " + res_->describe()};
+                      L"Cannot open " + f.sourceRel + L" in " + res_->describe(), true};
     HANDLE out = CreateFileW(fs::longPath(dest).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                              FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (out == INVALID_HANDLE_VALUE) throw fileFailure(cfg_, *vars_, GetLastError(), f.target);
@@ -689,7 +691,7 @@ std::string Engine::copyPayload(const FilePlan& f, const std::wstring& dest, Met
         if (n == 0) break;
         if (n == SIZE_MAX) {
             CloseHandle(out);
-            throw Failure{t("error.payloadCorrupt", {{L"FILE", f.sourceRel}}), L"Read error in " + f.sourceRel};
+            throw Failure{t("error.payloadCorrupt", {{L"FILE", f.sourceRel}}), L"Read error in " + f.sourceRel, true};
         }
         DWORD written = 0;
         if (!WriteFile(out, buffer_.data(), static_cast<DWORD>(n), &written, nullptr) || written != n) {
@@ -706,7 +708,8 @@ std::string Engine::copyPayload(const FilePlan& f, const std::wstring& dest, Met
     if (total != f.size || (!f.sha256.empty() && hash != f.sha256))
         throw Failure{t("error.payloadCorrupt", {{L"FILE", f.sourceRel}}),
                       L"Checksum or size mismatch for " + f.sourceRel + L" (expected " + std::to_wstring(f.size) +
-                          L" bytes, got " + std::to_wstring(total) + L")"};
+                          L" bytes, got " + std::to_wstring(total) + L")",
+                      true};
     return hash;
 }
 
@@ -887,6 +890,7 @@ Outcome Engine::apply(const Plan& plan, Meter& m, CancelToken& cancel) {
         for (const auto& x : failures) logger().error(L"Rollback could not " + x);
         o.message = f.message;
         o.detail = f.detail;
+        o.packageDamaged = f.damagedPackage;
         return o;
     }
 
@@ -983,6 +987,7 @@ Outcome Engine::uninstall(const Plan& plan, Meter& m, CancelToken& cancel) {
         for (const auto& x : failures) logger().error(L"Rollback could not " + x);
         o.message = f.message;
         o.detail = f.detail;
+        o.packageDamaged = f.damagedPackage;
         return o;
     }
 

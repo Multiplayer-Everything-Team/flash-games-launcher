@@ -110,6 +110,7 @@ Outcome install(const Spec& spec, const Vars& base, Operation op, const std::wst
     if (!plan.ok) {
         o.message = plan.error;
         o.detail = plan.detail;
+        o.packageDamaged = plan.packageDamaged;
         return o;
     }
     Engine engine(spec_, res.get(), std::move(options));
@@ -299,6 +300,9 @@ Outcome run(const Spec& spec, const Vars& base, const RunRequest& req, const Rep
     }
     o = install(versioned, base, req.op, req.gameDir, payload, engineProgress, cancel, std::move(options));
     if (o.result == Outcome::Result::Success) pruneCache(req.cacheDir, spec.mod.id, req.source.version);
+    // The package lost a file (an antivirus program removing one is the usual cause): the next try downloads it
+    // again instead of trusting the damaged copy.
+    if (o.packageDamaged) discardPackage(req.cacheDir, widen(narrow(spec.mod.id)), req.source.version);
     return o;
 }
 

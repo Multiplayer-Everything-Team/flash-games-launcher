@@ -275,6 +275,10 @@ bool preparePackage(const std::wstring& id, const std::wstring& version, const s
     return true;
 }
 
+void discardPackage(const std::wstring& cacheDir, const std::wstring& id, const std::wstring& version) {
+    removeTree(fs::join(fs::join(cacheDir, id), version));
+}
+
 void pruneCache(const std::wstring& cacheDir, const std::wstring& id, const std::wstring& keepVersion) {
     std::wstring dir = fs::join(cacheDir, id);
     std::error_code ec;

@@ -51,6 +51,9 @@ bool preparePackage(const std::wstring& id, const std::wstring& version, const s
                     const InstallProgress& progress, const std::atomic<bool>* cancel, std::wstring& payloadDir,
                     std::wstring& error);
 
+// Deletes the cached copy of one version, so the next install downloads and unpacks it afresh.
+void discardPackage(const std::wstring& cacheDir, const std::wstring& id, const std::wstring& version);
+
 // Removes cached versions of `id` other than `keepVersion`.
 void pruneCache(const std::wstring& cacheDir, const std::wstring& id, const std::wstring& keepVersion);
 

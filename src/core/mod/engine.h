@@ -51,6 +51,7 @@ struct Plan {
 struct PlanResult {
     bool ok = false;
     std::wstring error, detail;
+    bool packageDamaged = false;  // a file the package should have is missing
     Plan plan;
 };
 
@@ -103,6 +104,7 @@ struct EngineOptions {
 struct Outcome {
     enum class Result { Success, Cancelled, Failed } result = Result::Failed;
     std::wstring message, detail;
+    bool packageDamaged = false;  // the downloaded package lost or garbled a file (often antivirus): download it afresh
     bool rollbackComplete = true;
     std::vector<std::wstring> warnings;
     int filesWritten = 0, filesSkipped = 0, filesRemoved = 0;

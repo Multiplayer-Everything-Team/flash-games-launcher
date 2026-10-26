@@ -226,7 +226,7 @@ TEST(payload_removed_after_planning_fails_and_rolls_back) {
     CancelToken token;
     Outcome o = Engine(f.cfg, f.res.get()).run(p.plan, nullptr, token);
     CHECK(o.result == Outcome::Result::Failed);
-    CHECK(o.message.find(L"missing") != std::wstring::npos);
+    CHECK(o.message.find(L"lost") != std::wstring::npos);
     CHECK(f.gameUntouched());
 }
 

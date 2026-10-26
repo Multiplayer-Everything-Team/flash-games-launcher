@@ -198,6 +198,31 @@ TEST(shipped_gta_keeps_the_games_eax_dll_next_to_the_wrapper_and_puts_it_back) {
     (void)before;
 }
 
+TEST(a_package_that_lost_a_file_is_reported_as_damaged_and_can_be_discarded) {
+    Config cfg = loadShipped();
+    const GameSpec* g = shippedMod(cfg, "gta-coop");
+    REQUIRE(g != nullptr);
+    TempDir root("av");
+    std::wstring game = root / L"Game", payload = root / L"cache\\gta-coop\\1.0.0\\payload";
+    writeText(game + L"\\gta_sa.exe", "game");
+    writeText(game + L"\\eax.dll", "THE GAMES EAX");
+    writeText(game + L"\\models\\gta3.img", "img");
+    // An antivirus program took LaunchCoopAndreas.exe out of the unpacked package.
+    writeText(payload + L"\\game\\coop_eax.dll", "wrapper");
+    writeText(payload + L"\\game\\CoopAndreasSA.dll", "plugin");
+    writeText(payload + L"\\game\\CoopAndreas\\main.scm", "scm");
+    writeText(payload + L"\\server\\server.exe", "server");
+    std::string before = folderSnapshot(game);
+    Outcome o = installShipped(cfg, *g, game, payload, "1.0.0");
+    CHECK(o.result == Outcome::Result::Failed && o.packageDamaged);
+    CHECK(o.message.find(L"LaunchCoopAndreas.exe") != std::wstring::npos && o.message.find(L"ntivirus") != std::wstring::npos);
+    CHECK(folderSnapshot(game) == before);  // nothing was changed in the game folder
+    std::wstring cache = root / L"cache";
+    REQUIRE(exists(payload + L"\\game\\coop_eax.dll"));
+    discardPackage(cache, L"gta-coop", L"1.0.0");
+    CHECK(!exists(payload + L"\\game\\coop_eax.dll"));
+}
+
 TEST(a_required_file_blocks_the_install_until_it_is_there) {
     LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
                        "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": [ {"id": "r", "paths": ["r.exe"]} ],
