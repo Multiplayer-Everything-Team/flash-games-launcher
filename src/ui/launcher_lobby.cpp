@@ -740,7 +740,7 @@ void Launcher::updateLobbyRoom() {
         if (!p.host && p.connected && !p.ready) allReady = false;
     EnableWindow(ready, inLobby);
     EnableWindow(start, inLobby);
-    btnInfo_[start].ready = allReady;
+    btnInfo_[start].ready = allReady && inLobby;  // drawn as not ready while a round runs, too
     InvalidateRect(start, nullptr, FALSE);
     bool canKick = s.host && selSlot > 0;
     EnableWindow(GetDlgItem(lobbyWnd_, kLbKick), canKick);

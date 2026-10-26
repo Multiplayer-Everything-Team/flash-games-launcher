@@ -282,7 +282,7 @@
       "id": "badicecream",
       "name": "Bad Ice-Cream",
       "players": "1-2 players (online co-op)",
-      "online": { "id": "bic", "join": "online" },
+      "online": { "id": "bic", "join": "online", "lobby": { "version": "2" } },
       "categories": ["online", "local", "coop"],
       "color": "#B983FF",
       "colorEnd": "#3CCB7F",
