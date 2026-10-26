@@ -763,6 +763,54 @@
           ]
         }
       }
+    },
+    {
+      "id": "gta-coop",
+      "name": "GTA San Andreas Co-op",
+      "site": "gta",
+      "players": "2-4 players (co-op)",
+      "categories": ["pc", "coop"],
+      "color": "#E07A1F",
+      "colorEnd": "#3A1B07",
+      "description": "Co-op for Grand Theft Auto: San Andreas (PC, version 1.0 US): the whole story with up to four friends, with missions, cutscenes, money, saves and gang territories in sync. Based on CoopAndreas. You need your own copy of the game, downgraded to 1.0, and everyone needs the same version.",
+      "mod": {
+        "id": "gta-coop",
+        "game": {
+          "name": "Grand Theft Auto: San Andreas",
+          "executable": "gta_sa.exe",
+          "steamAppId": "12120",
+          "validationFiles": ["${GAME_EXE}", "eax.dll", "models"],
+          "processNames": ["gta_sa.exe", "LaunchCoopAndreas.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\Grand Theft Auto San Andreas" },
+            { "type": "steam", "appId": "12120", "installDir": "Grand Theft Auto San Andreas" },
+            { "type": "path", "path": "${folder:ProgramFiles}\\Rockstar Games\\GTA San Andreas" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\CoopAndreas",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          // Settings the host edits stay when the mod updates.
+          "preserve": ["server/server-config.ini"]
+        },
+        // What the mod's own install.bat does, without a script: keep the game's eax.dll as eax_orig.dll (the
+        // first of the two that exists, so an update doesn't copy the wrapper over the copy), then put coop_eax.dll
+        // in its place. Uninstall puts the game's own eax.dll back from the backup the install made.
+        "components": [
+          { "id": "original-eax", "name": "The game's eax.dll, kept", "sourceGame": ["eax_orig.dll", "eax.dll"], "targetName": "eax_orig.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "proxy", "name": "Co-op loader", "source": "game/coop_eax.dll", "targetName": "eax.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "plugin", "name": "Co-op plugin", "source": "game/CoopAndreasSA.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "launcher", "name": "Co-op launcher", "source": "game/LaunchCoopAndreas.exe", "target": "${GAME_DIR}", "required": true },
+          { "id": "launcher-manifest", "name": "Co-op launcher", "source": "game/LaunchCoopAndreas.exe.manifest", "target": "${GAME_DIR}", "required": true },
+          { "id": "mod", "name": "Co-op scripts", "source": "game/CoopAndreas", "required": true },
+          { "id": "server", "name": "Server for hosting", "source": "server", "target": "${INSTALL_DIR}\\server", "required": true }
+        ],
+        "launch": {
+          "executable": "${GAME_DIR}\\LaunchCoopAndreas.exe",
+          "hint": "In the co-op launcher pick Start Game, type your nickname and the host's address (the host: 127.0.0.1) and port 6767. To host, run CoopAndreas\\server\\server.exe first and allow it through the firewall."
+        },
+        "package": { "github": "multiplayereverything/gta-coop", "asset": "GTACoop-*.zip" }
+      }
     }
   ]
 }

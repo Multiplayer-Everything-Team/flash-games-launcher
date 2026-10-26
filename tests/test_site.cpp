@@ -114,3 +114,48 @@ TEST(the_site_address_and_a_games_site_id_come_from_launcher_json) {
                                 L"C:\\x");
     CHECK(!bad.ok());
 }
+
+TEST(games_the_launcher_lacks_become_coming_soon_and_the_site_fills_in_what_is_missing) {
+    const char* json = R"({ "games": [
+      { "id": "native", "name": "Native", "kind": "flash", "status": "available", "quality": "B", "players": "1-4 players",
+        "slots": 4, "description": "From the site.", "cover": "covers/native.png", "coverFocus": 0.25 },
+      { "id": "planned", "name": "Planned Game", "kind": "pc", "status": "testing", "players": "2-4 players", "slots": 4,
+        "description": "A mod in the works.", "color": "#112233", "colorEnd": "#445566", "cover": "covers/planned.png" },
+      { "id": "bare", "name": "Bare", "kind": "flash", "status": "coming-soon" }
+    ] })";
+    std::vector<SiteGame> list;
+    REQUIRE(parseSite(json, list));
+    LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
+        "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": [ {"id": "r", "paths": ["r.exe"]} ],
+        "games": [ { "id": "native", "name": "Native", "actions": [ { "id": "p", "swf": "a.swf" } ] },
+                   { "id": "own", "name": "Has everything", "description": "Mine.", "players": "2 players", "maxPlayers": 2,
+                     "image": "mine.png", "actions": [ { "id": "p", "swf": "b.swf" } ] } ] })",
+                              L"C:\\x");
+    REQUIRE(r.ok());
+    Config cfg = r.config;
+    mergeSite(cfg, list, L"covers");
+    REQUIRE(cfg.games.size() == 4);  // two of its own, and the two the site lists that it lacks
+    // A game that leaves things out gets the site's.
+    CHECK(cfg.games[0].description == L"From the site." && cfg.games[0].playerCount == L"1-4 players");
+    CHECK(cfg.games[0].maxPlayers == 4 && cfg.games[0].image.find(L"site-native.png") != std::wstring::npos);
+    CHECK(cfg.games[0].imageFocus == 0.25f);
+    // One that says it all keeps its own words.
+    CHECK(cfg.games[1].description == L"Mine." && cfg.games[1].image == L"mine.png" && cfg.games[1].maxPlayers == 2);
+    // The rest become "Coming soon" cards, whatever stage the site gives them.
+    const GameSpec* planned = cfg.findGame("site-planned");
+    REQUIRE(planned != nullptr);
+    CHECK(planned->comingSoon && planned->actions.empty() && planned->name == L"Planned Game");
+    CHECK(planned->description == L"A mod in the works." && planned->playerCount == L"2-4 players" && planned->maxPlayers == 4);
+    CHECK(planned->color.r == 0x11 && planned->colorEnd.b == 0x66);
+    CHECK(planned->categories.size() == 1 && planned->categories[0] == "pc");
+    CHECK(planned->image.find(L"site-planned.png") != std::wstring::npos);
+    const GameSpec* bare = cfg.findGame("site-bare");
+    REQUIRE(bare != nullptr);
+    CHECK(bare->comingSoon && !bare->description.empty() && bare->image.empty() && bare->categories[0] == "flash");
+    // A launcher game's own `site` id claims its entry, so the site's entry is not added again.
+    Config again = r.config;
+    again.games[0].siteId = "planned";
+    mergeSite(again, list, L"covers");
+    CHECK(again.findGame("site-planned") == nullptr);
+    CHECK(again.findGame("site-native") != nullptr);  // the entry the native game no longer claims is listed instead
+}

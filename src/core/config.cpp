@@ -749,6 +749,8 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
             cs.str("description", c.description);
             cs.str("source", c.source);
             cs.str("target", c.target);
+            cs.str("targetName", c.targetName);
+            cs.strList("sourceGame", c.sourceGame);
             cs.boolean("required", c.required);
             cs.boolean("selected", c.selected);
             if (c.name.empty()) c.name = widen(c.id);
@@ -1108,7 +1110,15 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
             for (const auto& c : m.components) {
                 if (!validId(c.id)) err(mw + L".components", L"component ids must be letters, digits, '-', '_' or '.'");
                 else if (!cids.insert(c.id).second) err(mw + L".components", L"duplicate component id \"" + widen(c.id) + L"\"");
-                if (c.source.empty()) err(mw + L".components." + widen(c.id), L"\"source\" (a folder inside the package) is required");
+                if (c.source.empty() == c.sourceGame.empty())
+                    err(mw + L".components." + widen(c.id),
+                        L"give either \"source\" (a path inside the package) or \"sourceGame\" (files in the game folder)");
+                if (!c.targetName.empty() && (c.targetName.find_first_of(L"/\\") != std::wstring::npos || c.targetName == L"." ||
+                                              c.targetName == L".."))
+                    err(mw + L".components." + widen(c.id) + L".targetName", L"a file name, not a path");
+                for (const auto& sg : c.sourceGame)
+                    if (mod::normRel(sg).empty() || sg.find(L"..") != std::wstring::npos)
+                        err(mw + L".components." + widen(c.id) + L".sourceGame", L"paths inside the game folder");
                 checkVars(c.source, mw + L".components", issues);
                 checkVars(c.target, mw + L".components", issues);
             }

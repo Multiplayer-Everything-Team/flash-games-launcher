@@ -71,6 +71,7 @@ int Launcher::run(const LauncherOptions& opt) {
     if (snapshot_ && !cfg_.downloads.site.empty()) {
         std::wstring err;
         loadSite(cfg_.downloads.site, fs::join(lib_.dataDir(), L"site.json"), site_, err);
+        fetchSiteCovers(cfg_, site_, cfg_.downloads.site, fs::join(lib_.dataDir(), L"covers"));
         layoutDetail();
     }
     if (snapshot_ && user_.online) {

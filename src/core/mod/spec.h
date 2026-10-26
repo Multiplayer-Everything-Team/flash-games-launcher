@@ -32,6 +32,13 @@ struct GameInfo {
 struct Component {
     std::string id;
     std::wstring name, description, source, target = L"${INSTALL_DIR}";
+    // A single-file source can land under another name ("coop_eax.dll" installed as "eax.dll").
+    std::wstring targetName;
+    // Instead of `source`: a copy of a file the game folder already has, the first of these that exists (relative to
+    // the game folder), installed under `targetName` or its own name. A loader that wraps one of the game's own
+    // files needs the original kept beside it; listing the copy first ("eax_orig.dll", then "eax.dll") keeps an
+    // update from copying the wrapper over the copy.
+    std::vector<std::wstring> sourceGame;
     bool required = false, selected = true;
 };
 

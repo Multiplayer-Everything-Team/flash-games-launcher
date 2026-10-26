@@ -153,6 +153,51 @@ TEST(shipped_miside_installs_bepinex_6_and_the_plugin_and_uninstalls_cleanly) {
     CHECK(folderSnapshot(game) == before);
 }
 
+TEST(shipped_gta_keeps_the_games_eax_dll_next_to_the_wrapper_and_puts_it_back) {
+    Config cfg = loadShipped();
+    const GameSpec* g = shippedMod(cfg, "gta-coop");
+    REQUIRE(g != nullptr);
+    CHECK(g->mod->package.github == L"multiplayereverything/gta-coop" && g->siteId == "gta");
+    TempDir root("gta-ship");
+    std::wstring game = root / L"Game", payload = root / L"Pkg";
+    writeText(game + L"\\gta_sa.exe", "game");
+    writeText(game + L"\\eax.dll", "THE GAMES EAX");
+    writeText(game + L"\\models\\gta3.img", "img");
+    // GTACoop-1.0.0.zip: game\ (the files that go next to gta_sa.exe) and server\.
+    writeText(payload + L"\\game\\coop_eax.dll", "COOP WRAPPER");
+    writeText(payload + L"\\game\\CoopAndreasSA.dll", "plugin");
+    writeText(payload + L"\\game\\LaunchCoopAndreas.exe", "launcher");
+    writeText(payload + L"\\game\\LaunchCoopAndreas.exe.manifest", "manifest");
+    writeText(payload + L"\\game\\install.bat", "not run by the launcher");
+    writeText(payload + L"\\game\\CoopAndreas\\main.scm", "scm");
+    writeText(payload + L"\\game\\CoopAndreas\\script.img", "img");
+    writeText(payload + L"\\server\\server.exe", "server");
+    writeText(payload + L"\\server\\server-config.ini", "port = 6767");
+    writeText(payload + L"\\source\\0001.patch", "source");
+    std::string before = folderSnapshot(game);
+    Outcome o = installShipped(cfg, *g, game, payload, "1.0.0");
+    if (o.result != Outcome::Result::Success) fprintf(stderr, "    %ls\n", o.message.c_str());
+    REQUIRE(o.result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\eax.dll") == "COOP WRAPPER");    // what install.bat does: coop_eax.dll becomes eax.dll
+    CHECK(readText(game + L"\\eax_orig.dll") == "THE GAMES EAX");  // and the game's own is kept beside it
+    CHECK(exists(game + L"\\CoopAndreasSA.dll") && exists(game + L"\\LaunchCoopAndreas.exe"));
+    CHECK(exists(game + L"\\CoopAndreas\\main.scm") && exists(game + L"\\CoopAndreas\\server\\server.exe"));
+    CHECK(!exists(game + L"\\install.bat") && !exists(game + L"\\coop_eax.dll") && !exists(game + L"\\CoopAndreas\\source"));
+    // The host edits the server's settings; an update keeps them, and the copy of the original eax.dll stays the
+    // original (the wrapper is not copied over it).
+    writeText(game + L"\\CoopAndreas\\server\\server-config.ini", "port = 7000");
+    Outcome again = installShipped(cfg, *g, game, payload, "1.0.0", Operation::Update);
+    REQUIRE(again.result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\eax_orig.dll") == "THE GAMES EAX" && readText(game + L"\\eax.dll") == "COOP WRAPPER");
+    CHECK(readText(game + L"\\CoopAndreas\\server\\server-config.ini") == "port = 7000");
+    REQUIRE(uninstallShipped(cfg, *g, game).result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\eax.dll") == "THE GAMES EAX");
+    // Only the host's edited settings may be left behind (the engine never deletes a file the player changed).
+    std::string left = folderSnapshot(game);
+    CHECK(left.find("eax_orig.dll") == std::string::npos && left.find("CoopAndreasSA.dll") == std::string::npos);
+    (void)before;
+}
+
 TEST(a_required_file_blocks_the_install_until_it_is_there) {
     LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
                        "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": [ {"id": "r", "paths": ["r.exe"]} ],

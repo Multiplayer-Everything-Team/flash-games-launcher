@@ -188,7 +188,8 @@ PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const 
         }
         for (const auto& e : res.list(src)) {
             std::wstring rel = normRel(e.rel);
-            std::wstring target = fs::normalize(fs::join(targetBase, replaceAll(rel, L"/", L"\\")));
+            std::wstring target = fs::normalize(
+                fs::join(targetBase, single && !comp.targetName.empty() ? comp.targetName : replaceAll(rel, L"/", L"\\")));
             if (rel.empty() || !fs::isUnder(target, targetBase) || iequals(target, targetBase)) {
                 r.error = L"Invalid payload path: " + e.rel;
                 return r;

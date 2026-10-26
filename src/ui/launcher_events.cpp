@@ -315,7 +315,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             if (lobby_ && lobbySnap_.host && pingMs_ >= 0) lobby_->setServerPing(pingMs_);
             return 0;
         case WM_APP_SITE:
-            onSite();
+            onSite(static_cast<int>(w));
             return 0;
         case WM_APP_LOBBY:
             onLobby();

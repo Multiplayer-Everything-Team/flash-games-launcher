@@ -205,6 +205,42 @@ bool downloadVerified(const std::wstring& url, const std::wstring& dest, const s
 
 }  // namespace
 
+bool downloadImage(const std::wstring& url, const std::wstring& dest, uint64_t maxBytes, std::wstring& error) {
+    if (!startsWithI(url, L"https://") && !startsWithI(url, L"http://127.0.0.1")) {
+        error = L"Pictures are only fetched over https";
+        return false;
+    }
+    std::wstring part = dest + L".part";
+    fs::ensureDir(fs::parent(dest), nullptr, nullptr);
+    FILE* f = _wfopen(fs::longPath(part).c_str(), L"wb");
+    if (!f) {
+        error = L"Cannot write " + part;
+        return false;
+    }
+    uint64_t got = 0, length = 0;
+    bool ok = httpGet(
+        url,
+        [&](const char* d, size_t n) {
+            got += n;
+            return got <= maxBytes && fwrite(d, 1, n, f) == n;
+        },
+        &length, nullptr, error);
+    fclose(f);
+    if (ok && got > maxBytes) ok = false, error = L"The picture is too large";
+    if (ok) {
+        std::string text;
+        fs::readText(part, text);
+        static const unsigned char kPng[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        bool png = text.size() > 8 && memcmp(text.data(), kPng, sizeof kPng) == 0;
+        bool jpg = text.size() > 3 && static_cast<uint8_t>(text[0]) == 0xFF && static_cast<uint8_t>(text[1]) == 0xD8;
+        if (!png && !jpg) ok = false, error = L"That isn't a PNG or JPEG picture";
+    }
+    if (ok && !MoveFileExW(fs::longPath(part).c_str(), fs::longPath(dest).c_str(), MOVEFILE_REPLACE_EXISTING))
+        ok = false, error = lastError((L"Cannot save " + dest).c_str());
+    if (!ok) DeleteFileW(fs::longPath(part).c_str());
+    return ok;
+}
+
 InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const InstallProgress& progress,
                             const std::atomic<bool>* cancel) {
     InstallResult r;

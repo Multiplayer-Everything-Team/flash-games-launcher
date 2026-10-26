@@ -32,7 +32,7 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 
 Games available now: **Gun Mayhem 2** · **Stealth Hunter 2** · **Bad Ice-Cream** ·
 **Territory War** · **Bow Man** · **Ultimate Crab Battle** · **Air Battle** · **Raft Wars** ·
-PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together**. The sidebar keeps *PC mods* and *Flash mods* apart. Full list under [Games](#games).
+PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together** · **GTA San Andreas Co-op**. The sidebar keeps *PC mods* and *Flash mods* apart. Full list under [Games](#games).
 
 ## Quick start
 
@@ -111,6 +111,7 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
 - **What the website says.** Each game shows the website's quality grade on its card (A complete, B playable, C rough, D experimental, X none yet; a game still being tested shows none), and its details panel shows the stage, the newest version, how it connects and what stays in sync (players, story, enemies, world, items). The launcher reads [the website's games.json](https://www.multiplayereverything.com/games.json) in the background, at most once an hour, and keeps a copy for when you're offline.
+- **Games from the website.** A game the website lists that the launcher doesn't have yet appears as a *Coming soon* card, with the website's name, description, player count, colors and cover picture (downloaded once, kept in the launcher's data folder). A game the launcher has but that leaves out a description, player count or cover gets the website's. The list is read at start, so a new game shows up the next time the launcher starts.
 - **Your name.** The first start asks for your player name; others see it in rooms.
 - **Copy diagnostics.** One button bundles the launcher's version, players, network
   addresses, the room's state and the latest log lines for a bug report (your name left out).
@@ -177,6 +178,8 @@ Not Flash: installed into the game's own folder.
 | Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players. Installs the mod from the newest release of [spooky-together](https://github.com/multiplayereverything/spooky-together), together with the BepInEx 5 loader published in the same repository. |
 | Baldi Together | Baldi's Basics Plus (Steam) | Co-op for 2 to 4 players, over LAN or Steam. Installs the mod from [baldi-plus-coop](https://github.com/multiplayereverything/baldi-plus-coop), together with the BepInEx 5.4.23.5 loader published in the same repository. |
 | MiSide Together | MiSide (Steam) | Co-op for 2 to 4 players, through Steam, LAN or an address. Installs the mod from [miside-coop](https://github.com/multiplayereverything/miside-coop), together with the BepInEx 6 (IL2CPP, be.790) loader it needs, which is published in that repository's releases. |
+
+| GTA San Andreas Co-op | Grand Theft Auto: San Andreas, PC version 1.0 US (Steam or Rockstar) | Co-op for 2 to 4 players, based on CoopAndreas, from [gta-coop](https://github.com/multiplayereverything/gta-coop). Does what the mod's own `install.bat` does without running it: keeps the game's `eax.dll` as `eax_orig.dll`, puts the co-op `eax.dll` in its place, and Uninstall puts the original back. The host's server is installed under `CoopAndreas\server`. You need your own copy, downgraded to 1.0. |
 
 Each is downloaded from its GitHub release, checked against the SHA-256 GitHub publishes for it, and installed as one all-or-nothing change; Uninstall puts the game folder back exactly as it was. How a mod is described: [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md).
 

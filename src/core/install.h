@@ -69,6 +69,10 @@ UpdateResult updateSelf(const InstallSpec& source, const std::wstring& currentVe
                         const std::atomic<bool>* cancel);
 void removeOldUpdate(const std::wstring& exePath);
 
+// A cover picture from the website: https only, at most `maxBytes`, and it must start like a PNG or JPEG,
+// otherwise it is deleted again. Written under a temporary name first.
+bool downloadImage(const std::wstring& url, const std::wstring& dest, uint64_t maxBytes, std::wstring& error);
+
 // Small text download (JSON); false with `error` set on failure.
 bool httpGetText(const std::wstring& url, std::string& out, std::wstring& error);
 

@@ -12,6 +12,7 @@
 #include "core/relay.h"
 #include "core/rooms.h"
 #include "core/settings.h"
+#include "core/site.h"
 #include "core/strings.h"
 #include "ui/launcher.h"
 
@@ -400,6 +401,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // file dialog, Explorer reveal
     int code;
     {
+        // Games the website lists that this launcher doesn't have yet become "Coming soon" cards, and the
+        // website fills in what a game leaves out. The copy from the last run is used; the very first run
+        // asks the website once, here.
+        if (!lr.config.downloads.site.empty()) {
+            std::vector<SiteGame> siteList;
+            std::wstring siteCache = fs::join(lib.dataDir(), L"site.json"), siteErr;
+            SiteCache cached;
+            if (loadSiteCache(siteCache, cached) ? parseSite(cached.raw, siteList)
+                                                 : loadSite(lr.config.downloads.site, siteCache, siteList, siteErr))
+                mergeSite(lr.config, siteList, fs::join(lib.dataDir(), L"covers"));
+        }
         ui::Launcher launcher(cfg, lib, user, userPath);
         ui::LauncherOptions opt;
         opt.snapshot = a.snapshot.empty() ? std::wstring() : fullPath(a.snapshot);

@@ -1,5 +1,8 @@
 #include "site.h"
 
+#include "config.h"
+#include <algorithm>
+
 #include "fs.h"
 #include "install.h"
 #include "json.h"
@@ -49,6 +52,15 @@ bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
         s.connect = widen(text(g, "connect"));
         s.maintainer = widen(text(g, "maintainer"));
         s.engine = widen(text(g, "engine"));
+        s.description = widen(text(g, "description"));
+        s.players = widen(text(g, "players"));
+        s.platform = widen(text(g, "platform"));
+        s.color = widen(text(g, "color"));
+        s.colorEnd = widen(text(g, "colorEnd"));
+        s.cover = widen(text(g, "cover"));
+        if (const json::Value* sl = g.find("slots"); sl && sl->isNumber()) s.slots = static_cast<int>(sl->number());
+        if (const json::Value* cf = g.find("coverFocus"); cf && cf->isNumber())
+            s.coverFocus = std::clamp(static_cast<float>(cf->number()), 0.0f, 1.0f);
         s.synced = stringMap(g, "synced");
         s.progress = stringMap(g, "progress");
         out.push_back(std::move(s));
@@ -67,6 +79,65 @@ const SiteGame* findSite(const std::vector<SiteGame>& list, const std::string& s
     if (const SiteGame* s = by(siteId, false)) return s;
     if (const SiteGame* s = by(gameId, false)) return s;
     return by(modId, true);
+}
+
+std::wstring siteCoverFile(const std::wstring& coverDir, const SiteGame& s) {
+    std::wstring ext = s.cover.size() > 4 && toLower(s.cover.substr(s.cover.size() - 4)) == L".jpg" ? L".jpg" : L".png";
+    return fs::join(coverDir, L"site-" + widen(s.id) + ext);
+}
+
+void mergeSite(Config& cfg, const std::vector<SiteGame>& list, const std::wstring& coverDir) {
+    std::vector<bool> used(list.size(), false);
+    for (auto& g : cfg.games) {
+        const SiteGame* s = findSite(list, g.siteId, g.id, g.onlineId);
+        if (!s) continue;
+        used[static_cast<size_t>(s - list.data())] = true;
+        if (g.description.empty()) g.description = s->description;
+        if (g.playerCount.empty()) g.playerCount = s->players;
+        if (g.maxPlayers == 0 && s->slots > 0) g.maxPlayers = s->slots;
+        if (g.image.empty() && !s->cover.empty()) {
+            g.image = siteCoverFile(coverDir, *s);
+            g.imageFocus = s->coverFocus;
+        }
+    }
+    for (size_t i = 0; i < list.size(); ++i) {
+        const SiteGame& s = list[i];
+        if (used[i] || s.name.empty()) continue;
+        GameSpec g;
+        g.id = "site-" + s.id;
+        g.siteId = s.id;
+        g.name = s.name;
+        g.description = s.description.empty() ? L"A multiplayer mod we are planning." : s.description;
+        g.playerCount = s.players;
+        g.maxPlayers = s.slots;
+        g.comingSoon = true;  // the launcher has no install for it, whatever stage the site says it is in
+        g.categories = {s.kind == "pc" ? "pc" : "flash"};
+        if (!s.color.empty()) parseColor(s.color, g.color);
+        if (!s.colorEnd.empty()) parseColor(s.colorEnd, g.colorEnd);
+        if (!s.cover.empty()) {
+            g.image = siteCoverFile(coverDir, s);
+            g.imageFocus = s.coverFocus;
+        }
+        cfg.games.push_back(std::move(g));
+    }
+}
+
+int fetchSiteCovers(const Config& cfg, const std::vector<SiteGame>& list, const std::wstring& siteUrl,
+                    const std::wstring& coverDir) {
+    size_t slash = siteUrl.rfind(L'/');
+    if (slash == std::wstring::npos) return 0;
+    std::wstring base = siteUrl.substr(0, slash + 1);
+    int got = 0;
+    for (const auto& g : cfg.games) {
+        const SiteGame* s = findSite(list, g.siteId, g.id, g.onlineId);
+        if (!s || s->cover.empty() || s->cover.find(L"..") != std::wstring::npos) continue;
+        std::wstring dest = siteCoverFile(coverDir, *s);
+        if (g.image != dest || fs::isFile(dest)) continue;  // not using the site's cover, or already have it
+        std::wstring err;
+        if (downloadImage(base + s->cover, dest, 3 * 1024 * 1024, err)) ++got;
+        else logger().info(L"Website cover for " + s->name + L": " + err);
+    }
+    return got;
 }
 
 bool loadSiteCache(const std::wstring& path, SiteCache& out) {

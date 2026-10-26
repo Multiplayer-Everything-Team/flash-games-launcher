@@ -28,21 +28,27 @@ const SiteGame* Launcher::siteOf(int gi) const {
 
 void Launcher::startSiteFetch() {
     if (cfg_.downloads.site.empty()) return;
-    std::wstring url = cfg_.downloads.site, cache = fs::join(lib_.dataDir(), L"site.json");
+    std::wstring url = cfg_.downloads.site, cache = fs::join(lib_.dataDir(), L"site.json"), dataDir = lib_.dataDir();
     HWND wnd = hwnd_;
-    siteThread_ = std::thread([this, url, cache, wnd] {
+    siteThread_ = std::thread([this, url, cache, wnd, dataDir] {
         std::vector<SiteGame> list;
         std::wstring err;
         if (!loadSite(url, cache, list, err)) logger().info(L"Website: " + err);
+        int covers = fetchSiteCovers(cfg_, list, url, fs::join(dataDir, L"covers"));
         {
             std::lock_guard<std::mutex> lock(installMu_);
             pendingSite_ = std::move(list);
         }
-        PostMessageW(wnd, WM_APP_SITE, 0, 0);
+        PostMessageW(wnd, WM_APP_SITE, static_cast<WPARAM>(covers), 0);
     });
 }
 
-void Launcher::onSite() {
+void Launcher::onSite(int newCovers) {
+    if (newCovers > 0) {  // a picture that wasn't there before: let the cards look for it again
+        images_.clear();
+        imageTried_.clear();
+        artCache_.clear();
+    }
     {
         std::lock_guard<std::mutex> lock(installMu_);
         site_ = std::move(pendingSite_);
@@ -86,7 +92,7 @@ struct Flow {
 }  // namespace
 
 // Height of the block for the selected game at width `w`, 0 when the website has nothing to say.
-int Launcher::siteBlockHeight(HDC dc, int w, const SiteGame* s) {
+int Launcher::siteBlockHeight(HDC dc, int w, const SiteGame* s, bool soon) {
     if (!s || (s->status.empty() && s->quality.empty())) return 0;
     const Theme& t = theme_;
     int h = 0;
@@ -95,22 +101,22 @@ int Launcher::siteBlockHeight(HDC dc, int w, const SiteGame* s) {
                                                                                                    : cfg_.t("site.unrated");
     int chip = t.s(24);
     h += std::max(chip, textHeight(dc, t.caption, note, w - chip - t.s(10))) + t.s(8);
-    h += textHeight(dc, t.caption, siteFacts(*s), w) + t.s(8);
+    h += textHeight(dc, t.caption, siteFacts(*s, soon), w) + t.s(8);
     int dots = siteDotsHeight(dc, w, *s);
     if (dots) h += dots + t.s(4);
     return h;
 }
 
-std::wstring Launcher::siteFacts(const SiteGame& s) const {
+std::wstring Launcher::siteFacts(const SiteGame& s, bool soon) const {
     std::wstring out;
     auto add = [&](const std::wstring& part) {
         if (!part.empty()) out += (out.empty() ? L"" : L", ") + part;
     };
-    std::string key = "site.status." + s.status;
+    std::string key = "site.status." + (soon ? std::string("coming-soon") : s.status);
     if (cfg_.text.count(key)) add(cfg_.t(key));
-    if (!s.version.empty())
+    if (!s.version.empty() && !soon)
         add(cfg_.t(s.status == "testing" ? "site.testBuild" : "site.version", {{L"VERSION", s.version}}));
-    if (!s.updated.empty()) add(cfg_.t("site.updated", {{L"DATE", s.updated}}));
+    if (!s.updated.empty() && !soon) add(cfg_.t("site.updated", {{L"DATE", s.updated}}));
     if (!s.connect.empty()) add(s.connect);
     return out;
 }
@@ -139,7 +145,7 @@ int Launcher::siteDotsHeight(HDC dc, int w, const SiteGame& s) {
     return lines * lineH;
 }
 
-void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s) {
+void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s, bool soon) {
     const Theme& t = theme_;
     int w = width(r), y = r.top;
     // Grade chip and what it means.
@@ -159,7 +165,7 @@ void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s) 
     }
     drawText(g, note, RECT{r.left + chip + t.s(10), y, r.right, y + rowH}, t.caption, t.c.text, DT_WORDBREAK | DT_VCENTER);
     y += rowH + t.s(8);
-    std::wstring facts = siteFacts(s);
+    std::wstring facts = siteFacts(s, soon);
     int factsH = textHeight(dc, t.caption, facts, w);
     drawText(g, facts, RECT{r.left, y, r.right, y + factsH}, t.caption, t.c.textMuted, DT_WORDBREAK);
     y += factsH + t.s(8);

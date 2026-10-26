@@ -69,20 +69,50 @@ Outcome install(const Spec& spec, const Vars& base, Operation op, const std::wst
                 const std::wstring& payloadDir, const ProgressFn& progress, CancelToken& cancel,
                 EngineOptions options) {
     Outcome o;
-    auto res = openDirectory(payloadDir);
     Vars v = withSpec(base, spec);
-    Selection sel = defaultSelection(spec, std::nullopt);
+    // Components that copy a file the game already has: put the copy into the payload folder (ours, in the cache)
+    // so the engine installs it like any other file.
+    Spec local = spec;
+    for (auto& comp : local.components) {
+        if (comp.sourceGame.empty()) continue;
+        std::wstring found;
+        for (const auto& rel : comp.sourceGame) {
+            std::wstring path = fs::join(gameDir, replaceAll(normRel(v.expand(rel)), L"/", L"\\"));
+            if (fs::isFile(path)) {
+                found = path;
+                break;
+            }
+        }
+        if (found.empty()) {
+            o.message = L"The game folder doesn't have " + comp.sourceGame.back() + L". Is it the version this mod needs?";
+            return o;
+        }
+        std::wstring name = comp.targetName.empty() ? fs::fileName(found) : comp.targetName;
+        std::wstring rel = L"_game/" + widen(comp.id) + L"/" + name;
+        std::wstring dest = fs::join(payloadDir, replaceAll(rel, L"/", L"\\"));
+        fs::ensureDir(fs::parent(dest), nullptr, nullptr);
+        if (!CopyFileW(fs::longPath(found).c_str(), fs::longPath(dest).c_str(), FALSE)) {
+            o.message = L"Cannot read " + found;
+            return o;
+        }
+        comp.source = rel;
+        comp.targetName = name;
+        comp.sourceGame.clear();
+    }
+    const Spec& spec_ = local;
+    auto res = openDirectory(payloadDir);
+    Selection sel = defaultSelection(spec_, std::nullopt);
     // Updating or repairing keeps what was chosen at the first install.
-    Vars dirs = resolveDirs(spec, v, gameDir);
-    if (auto prev = loadState(dirs.get(L"STATE_DIR"))) sel = defaultSelection(spec, prev);
+    Vars dirs = resolveDirs(spec_, v, gameDir);
+    if (auto prev = loadState(dirs.get(L"STATE_DIR"))) sel = defaultSelection(spec_, prev);
     sel.gameDir = gameDir;
-    PlanResult plan = buildPlan(spec, *res, op, sel, v);
+    PlanResult plan = buildPlan(spec_, *res, op, sel, v);
     if (!plan.ok) {
         o.message = plan.error;
         o.detail = plan.detail;
         return o;
     }
-    Engine engine(spec, res.get(), std::move(options));
+    Engine engine(spec_, res.get(), std::move(options));
     return engine.run(plan.plan, progress, cancel);
 }
 

@@ -245,12 +245,12 @@ private:
     // What the website says about each game (launcher_site.cpp).
     const SiteGame* siteOf(int gameIndex) const;
     void startSiteFetch();
-    void onSite();
+    void onSite(int newCovers);
     void paintGradeChip(Gdiplus::Graphics& g, const RECT& box, const std::string& grade);
-    int siteBlockHeight(HDC dc, int width, const SiteGame* s);
+    int siteBlockHeight(HDC dc, int width, const SiteGame* s, bool soon);
     int siteDotsHeight(HDC dc, int width, const SiteGame& s);
-    std::wstring siteFacts(const SiteGame& s) const;
-    void paintSite(Gdiplus::Graphics& g, HDC dc, const RECT& r, const SiteGame& s);
+    std::wstring siteFacts(const SiteGame& s, bool soon) const;
+    void paintSite(Gdiplus::Graphics& g, HDC dc, const RECT& r, const SiteGame& s, bool soon);
     std::vector<SiteGame> site_, pendingSite_;  // pendingSite_ under installMu_
     std::thread siteThread_;
 

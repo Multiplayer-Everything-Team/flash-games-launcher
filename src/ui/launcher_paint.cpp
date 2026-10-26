@@ -185,7 +185,7 @@ void Launcher::paintDetail(Graphics& g, HDC dc) {
     }
 
     if (height(dl_.site) > 0)
-        if (const SiteGame* info = siteOf(selected_)) paintSite(g, dc, dl_.site, *info);
+        if (const SiteGame* info = siteOf(selected_)) paintSite(g, dc, dl_.site, *info, game.comingSoon);
     if (height(dl_.desc) > 0) drawText(g, descText_, dl_.desc, t.body, t.c.text, DT_WORDBREAK);
     std::wstring stats = statsText(user_.find(game.id));
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);

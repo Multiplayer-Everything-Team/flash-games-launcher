@@ -249,6 +249,8 @@ adopted: use the same `mod.id` and `install` layout and the launcher sees it as 
 | `package.github`, `asset` | The mod's GitHub repository (`"owner/repo"`) and a file name pattern (`"MiSideTogether-*.zip"`): the launcher installs the newest release (pre-releases count) and takes the SHA-256 GitHub publishes for the file. |
 | `package.modsInfo` | The mod's id in mods-info. `latest_version`, `download_url` and `download_sha256` come from `mods/<id>.json`. |
 | `package.url`, `sha256` | A package pinned in `launcher.json` instead. |
+| `components[].targetName` | Installs a single-file `source` under another file name (`coop_eax.dll` as `eax.dll`). |
+| `components[].sourceGame` | Instead of `source`: a copy of a file the game folder already has, the first of this list that exists, installed under `targetName` (or its own name). For a loader that wraps one of the game's own files and needs the original beside it: `["eax_orig.dll", "eax.dll"]` with `"targetName": "eax_orig.dll"` keeps an update from copying the wrapper over the copy. List it before the component that replaces the original. |
 | `package.extras[]` | A second download unpacked beside the package under `dir` (components then use `"<dir>/..."` as their `source`), usually the mod loader from its own release: `{ "dir": "loader", "github": "BepInEx/BepInEx", "tag": "v5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }`, or a `url`. Its checksum is GitHub's, or `sha256` you pin. |
 | `install.requires[]` | `{ "path", "message" }`: a file the game folder must already have (a loader the launcher can't download with a checksum). While it's missing, Install is off and the message is shown. |
 

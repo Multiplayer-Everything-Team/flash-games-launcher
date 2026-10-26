@@ -330,7 +330,7 @@ void Launcher::layoutDetail() {
     // The art gives way before the description does: keep room for two lines of it.
     int descMin = roomsTab || g.description.empty() ? 0 : textHeight(dc, t.body, L"Ag", w, DT_SINGLELINE) * 2 + t.s(10);
     const SiteGame* siteInfo = roomsTab ? nullptr : siteOf(selected_);
-    int siteH = siteBlockHeight(dc, w, siteInfo);
+    int siteH = siteBlockHeight(dc, w, siteInfo, g.comingSoon);
     int headerH = titleH + t.s(4) + metaH + t.s(10) + (slotsH ? slotsH + t.s(12) : 0) + t.s(24) + t.s(12) +
                   (tabs ? tabsH + t.s(12) : 0) + descMin + (siteH > 0 ? siteH + t.s(12) : 0);  // the art shrinks first
     int artH = std::min(static_cast<int>(w * 0.5625), t.s(200));
