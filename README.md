@@ -1,6 +1,6 @@
 <h1 align="center">Multiplayer Everything Launcher</h1>
 
-<p align="center"><b>One app for every Multiplayer Everything game. Mods for PC games, online Flash games, your friends.</b></p>
+<p align="center"><b>We make multiplayer mods for games that never had one. This is the app that installs them and gets you into a room with friends.</b></p>
 
 <p align="center">
 <a href="https://discord.gg/jnnyz2vqB5"><img src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white&style=for-the-badge" alt="Join the Discord" height="36"></a>
@@ -18,7 +18,7 @@
 <a href="#repository">Repository</a>
 </p>
 
-Want to play a game with friends over the internet? Open the launcher, pick a game, and
+Multiplayer Everything makes multiplayer mods for games that never had multiplayer before. Open the launcher, pick a game, and
 press **Play online**. For the **Flash games** it starts them in Ruffle or Flash Player with
 the right file and settings, and you join a room with a code: no IP addresses, no port
 forwarding. For the **PC game mods** (Spooky Together and more to come) it finds your copy
