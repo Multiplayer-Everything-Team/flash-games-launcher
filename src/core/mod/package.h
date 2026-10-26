@@ -5,6 +5,7 @@
 #pragma once
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include "core/install.h"  // InstallProgress, InstallStatus
 
@@ -27,12 +28,28 @@ std::wstring githubAssetDigest(const std::wstring& assetUrl, const std::wstring&
 // Unpacks a .zip with Windows' own tar.exe; rejects links and anything that lands outside `destDir`.
 bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::wstring& error);
 
+// An asset of a GitHub release: the newest release of `repo` (pre-releases count) when `tag` is empty,
+// else that tag; the asset whose name matches the glob `assetGlob`. Fills the download address and
+// the SHA-256 GitHub publishes for it (empty when it publishes none); `version` is the tag without a leading "v".
+struct GithubAsset {
+    std::wstring version, url, sha256;
+};
+bool findGithubAsset(const std::wstring& repo, const std::wstring& tag, const std::wstring& assetGlob,
+                     const std::wstring& apiBase, GithubAsset& out, std::wstring& error);
+
+// A second download unpacked into the payload under `dir`.
+struct ExtraDownload {
+    std::wstring dir, url, sha256;
+};
+
 // Makes the package ready in `cacheDir`\<id>\<version>\payload (kept for repairs) and returns that folder.
+// `extras` are unpacked beside it, each into payload\<dir>.
 // `sha256` may be empty for a GitHub release asset: GitHub's own digest is used. A package whose
 // checksum can't be learned is refused, never installed unchecked. `githubApi` empty = api.github.com.
 bool preparePackage(const std::wstring& id, const std::wstring& version, const std::wstring& url, std::wstring sha256,
-                    const std::wstring& cacheDir, const std::wstring& githubApi, const InstallProgress& progress,
-                    const std::atomic<bool>* cancel, std::wstring& payloadDir, std::wstring& error);
+                    const std::vector<ExtraDownload>& extras, const std::wstring& cacheDir, const std::wstring& githubApi,
+                    const InstallProgress& progress, const std::atomic<bool>* cancel, std::wstring& payloadDir,
+                    std::wstring& error);
 
 // Removes cached versions of `id` other than `keepVersion`.
 void pruneCache(const std::wstring& cacheDir, const std::wstring& id, const std::wstring& keepVersion);

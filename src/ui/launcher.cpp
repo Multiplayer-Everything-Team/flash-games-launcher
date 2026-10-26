@@ -29,6 +29,7 @@ Launcher::Launcher(const Config& cfg, Library& lib, UserData& user, std::wstring
 Launcher::~Launcher() {
     closeLobby();
     if (lobbyNetThread_.joinable()) lobbyNetThread_.join();
+    if (siteThread_.joinable()) siteThread_.join();
     installCancel_ = true;
     if (installThread_.joinable()) installThread_.join();
     if (catalogThread_.joinable()) catalogThread_.join();
@@ -67,6 +68,11 @@ int Launcher::run(const LauncherOptions& opt) {
         layoutDetail();
     }
 
+    if (snapshot_ && !cfg_.downloads.site.empty()) {
+        std::wstring err;
+        loadSite(cfg_.downloads.site, fs::join(lib_.dataDir(), L"site.json"), site_, err);
+        layoutDetail();
+    }
     if (snapshot_ && user_.online) {
         // Snapshots have no worker threads: fetch the room list once, directly.
         std::wstring server = resolveRoomServer(cfg_.rooms.servers, cfg_.rooms.server, nullptr);
@@ -282,6 +288,7 @@ void Launcher::create(const LauncherOptions& opt) {
         if (!anyPlayer && installable) PostMessageW(hwnd_, WM_APP_FIRSTRUN, 0, 0);
         onlineOn_ = user_.online;
         startRoomPolling();
+    if (!snapshot_) startSiteFetch();
         startModsFetch();
         if (!cfg_.discord.clientId.empty()) discord_ = std::make_unique<DiscordPresence>(cfg_.discord.clientId);
         startUpdateCheck();
@@ -409,7 +416,7 @@ void Launcher::buildNav() {
     navItems_.push_back({"ready", cfg_.t("nav.ready"), kIconReady});
     bool online = std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return !g.onlineId.empty(); });
     if (online) navItems_.push_back({"rooms", cfg_.t("nav.rooms"), kIconRooms});
-    for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name, c.icon});
+    for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name, c.icon, c.group.empty() ? "categories" : c.group});
     for (auto& n : navItems_) {
         n.count = 0;
         if (n.key == "rooms") {

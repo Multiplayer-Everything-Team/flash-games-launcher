@@ -1,6 +1,6 @@
 # Publishing a PC game mod for the launcher
 
-For mod authors. The launcher installs a PC game mod from a **package**: a `.zip` you
+For mod authors. (Adding a mod to the launcher, step by step, for whoever maintains it: [ADDING_A_MOD.md](ADDING_A_MOD.md).) The launcher installs a PC game mod from a **package**: a `.zip` you
 publish, plus a few lines in the launcher's config and in mods-info. No code change.
 
 ## 1. The package
@@ -19,6 +19,16 @@ SpookyTogether-0.2.6.zip
   that leaves its folder is refused.
 - Anything under the install folder that a player is likely to edit (settings files) goes in
   `install.preserve` so updates keep their changes.
+
+### Or let the launcher use your release as it is
+
+A package doesn't have to be shaped for the launcher. With `"package": { "github": "owner/repo", "asset": "MyMod-*.zip" }` the
+launcher installs the newest GitHub release's file, and each component's `source` is a path inside that zip (a folder, or a
+single file such as `winhttp.dll`) with a `target` in the game folder. Spooky Together, Baldi Together and MiSide Together
+work this way: see their entries in `launcher/launcher.json`. A loader that isn't in your zip can come from its own release with
+`package.extras` (MiSide Together's loader is a release of its own repository), or be demanded with `install.requires` when it
+can't be downloaded with a checksum. GitHub answers 60 questions an hour per address without a login, so the launcher asks about
+a mod's newest release at most once an hour and otherwise reuses the last answer (`mods\sources.json` in its data folder).
 
 ## 2. Publish it
 

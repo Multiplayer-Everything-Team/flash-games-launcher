@@ -40,7 +40,7 @@ Any path or argument can use these:
 | `discord` | | `{ "clientId": "<application id>" }`: Discord shows "Playing <game>" and the room code. Empty or missing: off. |
 | `updates` | | `{ "github": "owner/repo", "asset": "MultiplayerEverythingLauncher.exe" }`: the launcher installs newer releases of itself (checked against GitHub's SHA-256; a release without one is refused). Missing: no updates. |
 | `players` | required | Flash players, tried in this order |
-| `categories` | `[]` | Sidebar groups: `{ "id", "name", "icon" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe) |
+| `categories` | `[]` | Sidebar entries: `{ "id", "name", "icon", "group" }`; `icon` is a Segoe Fluent Icons code, e.g. `"E774"` (globe). Entries with the same `group` sit together and a line separates groups (the shipped config has *PC mods* and *Flash mods* in one, the kinds of game in another). |
 | `games` | required | The library |
 | `text` | | Overrides for any UI string (run `--validate` to catch unknown keys) |
 
@@ -94,6 +94,7 @@ player's `flashvarArg`.
 
 | Key | Default | |
 |---|---|---|
+| `site` | `https://www.multiplayereverything.com/games.json` | The website's list of games: each one's stage, quality grade, version, how it connects and what stays in sync, shown on the cards and in the details panel. Empty: the launcher never asks the website. Must be `https://`. |
 | `modsInfo` | folder of `rooms.servers` | Folder of mods-info: `mods/<id>.json` gives each PC mod's newest version and download. Must be `https://`. |
 | `catalog` | none | Address of a game catalog (`catalog.json` in the flash-games repository). Games with missing files then offer *Download game files*. Must be `https://`. |
 
@@ -144,6 +145,7 @@ doesn't match.
 | `mod` | Makes this a **PC game mod** instead of a Flash game: see "PC game mods" below. Such a game has no `actions` (the launcher makes Install, Update, Launch, Repair and Uninstall itself). |
 | `players` | Player-count text, e.g. `"1-4 players"` |
 | `maxPlayers` | Player slots to show; default: the highest number in `players` |
+| `site` | The game's id on the website when it isn't the same as `id` (`"baldi"` for `baldi-together`). Without it the launcher matches by `id`, then by the game's id on the server (`online.id`). |
 | `online` | `{ "id", "join" }`: the game's id on the central server and the action that joins a room. Gives the game a *Rooms* tab and *Quick play*. Add `"lobby": { "version": "1.3", "port": 7790 }` for a mod that uses the launcher's lobby and localhost bridge: *Play online* then opens the lobby window (host or join, ready-up, start), and the game gets `room`, `role`, `slot`, `bridgePort`, `sessionToken` and `seed` FlashVars. See [docs/LOBBY_BRIDGE.md](docs/LOBBY_BRIDGE.md). |
 | `categories` | Category ids |
 | `color`, `colorEnd` | Gradient of the generated cover art |
@@ -244,8 +246,11 @@ adopted: use the same `mod.id` and `install` layout and the launcher sees it as 
 | `install.stateDir` | The install record and backups (default `${INSTALL_DIR}\.installer`). |
 | `components[]` | `source` is a folder inside the package, `target` where it goes (default `${INSTALL_DIR}`). `required` ones are always installed. |
 | `launch` | `uri` is opened (a `steam://` address), else `executable` with `arguments`. |
+| `package.github`, `asset` | The mod's GitHub repository (`"owner/repo"`) and a file name pattern (`"MiSideTogether-*.zip"`): the launcher installs the newest release (pre-releases count) and takes the SHA-256 GitHub publishes for the file. |
 | `package.modsInfo` | The mod's id in mods-info. `latest_version`, `download_url` and `download_sha256` come from `mods/<id>.json`. |
 | `package.url`, `sha256` | A package pinned in `launcher.json` instead. |
+| `package.extras[]` | A second download unpacked beside the package under `dir` (components then use `"<dir>/..."` as their `source`), usually the mod loader from its own release: `{ "dir": "loader", "github": "BepInEx/BepInEx", "tag": "v5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }`, or a `url`. Its checksum is GitHub's, or `sha256` you pin. |
+| `install.requires[]` | `{ "path", "message" }`: a file the game folder must already have (a loader the launcher can't download with a checksum). While it's missing, Install is off and the message is shown. |
 
 A package is a `.zip` laid out as the `components[].source` folders expect. It is downloaded
 only over `https://`, and **only installed when its SHA-256 is known**: from `download_sha256`,

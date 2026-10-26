@@ -8,6 +8,7 @@
 
 #include "core/mod/detect.h"
 #include "core/mod/engine.h"
+#include "core/mod/package.h"
 #include "core/mod/spec.h"
 #include "core/mod/state.h"
 
@@ -29,8 +30,11 @@ struct Status {
     std::wstring installedVersion;
     bool running = false;   // the game's process is running: files may be locked
     std::wstring problem;   // an install record that can't be used
+    std::wstring missing;   // what the game folder lacks before this mod can go in (install.requires)
 };
 Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir);
+// The first install.requires entry whose file the game folder lacks, as its message; empty when all are there.
+std::wstring missingRequirement(const Spec& spec, const Vars& base, const std::wstring& gameDir);
 
 // Runs install / update / repair against the unpacked package in `payloadDir`.
 // `spec.mod.version` must be the version being installed.
@@ -44,11 +48,16 @@ Outcome uninstall(const Spec& spec, const Vars& base, const std::wstring& gameDi
 // What to install: the version, its package address and (when mods-info or the spec states one) its SHA-256.
 struct Source {
     std::wstring version, url, sha256;
+    std::vector<ExtraDownload> extras;  // loader packages etc., unpacked beside it
     std::wstring minVersion, notice;  // from mods-info, for the window
     bool published() const { return !url.empty() && !version.empty(); }
 };
 // The newest package: the spec's own pinned package, else what mods-info says.
-bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error);
+// `githubApi` empty = api.github.com. A mod that comes from GitHub is asked about at most once an hour per
+// `cacheDir` (and not at all while GitHub's rate limit is used up: the last answer is used), because GitHub
+// answers 60 questions an hour per address without a login.
+bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
+                   const std::wstring& githubApi = L"", const std::wstring& cacheDir = L"");
 
 // Phase text, 0..1 fraction of the current phase, and the current item (a file).
 using Report = std::function<void(const std::wstring& phase, double fraction, const std::wstring& item)>;

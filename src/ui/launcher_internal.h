@@ -36,6 +36,7 @@ constexpr UINT WM_APP_SERVERREADY = WM_APP + 9; // wParam session id, lParam 1 =
 constexpr UINT WM_APP_MODS = WM_APP + 11;        // mods-info answered for the PC mods
 constexpr UINT WM_APP_MODPROGRESS = WM_APP + 12; // a mod install/update moved on
 constexpr UINT WM_APP_MODDONE = WM_APP + 13;     // a mod job ended; lParam: ModDone*
+constexpr UINT WM_APP_SITE = WM_APP + 16;       // the website's games.json arrived
 constexpr UINT WM_APP_LOBBY = WM_APP + 14;      // the lobby session changed
 constexpr UINT WM_APP_LOBBYNET = WM_APP + 15;   // direct-IP checks finished; lParam: std::wstring* text
 constexpr UINT WM_APP_UPDATED = WM_APP + 10;    // a newer launcher is in place; lParam: std::wstring* version

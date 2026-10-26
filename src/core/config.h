@@ -75,6 +75,9 @@ struct Downloads {
     // Folder of mods-info (mods/<id>.json: newest version and download of each PC mod).
     // Empty: the folder of rooms.servers.
     std::wstring modsInfo;
+    // The website's games.json: stage, quality grade, version and what stays in sync, shown next to each game.
+    // Empty: the launcher never asks the website.
+    std::wstring site = L"https://www.multiplayereverything.com/games.json";
 };
 
 struct Behavior {
@@ -179,6 +182,7 @@ struct GameSpec {
     // Rooms on the central server: the mod's id there ("gm2") and the action
     // that joins a room. Empty id: the game has no online rooms.
     std::string onlineId, joinAction;
+    std::string siteId;  // the game's id on the website when it differs from `id` ("baldi" for "baldi-together")
     LobbySpec lobby;
     std::vector<std::string> categories;
     bool comingSoon = false;  // listed with "Coming soon" and no buttons (its mod isn't built yet)
@@ -192,6 +196,8 @@ struct Category {
     std::string id;
     std::wstring name;
     std::wstring icon;  // one Segoe Fluent Icons glyph, written as hex in launcher.json ("E774")
+    // Categories with the same group sit together in the sidebar; a line separates groups.
+    std::string group;
 };
 
 // Discord Rich Presence ("Playing Gun Mayhem 2"): the application id from

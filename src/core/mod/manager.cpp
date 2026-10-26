@@ -4,7 +4,9 @@
 #include "core/log.h"
 #include "core/mod/package.h"
 #include "core/mod/resources.h"
+#include "core/json.h"
 #include "core/process.h"
+#include "core/settings.h"
 #include "core/strings.h"
 #include "core/win.h"
 
@@ -30,6 +32,15 @@ GameLocation findGame(const Spec& spec, const Vars& base, const std::wstring& ch
     return {};
 }
 
+std::wstring missingRequirement(const Spec& spec, const Vars& base, const std::wstring& gameDir) {
+    if (gameDir.empty()) return {};
+    Vars v = withSpec(base, spec);
+    for (const auto& r : spec.install.requires_)
+        if (!fs::exists(fs::join(gameDir, replaceAll(normRel(v.expand(r.path)), L"/", L"\\"))))
+            return r.message.empty() ? L"The game folder needs " + r.path + L" first" : v.expand(r.message);
+    return {};
+}
+
 Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir) {
     Status s;
     s.game = findGame(spec, base, chosenDir);
@@ -50,6 +61,7 @@ Status inspect(const Spec& spec, const Vars& base, const std::wstring& chosenDir
         s.problem = error;  // there, but unreadable: never guess what the mod owns
     }
     s.running = sys::isProcessRunning(spec.game.processNames);
+    s.missing = missingRequirement(spec, base, s.game.dir);
     return s;
 }
 
@@ -89,9 +101,20 @@ Outcome uninstall(const Spec& spec, const Vars& base, const std::wstring& gameDi
     return engine.run(plan.plan, progress, cancel);
 }
 
-bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error) {
+namespace {
+
+bool resolveSourceUncached(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
+                           const std::wstring& githubApi) {
     out = {};
-    if (!spec.package.modsInfo.empty()) {
+    if (!spec.package.github.empty()) {
+        GithubAsset a;
+        if (!findGithubAsset(spec.package.github, L"", spec.package.asset.empty() ? L"*.zip" : spec.package.asset, githubApi, a,
+                             error))
+            return false;
+        out.version = a.version;
+        out.url = a.url;
+        out.sha256 = a.sha256;
+    } else if (!spec.package.modsInfo.empty()) {
         Latest l;
         if (!modsInfoBase.empty() && !fetchLatest(modsInfoBase, spec.package.modsInfo, l, error)) return false;
         out.version = l.version;
@@ -106,7 +129,110 @@ bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& o
         out.sha256 = toLower(spec.package.sha256);
         if (out.version.empty()) out.version = L"1";
     }
+    for (const auto& e : spec.package.extras) {
+        ExtraDownload d;
+        d.dir = e.dir;
+        d.sha256 = toLower(e.sha256);
+        if (!e.url.empty()) {
+            d.url = e.url;
+        } else {
+            GithubAsset a;
+            if (!findGithubAsset(e.github, e.tag, e.asset, githubApi, a, error)) return false;
+            d.url = a.url;
+            if (d.sha256.empty()) d.sha256 = a.sha256;
+        }
+        out.extras.push_back(std::move(d));
+    }
     return true;
+}
+
+// What the answer depends on: a changed recipe never reuses an old answer.
+std::string sourceSignature(const Spec& spec) {
+    std::string sig = narrow(spec.package.github + L"|" + spec.package.asset + L"|" + spec.package.url);
+    for (const auto& e : spec.package.extras)
+        sig += "|" + narrow(e.dir + L"," + e.github + L"," + e.tag + L"," + e.asset + L"," + e.url + L"," + e.sha256);
+    return sig;
+}
+
+constexpr int64_t kSourceCacheSeconds = 3600;
+
+json::Value sourceToJson(const Source& s, const std::string& sig, int64_t at) {
+    json::Value o = json::Value::object();
+    o.set("sig", sig);
+    o.set("at", at);
+    o.set("version", narrow(s.version));
+    o.set("url", narrow(s.url));
+    o.set("sha256", narrow(s.sha256));
+    json::Value extras = json::Value::array();
+    for (const auto& e : s.extras) {
+        json::Value x = json::Value::object();
+        x.set("dir", narrow(e.dir));
+        x.set("url", narrow(e.url));
+        x.set("sha256", narrow(e.sha256));
+        extras.push(x);
+    }
+    o.set("extras", extras);
+    return o;
+}
+
+bool sourceFromJson(const json::Value& o, const std::string& sig, Source& out, int64_t& at) {
+    const json::Value* s = o.find("sig");
+    const json::Value* a = o.find("at");
+    if (!s || !s->isString() || s->str() != sig || !a || !a->isNumber()) return false;
+    auto str = [&](const char* k) {
+        const json::Value* v = o.find(k);
+        return v && v->isString() ? widen(v->str()) : std::wstring();
+    };
+    at = static_cast<int64_t>(a->number());
+    out = {};
+    out.version = str("version");
+    out.url = str("url");
+    out.sha256 = str("sha256");
+    if (const json::Value* ex = o.find("extras"); ex && ex->isArray())
+        for (size_t i = 0; i < ex->size(); ++i) {
+            ExtraDownload d;
+            if (const json::Value* v = ex->at(i).find("dir"); v && v->isString()) d.dir = widen(v->str());
+            if (const json::Value* v = ex->at(i).find("url"); v && v->isString()) d.url = widen(v->str());
+            if (const json::Value* v = ex->at(i).find("sha256"); v && v->isString()) d.sha256 = widen(v->str());
+            out.extras.push_back(std::move(d));
+        }
+    return out.published();
+}
+
+}  // namespace
+
+bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
+                   const std::wstring& githubApi, const std::wstring& cacheDir) {
+    if (spec.package.github.empty() || cacheDir.empty())
+        return resolveSourceUncached(spec, modsInfoBase, out, error, githubApi);
+    std::wstring file = fs::join(cacheDir, L"sources.json");
+    std::string text, perr;
+    json::Value all = fs::readText(file, text) ? json::parse(text, &perr) : json::Value();
+    if (!all.isObject()) all = json::Value::object();
+    std::string key = narrow(spec.mod.id), sig = sourceSignature(spec);
+    Source cached;
+    int64_t at = 0;
+    bool have = false;
+    if (const json::Value* e = all.find(key)) have = sourceFromJson(*e, sig, cached, at);
+    int64_t now = unixNow();
+    if (have && now - at >= 0 && now - at < kSourceCacheSeconds) {
+        out = cached;
+        return true;
+    }
+    if (resolveSourceUncached(spec, modsInfoBase, out, error, githubApi)) {
+        all.set(key, sourceToJson(out, sig, now));
+        std::string data = json::serialize(all, true);
+        fs::ensureDir(cacheDir, nullptr, nullptr);
+        fs::writeFile(file, data.data(), data.size(), nullptr);
+        return true;
+    }
+    if (have) {  // GitHub says no (rate limit, offline): the last answer is still a good one
+        logger().warn(L"GitHub didn't answer (" + error + L"); using the last known release of " + spec.mod.id);
+        out = cached;
+        error.clear();
+        return true;
+    }
+    return false;
 }
 
 Outcome run(const Spec& spec, const Vars& base, const RunRequest& req, const Report& report, CancelToken& cancel,
@@ -117,6 +243,10 @@ Outcome run(const Spec& spec, const Vars& base, const RunRequest& req, const Rep
     };
     if (req.op == Operation::Uninstall) return uninstall(spec, base, req.gameDir, engineProgress, cancel, std::move(options));
 
+    if (std::wstring need = missingRequirement(spec, base, req.gameDir); !need.empty()) {
+        o.message = need;
+        return o;
+    }
     if (!req.source.published()) {
         o.message = spec.t("mod.notPublished", withSpec(base, spec));
         return o;
@@ -131,8 +261,8 @@ Outcome run(const Spec& spec, const Vars& base, const RunRequest& req, const Rep
         if (report && s.total) report(versioned.t("mod.phase.downloading", withSpec(base, versioned)),
                                       static_cast<double>(s.done) / static_cast<double>(s.total), L"");
     };
-    if (!preparePackage(widen(narrow(spec.mod.id)), req.source.version, req.source.url, req.source.sha256, req.cacheDir,
-                        req.githubApi, dl, &stop, payload, error)) {
+    if (!preparePackage(widen(narrow(spec.mod.id)), req.source.version, req.source.url, req.source.sha256,
+                        req.source.extras, req.cacheDir, req.githubApi, dl, &stop, payload, error)) {
         o.result = cancel.cancelled() ? Outcome::Result::Cancelled : Outcome::Result::Failed;
         o.message = cancel.cancelled() ? spec.t("error.cancelledBody", withSpec(base, spec)) : error;
         return o;

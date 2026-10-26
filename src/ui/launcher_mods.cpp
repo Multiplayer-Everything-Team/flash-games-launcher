@@ -64,7 +64,7 @@ void Launcher::startModsFetch() {
             mod::Spec spec = *g.mod;
             ModSource s;
             std::wstring err;
-            s.known = mod::resolveSource(spec, base, s.source, err);
+            s.known = mod::resolveSource(spec, base, s.source, err, cfg_.updates.source.api, fs::join(lib_.dataDir(), L"mods"));
             if (!s.known) logger().warn(L"mods-info: " + g.name + L": " + err);
             found[g.id] = std::move(s);
         }
@@ -124,6 +124,10 @@ std::wstring Launcher::modStateText(int gi, Color& color) const {
         color = theme_.c.success;
         return spec.t("mod.status.installed", vars);
     }
+    if (!v->status.missing.empty()) {
+        color = theme_.c.warning;
+        return v->status.missing;
+    }
     color = theme_.c.textMuted;
     return spec.t(v->sourceKnown && !v->source.published() ? "mod.status.notPublished" : "mod.status.notInstalled", vars);
 }
@@ -170,6 +174,9 @@ void Launcher::applyModAction(int gi, const ActionSpec& a, HWND b) {
         } else if (!v->status.problem.empty()) {
             info.ready = false;
             sub = spec.t("mod.status.problem", vars);
+        } else if (!v->status.missing.empty()) {
+            info.ready = false;  // the loader this mod needs isn't in the game folder
+            sub = v->status.missing;
         } else if (v->sourceKnown && !v->source.published()) {
             info.ready = false;
             sub = spec.t("mod.status.notPublished", vars);
@@ -301,6 +308,7 @@ bool Launcher::runModAction(int gi, const ActionSpec& a) {
     req.gameDir = v.status.game.dir;
     req.source = v.source;
     req.cacheDir = fs::join(lib_.dataDir(), L"mods");
+    req.githubApi = cfg_.updates.source.api;
     Vars base = lib_.vars();
     HWND wnd = hwnd_;
     std::wstring modsInfo = cfg_.modsInfoBase();
@@ -309,7 +317,7 @@ bool Launcher::runModAction(int gi, const ActionSpec& a) {
     installThread_ = std::thread([this, spec, base, req, wnd, gi, opName, lastPosted, modsInfo]() mutable {
         if (req.op != mod::Operation::Uninstall && !req.source.published()) {
             std::wstring err;
-            if (!mod::resolveSource(spec, modsInfo, req.source, err)) logger().warn(L"mods-info: " + err);
+            if (!mod::resolveSource(spec, modsInfo, req.source, err, req.githubApi, req.cacheDir)) logger().warn(L"mods-info: " + err);
         }
         mod::Outcome o = mod::run(spec, base, req, [&, this](const std::wstring& phase, double f, const std::wstring& item) {
             {

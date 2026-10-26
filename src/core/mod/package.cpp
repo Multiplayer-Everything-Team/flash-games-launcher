@@ -92,6 +92,43 @@ std::wstring githubAssetDigest(const std::wstring& assetUrl, const std::wstring&
     return {};
 }
 
+bool findGithubAsset(const std::wstring& repo, const std::wstring& tag, const std::wstring& assetGlob,
+                     const std::wstring& apiBase, GithubAsset& out, std::wstring& error) {
+    out = {};
+    std::wstring api = (apiBase.empty() ? std::wstring(L"https://api.github.com") : apiBase) + L"/repos/" + repo +
+                       (tag.empty() ? L"/releases?per_page=10" : L"/releases/tags/" + tag);
+    std::string body;
+    if (!httpGetText(api, body, error)) return false;
+    std::string perr;
+    json::Value root = json::parse(body, &perr);
+    // The newest published release first (GitHub lists them newest first); drafts are never installed.
+    std::vector<const json::Value*> releases;
+    if (root.isArray()) {
+        for (size_t i = 0; i < root.size(); ++i) releases.push_back(&root.at(i));
+    } else if (root.isObject()) {
+        releases.push_back(&root);
+    }
+    for (const json::Value* rel : releases) {
+        if (const json::Value* d = rel->find("draft"); d && d->boolean()) continue;
+        const json::Value* assets = rel->find("assets");
+        if (!assets || !assets->isArray()) continue;
+        for (size_t i = 0; i < assets->size(); ++i) {
+            const json::Value& a = assets->at(i);
+            std::wstring name = field(a, "name");
+            if (!globMatch(toLower(assetGlob), toLower(name))) continue;
+            out.url = field(a, "browser_download_url");
+            std::wstring digest = field(a, "digest");
+            if (startsWithI(digest, L"sha256:")) out.sha256 = toLower(digest.substr(7));
+            std::wstring v = field(*rel, "tag_name");
+            if (!v.empty() && (v[0] == L'v' || v[0] == L'V')) v.erase(0, 1);
+            out.version = v;
+            if (!out.url.empty() && !out.version.empty()) return true;
+        }
+    }
+    error = L"No release of " + repo + L" has a file named " + assetGlob;
+    return false;
+}
+
 bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::wstring& error) {
     removeTree(destDir);
     if (!fs::ensureDir(destDir, nullptr, nullptr)) {
@@ -130,9 +167,42 @@ bool unpackZip(const std::wstring& archive, const std::wstring& destDir, std::ws
     return true;
 }
 
+namespace {
+
+// Downloads one zip, checks it and unpacks it into `dest`. `sha256` empty: GitHub's digest for the address.
+bool fetchAndUnpack(const std::wstring& root, const std::wstring& name, const std::wstring& url, std::wstring sha256,
+                    const std::wstring& dest, const std::wstring& githubApi, const InstallProgress& progress,
+                    const std::atomic<bool>* cancel, std::wstring& error) {
+    if (sha256.empty()) {
+        std::wstring digestError;
+        sha256 = githubAssetDigest(url, githubApi, digestError);
+        if (sha256.empty()) {
+            error = (digestError.empty() ? std::wstring(L"No checksum is published for this download") : digestError) +
+                    L" The package was not installed.";
+            return false;
+        }
+    }
+    CatalogFile file;
+    file.name = name;
+    file.url = url;
+    file.sha256 = sha256;
+    InstallResult dl = downloadGameFiles({file}, root, progress, cancel);
+    if (!dl.ok) {
+        error = dl.error;
+        return false;
+    }
+    std::wstring archive = fs::join(root, name);
+    if (!unpackZip(archive, dest, error)) return false;
+    DeleteFileW(fs::longPath(archive).c_str());
+    return true;
+}
+
+}  // namespace
+
 bool preparePackage(const std::wstring& id, const std::wstring& version, const std::wstring& url, std::wstring sha256,
-                    const std::wstring& cacheDir, const std::wstring& githubApi, const InstallProgress& progress,
-                    const std::atomic<bool>* cancel, std::wstring& payloadDir, std::wstring& error) {
+                    const std::vector<ExtraDownload>& extras, const std::wstring& cacheDir, const std::wstring& githubApi,
+                    const InstallProgress& progress, const std::atomic<bool>* cancel, std::wstring& payloadDir,
+                    std::wstring& error) {
     if (url.empty()) {
         error = L"This mod has no download yet";
         return false;
@@ -143,37 +213,64 @@ bool preparePackage(const std::wstring& id, const std::wstring& version, const s
     sha256 = toLower(sha256);
     std::wstring digestError;
     if (sha256.empty()) sha256 = githubAssetDigest(url, githubApi, digestError);
+    // Every download's checksum is learned before anything is fetched: nothing is installed unchecked.
+    std::vector<std::wstring> extraSums;
+    for (const auto& e : extras) {
+        std::wstring sum = toLower(e.sha256);
+        std::wstring err;
+        if (sum.empty()) sum = githubAssetDigest(e.url, githubApi, err);
+        (void)err;
+        extraSums.push_back(sum);  // empty offline: fine for a cached copy, refused below when a download is needed
+    }
+    // What the cached copy must have been made from: the package and each extra, by checksum.
+    std::wstring expected = sha256;
+    bool sumsKnown = true;
+    for (const auto& s : extraSums) {
+        expected += L"+" + s;
+        sumsKnown = sumsKnown && !s.empty();
+    }
 
     // Already downloaded and unpacked: reuse it (this also lets Repair work offline).
     std::string saved;
-    if (fs::readText(marker, saved) && fs::isDir(payloadDir) && (sha256.empty() || trim(widen(saved)) == sha256)) {
-        logger().info(L"Using the cached package " + root);
-        return true;
+    if (fs::readText(marker, saved) && fs::isDir(payloadDir) && (sha256.empty() || trim(widen(saved)) == expected ||
+                                                              (!sumsKnown && trim(widen(saved)).rfind(sha256, 0) == 0))) {
+        bool allThere = true;
+        for (const auto& e : extras) allThere = allThere && fs::isDir(fs::join(payloadDir, e.dir));
+        if (allThere) {
+            logger().info(L"Using the cached package " + root);
+            return true;
+        }
     }
     if (sha256.empty()) {
         error = digestError.empty() ? L"No checksum is published for this download" : digestError;
         error += L" The package was not installed.";
         return false;
     }
+    for (size_t i = 0; i < extraSums.size(); ++i)
+        if (extraSums[i].empty()) {
+            error = L"No checksum is published for " + extras[i].url + L". The package was not installed.";
+            return false;
+        }
 
     removeTree(root);
-    CatalogFile file;
-    file.name = L"package.zip";
-    file.url = url;
-    file.sha256 = sha256;
-    InstallResult dl = downloadGameFiles({file}, root, progress, cancel);
-    if (!dl.ok) {
-        error = dl.error;
+    if (!fetchAndUnpack(root, L"package.zip", url, sha256, payloadDir, githubApi, progress, cancel, error)) {
         removeTree(root);
         return false;
     }
-    std::wstring archive = fs::join(root, L"package.zip");
-    if (!unpackZip(archive, payloadDir, error)) {
-        removeTree(root);
-        return false;
+    for (size_t i = 0; i < extras.size(); ++i) {
+        std::wstring dir = fs::join(payloadDir, extras[i].dir);
+        if (fs::exists(dir)) {
+            error = L"The package already has a folder named " + extras[i].dir;
+            removeTree(root);
+            return false;
+        }
+        if (!fetchAndUnpack(root, L"extra-" + std::to_wstring(i) + L".zip", extras[i].url, extraSums[i], dir, githubApi,
+                            progress, cancel, error)) {
+            removeTree(root);
+            return false;
+        }
     }
-    DeleteFileW(fs::longPath(archive).c_str());
-    std::string text = narrow(sha256);
+    std::string text = narrow(expected);
     fs::writeFile(marker, text.data(), text.size(), nullptr);
     return true;
 }

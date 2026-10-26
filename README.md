@@ -21,7 +21,7 @@
 Multiplayer Everything makes multiplayer mods for games that never had multiplayer before. Open the launcher, pick a game, and
 press **Play online**. For the **Flash games** it starts them in Ruffle or Flash Player with
 the right file and settings, and you join a room with a code: no IP addresses, no port
-forwarding. For the **PC game mods** (Spooky Together and more to come) it finds your copy
+forwarding. For the **PC game mods** (Spooky Together, Baldi Together and MiSide Together) it finds your copy
 of the game, installs the mod into it, keeps it up to date, and can take it out again,
 putting back every game file it replaced. Native C++20/Win32, no dependencies, and the
 whole app is one `.exe`.
@@ -32,7 +32,7 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 
 Games available now: **Gun Mayhem 2** · **Stealth Hunter 2** · **Bad Ice-Cream** ·
 **Territory War** · **Bow Man** · **Ultimate Crab Battle** · **Air Battle** · **Raft Wars** ·
-PC mod: **Spooky Together** (**Baldi Together** coming soon). Full list under [Games](#games).
+PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together**. The sidebar keeps *PC mods* and *Flash mods* apart. Full list under [Games](#games).
 
 ## Quick start
 
@@ -110,6 +110,7 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
   or `covers\` folder next to the exe still wins, for your own changes.
 - **Game updates.** When a newer build of a downloaded game file is published, the
   card says *Update available* and the details panel offers *Update game files*.
+- **What the website says.** Each game shows the website's quality grade on its card (A complete, B playable, C rough, D experimental, X none yet; a game still being tested shows none), and its details panel shows the stage, the newest version, how it connects and what stays in sync (players, story, enemies, world, items). The launcher reads [the website's games.json](https://www.multiplayereverything.com/games.json) in the background, at most once an hour, and keeps a copy for when you're offline.
 - **Your name.** The first start asks for your player name; others see it in rooms.
 - **Copy diagnostics.** One button bundles the launcher's version, players, network
   addresses, the room's state and the latest log lines for a bug report (your name left out).
@@ -173,8 +174,11 @@ Not Flash: installed into the game's own folder.
 
 | Mod | Game | Notes |
 |---|---|---|
-| Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players, with the BepInEx mod loader. Needs its package published (see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md)). |
-| Baldi Together | Baldi's Basics Plus (Steam) | Coming soon: listed, no buttons yet. |
+| Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players. Installs the mod from the newest release of [spooky-together](https://github.com/multiplayereverything/spooky-together), together with the BepInEx 5 loader published in the same repository. |
+| Baldi Together | Baldi's Basics Plus (Steam) | Co-op for 2 to 4 players, over LAN or Steam. Installs the mod from [baldi-plus-coop](https://github.com/multiplayereverything/baldi-plus-coop), together with the BepInEx 5.4.23.5 loader published in the same repository. |
+| MiSide Together | MiSide (Steam) | Co-op for 2 to 4 players, through Steam, LAN or an address. Installs the mod from [miside-coop](https://github.com/multiplayereverything/miside-coop), together with the BepInEx 6 (IL2CPP, be.790) loader it needs, which is published in that repository's releases. |
+
+Each is downloaded from its GitHub release, checked against the SHA-256 GitHub publishes for it, and installed as one all-or-nothing change; Uninstall puts the game folder back exactly as it was. How a mod is described: [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md).
 
 Pick the mod, press *Install*, then *Launch*. *Update*, *Repair* and *Uninstall* sit beside it; the game must be closed. Try it safely from the command line with `--game-dir` on a copy of the game folder. Authors: see [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md).
 
@@ -249,6 +253,7 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 | `src/ui/` | The launcher window and its theme |
 | `src/app/` | Entry point and command line |
 | `launcher/` | `launcher.json` and `covers\` (both also built into the exe), `games\`, `players\` |
+| [docs/ADDING_A_MOD.md](docs/ADDING_A_MOD.md) | Checklist for adding a PC mod: author, review, loader, entry, tests |
 | `docs/html5-example.jsonc` | HTML5 support (browser players, Plazma Burst 2 co-op), kept out of the shipped list for now |
 | `docs/local-games-example.jsonc` | Gun Mayhem, Fireboy and Watergirl, Boxhead: local-only games set aside for now |
 | `tests/` | C++ tests and the end-to-end script |

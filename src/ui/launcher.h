@@ -23,6 +23,7 @@
 #include "core/relay.h"
 #include "core/rooms.h"
 #include "core/settings.h"
+#include "core/site.h"
 #include "core/webserver.h"
 #include "theme.h"
 
@@ -54,6 +55,7 @@ private:
         std::string key;  // all | fav | ready | rooms | cat:<id>
         std::wstring label;
         std::wstring icon;  // one icon-font glyph, drawn before the label
+        std::string group;  // a line is drawn where the group changes
         int count = 0;
     };
     struct Session {
@@ -96,6 +98,7 @@ private:
         RECT rooms{};    // Rooms tab: the room rows
         RECT tabs{};     // the tab strip, underlined
         RECT codeBox{};  // Rooms tab: the painted box around the room-code field
+        RECT site{};     // what the website says: grade, stage, version, what stays in sync
     };
     // One room in a list (the Rooms page or the details panel's Rooms tab).
     struct RoomRow {
@@ -238,6 +241,18 @@ private:
     void paintToast(HDC dc);
     void updatePresence();
     bool actionShown(const ActionSpec& a) const;
+
+    // What the website says about each game (launcher_site.cpp).
+    const SiteGame* siteOf(int gameIndex) const;
+    void startSiteFetch();
+    void onSite();
+    void paintGradeChip(Gdiplus::Graphics& g, const RECT& box, const std::string& grade);
+    int siteBlockHeight(HDC dc, int width, const SiteGame* s);
+    int siteDotsHeight(HDC dc, int width, const SiteGame& s);
+    std::wstring siteFacts(const SiteGame& s) const;
+    void paintSite(Gdiplus::Graphics& g, HDC dc, const RECT& r, const SiteGame& s);
+    std::vector<SiteGame> site_, pendingSite_;  // pendingSite_ under installMu_
+    std::thread siteThread_;
 
     // PC game mods (launcher_mods.cpp).
     struct ModView {

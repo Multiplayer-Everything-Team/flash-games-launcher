@@ -142,7 +142,7 @@ void Launcher::paintSidebar(Graphics& g, HDC) {
     drawText(g, cfg_.branding.subtitle, r2, t.caption, t.c.sidebarTextMuted, DT_SINGLELINE | DT_END_ELLIPSIS);
 }
 
-void Launcher::paintDetail(Graphics& g, HDC) {
+void Launcher::paintDetail(Graphics& g, HDC dc) {
     const Theme& t = theme_;
     SolidBrush panel(gc(t.c.surface));
     g.FillRectangle(&panel, rf(detail_));
@@ -184,6 +184,8 @@ void Launcher::paintDetail(Graphics& g, HDC) {
         drawText(g, status, pt, t.caption, sc, DT_SINGLELINE | DT_VCENTER);
     }
 
+    if (height(dl_.site) > 0)
+        if (const SiteGame* info = siteOf(selected_)) paintSite(g, dc, dl_.site, *info);
     if (height(dl_.desc) > 0) drawText(g, descText_, dl_.desc, t.body, t.c.text, DT_WORDBREAK);
     std::wstring stats = statsText(user_.find(game.id));
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);
@@ -302,7 +304,7 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
         int w = textWidth(mdc, t.tiny, text) + t.s(14);
         g.ReleaseHDC(mdc);
         int bh = t.s(20);
-        RECT b = right ? RECT{artR.right - t.s(10) - w, artR.top + t.s(10), artR.right - t.s(10), artR.top + t.s(10) + bh}
+        RECT b = right ? RECT{artR.right - t.s(10) - dx - w, artR.top + t.s(10), artR.right - t.s(10) - dx, artR.top + t.s(10) + bh}
                        : RECT{artR.left + t.s(10) + dx, artR.top + t.s(10), artR.left + t.s(10) + dx + w, artR.top + t.s(10) + bh};
         fillRound(g, rf(b), t.sf(10), Color{t.c.sidebar.r, t.c.sidebar.g, t.c.sidebar.b, 225});
         drawText(g, text, b, t.tiny, textColor, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
@@ -313,7 +315,15 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
     int usedLeft = online ? badge(cfg_.t("badge.online"), t.c.sidebarText, false) + t.s(6) : 0;
     if (game.mod) badge(cfg_.t("badge.pc"), t.c.sidebarText, false, usedLeft);
     const GameStats* st = user_.find(game.id);
-    if (st && st->favorite) badge(L"\u2605", t.c.warning, true);
+    // The website's quality grade sits in the top right; a favorite's star moves left of it.
+    int chipW = 0;
+    if (const SiteGame* info = siteOf(gi); info && !info->quality.empty() && cfg_.text.count("site.quality." + info->quality)) {
+        int cs = t.s(22);
+        RECT chip{artR.right - t.s(10) - cs, artR.top + t.s(9), artR.right - t.s(10), artR.top + t.s(9) + cs};
+        paintGradeChip(g, chip, info->quality);
+        chipW = cs + t.s(6);
+    }
+    if (st && st->favorite) badge(L"\u2605", t.c.warning, true, chipW);
 
     int x = c.left + t.s(14), w = width(c) - t.s(28), y = artR.bottom + t.s(10);
     RECT nameR{x, y, x + w, y + t.s(26)};
@@ -551,8 +561,8 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
         g.FillRectangle(&bg, 0, 0, width(r), height(r));
         g.SetSmoothingMode(SmoothingModeAntiAlias);
         bool sel = (d.itemState & ODS_SELECTED) != 0;
-        // The views (all, favorites, ready, rooms) and the categories are two groups.
-        if (n.key.rfind("cat:", 0) == 0 && d.itemID > 0 && navItems_[d.itemID - 1].key.rfind("cat:", 0) != 0) {
+        // The views (all, favorites, ready, rooms) and each group of categories are separated by a line.
+        if (d.itemID > 0 && navItems_[d.itemID - 1].group != n.group) {
             Pen divider(gc(mix(t.c.sidebar, t.c.sidebarTextMuted, 0.28f)), 1);
             g.DrawLine(&divider, static_cast<REAL>(t.s(14)), 0.0f, static_cast<REAL>(width(r) - t.s(14)), 0.0f);
         }

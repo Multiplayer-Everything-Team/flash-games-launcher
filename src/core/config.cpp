@@ -365,6 +365,29 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"name.body", L"Choose your player name. Other players see it in rooms and in the game. You can change it later in Settings."},
         {"name.label", L"Player name"},
         {"name.ok", L"Continue"},
+        {"site.status.available", L"Available"},
+        {"site.status.testing", L"In testing"},
+        {"site.status.not-on-server", L"Not on the server yet"},
+        {"site.status.coming-soon", L"Coming soon"},
+        {"site.quality", L"Quality ${GRADE}"},
+        {"site.quality.A", L"Complete: plays start to finish with friends."},
+        {"site.quality.B", L"Playable: works online with friends today."},
+        {"site.quality.C", L"Rough: plays online, with known gaps or bugs."},
+        {"site.quality.D", L"Experimental: an early build, expect missing parts."},
+        {"site.quality.X", L"None yet: not playable online yet."},
+        {"site.unrated", L"Not rated yet. It gets a grade once friends have played it."},
+        {"site.version", L"Version ${VERSION}"},
+        {"site.testBuild", L"Test build ${VERSION}"},
+        {"site.updated", L"updated ${DATE}"},
+        {"site.synced", L"In sync"},
+        {"site.synced.see", L"Players"},
+        {"site.synced.story", L"Story"},
+        {"site.synced.enemies", L"Enemies"},
+        {"site.synced.world", L"World"},
+        {"site.synced.items", L"Items"},
+        {"site.synced.synced", L"synced"},
+        {"site.synced.partly", L"partly synced"},
+        {"site.synced.unknown", L"not known yet"},
         {"button.settings", L"Settings"},
         {"settings.title", L"Settings"},
         {"settings.playing", L"Playing"},
@@ -705,6 +728,14 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
         is.strList("allowedRoots", m.install.allowedRoots);
         is.strList("preserve", m.install.preserve);
         is.strList("uninstallCleanup", m.install.uninstallCleanup);
+        if (auto rq = is.get("requires", Type::Array))
+            for (size_t i = 0; i < rq->size(); ++i) {
+                mod::Requirement r;
+                Section rs(&rq->at(i), is.child("requires") + L"[" + std::to_wstring(i) + L"]", issues);
+                rs.str("path", r.path);
+                rs.str("message", r.message);
+                m.install.requires_.push_back(std::move(r));
+            }
         is.boolean("backupOverwritten", m.install.backupOverwritten);
         is.integer("lockedFileRetries", m.install.lockedFileRetries, 0, 30);
         is.integer("extraSpaceMB", m.install.extraSpaceMB, 0, 1 << 20);
@@ -737,6 +768,20 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
         ps.str("modsInfo", m.package.modsInfo);
         ps.str("url", m.package.url);
         ps.str("sha256", m.package.sha256);
+        ps.str("github", m.package.github);
+        ps.str("asset", m.package.asset);
+        if (auto ex = ps.get("extras", Type::Array))
+            for (size_t i = 0; i < ex->size(); ++i) {
+                mod::ExtraPackage e;
+                Section es(&ex->at(i), ps.child("extras") + L"[" + std::to_wstring(i) + L"]", issues);
+                es.str("dir", e.dir);
+                es.str("github", e.github);
+                es.str("tag", e.tag);
+                es.str("asset", e.asset);
+                es.str("url", e.url);
+                es.str("sha256", e.sha256);
+                m.package.extras.push_back(std::move(e));
+            }
     }
     return m;
 }
@@ -851,6 +896,10 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
         Section s(top.get("downloads", Type::Object), L"downloads", issues);
         s.str("catalog", c.downloads.catalog);
         s.str("modsInfo", c.downloads.modsInfo);
+        s.str("site", c.downloads.site);
+        if (!c.downloads.site.empty() && !startsWithI(c.downloads.site, L"https://") &&
+            !startsWithI(c.downloads.site, L"http://127.0.0.1"))
+            s.error(L"site", L"must be an https:// address");
         const std::wstring& u = c.downloads.catalog;
         if (!u.empty() && !startsWithI(u, L"https://") && !startsWithI(u, L"http://127.0.0.1"))
             s.error(L"catalog", L"must be an https:// address");
@@ -890,6 +939,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             Section s(&list->at(i), indexPath(L"categories", i), issues);
             s.str("id", cat.id);
             s.str("name", cat.name);
+            s.str("group", cat.group);
             readIcon(s, cat.icon);
             if (cat.name.empty()) cat.name = widen(cat.id);
             c.categories.push_back(std::move(cat));
@@ -923,6 +973,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
                         g.maxPlayers = std::max(g.maxPlayers, _wtoi(g.playerCount.c_str() + k));
             s.str("controls", g.controls);
             s.str("image", g.image);
+            s.str("site", g.siteId);
             s.real("imageFocus", g.imageFocus, 0, 1);
             s.boolean("comingSoon", g.comingSoon);
             s.idList("categories", g.categories);
@@ -1061,10 +1112,26 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
                 checkVars(c.source, mw + L".components", issues);
                 checkVars(c.target, mw + L".components", issues);
             }
-            if (m.package.modsInfo.empty() && m.package.url.empty())
-                err(mw + L".package", L"give \"modsInfo\" (the mod's id in mods-info) or a \"url\"");
+            if (m.package.modsInfo.empty() && m.package.url.empty() && m.package.github.empty())
+                err(mw + L".package", L"give \"github\" (owner/repo), \"modsInfo\" (the mod's id in mods-info) or a \"url\"");
             if (!m.package.url.empty() && !startsWithI(m.package.url, L"https://"))
                 err(mw + L".package.url", L"must be an https:// address");
+            if (!m.package.github.empty() && m.package.github.find(L'/') == std::wstring::npos)
+                err(mw + L".package.github", L"must look like \"owner/repo\"");
+            std::set<std::wstring> extraDirs;
+            for (size_t k = 0; k < m.package.extras.size(); ++k) {
+                const auto& e = m.package.extras[k];
+                std::wstring ew = mw + L".package.extras[" + std::to_wstring(k) + L"]";
+                if (e.dir.empty() || mod::normRel(e.dir).empty() || e.dir.find_first_of(L"/\\") != std::wstring::npos)
+                    err(ew + L".dir", L"a single folder name, e.g. \"loader\"");
+                else if (!extraDirs.insert(toLower(e.dir)).second) err(ew + L".dir", L"used twice");
+                if (e.url.empty() && (e.github.empty() || e.asset.empty()))
+                    err(ew, L"give a \"url\", or \"github\" and \"asset\"");
+                if (!e.url.empty() && !startsWithI(e.url, L"https://")) err(ew + L".url", L"must be an https:// address");
+            }
+            for (size_t k = 0; k < m.install.requires_.size(); ++k)
+                if (m.install.requires_[k].path.empty() || mod::normRel(m.install.requires_[k].path).empty())
+                    err(mw + L".install.requires[" + std::to_wstring(k) + L"].path", L"a path inside the game folder");
             for (size_t k = 0; k < m.install.uninstallCleanup.size(); ++k) {
                 const std::wstring& pat = m.install.uninstallCleanup[k];
                 std::wstring prefix = pat.substr(0, pat.find_first_of(L"*?"));

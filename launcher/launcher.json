@@ -82,11 +82,13 @@
 
   "categories": [
     // "icon": a Segoe Fluent Icons glyph for the sidebar.
-    { "id": "pc", "name": "PC game mods", "icon": "E7F4" },
-    { "id": "online", "name": "Online multiplayer", "icon": "E774" },
-    { "id": "local", "name": "Local multiplayer", "icon": "E765" },
-    { "id": "coop", "name": "Co-op", "icon": "E716" },
-    { "id": "versus", "name": "Versus", "icon": "E945" }
+    // "group": categories with the same group sit together; a line separates groups.
+    { "id": "pc", "name": "PC mods", "icon": "E7F4", "group": "platform" },
+    { "id": "flash", "name": "Flash mods", "icon": "E8B8", "group": "platform" },
+    { "id": "online", "name": "Online multiplayer", "icon": "E774", "group": "kind" },
+    { "id": "local", "name": "Local multiplayer", "icon": "E765", "group": "kind" },
+    { "id": "coop", "name": "Co-op", "icon": "E716", "group": "kind" },
+    { "id": "versus", "name": "Versus", "icon": "E945", "group": "kind" }
   ],
 
   "games": [
@@ -95,7 +97,7 @@
       "name": "Gun Mayhem 2: More Mayhem",
       "players": "1-4 players",
       "online": { "id": "gm2", "join": "online" },
-      "categories": ["online", "local", "versus"],
+      "categories": ["flash", "online", "local", "versus"],
       "color": "#FF6A3D",
       "colorEnd": "#B4234E",
       "image": "covers\\gunmayhem2.png",
@@ -193,7 +195,7 @@
       "name": "Stealth Hunter 2",
       "players": "1-4 players (online co-op)",
       "online": { "id": "sh2", "join": "online" },
-      "categories": ["online", "coop"],
+      "categories": ["flash", "online", "coop"],
       "color": "#2BD4C5",
       "colorEnd": "#1B3A6B",
       "image": "covers\\stealthhunter2.png",
@@ -283,7 +285,7 @@
       "name": "Bad Ice-Cream",
       "players": "1-2 players (online co-op)",
       "online": { "id": "bic", "join": "online", "lobby": { "version": "2" } },
-      "categories": ["online", "local", "coop"],
+      "categories": ["flash", "online", "local", "coop"],
       "color": "#B983FF",
       "colorEnd": "#3CCB7F",
       "image": "covers\\badicecream.png",
@@ -325,7 +327,7 @@
       "players": "2-4 players (online)",
       "maxPlayers": 4,
       "online": { "id": "tw", "join": "online" },
-      "categories": ["online", "versus"],
+      "categories": ["flash", "online", "versus"],
       "color": "#6BA539",
       "colorEnd": "#2C4A1E",
       "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. The online mod puts red against blue on up to four PCs; each team's sticks are shared out between its players.",
@@ -374,7 +376,7 @@
       "players": "2 players (online)",
       "maxPlayers": 2,
       "online": { "id": "bowman", "join": "online" },
-      "categories": ["online", "versus"],
+      "categories": ["flash", "online", "versus"],
       "color": "#C98A4B",
       "colorEnd": "#3B2A1A",
       "description": "Two archers take turns: drag to aim, release to shoot, mind the wind. The online mod puts each archer on their own PC.",
@@ -423,7 +425,7 @@
       "players": "1-4 players (online co-op)",
       "maxPlayers": 4,
       "online": { "id": "ucb", "join": "online" },
-      "categories": ["online", "coop"],
+      "categories": ["flash", "online", "coop"],
       "color": "#E8603C",
       "colorEnd": "#1D3C6E",
       "description": "One giant crab, up to four ships. The online co-op mod gives every player their own ship on their own PC; the team shares one HP bar.",
@@ -472,7 +474,7 @@
       "players": "1-4 players (online co-op)",
       "maxPlayers": 4,
       "online": { "id": "airbattle", "join": "online" },
-      "categories": ["online", "coop"],
+      "categories": ["flash", "online", "coop"],
       "color": "#5AB4E6",
       "colorEnd": "#B4621E",
       "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player.",
@@ -521,7 +523,7 @@
       "players": "1-4 players (online co-op)",
       "maxPlayers": 4,
       "online": { "id": "raftwars", "join": "online" },
-      "categories": ["online", "coop"],
+      "categories": ["flash", "online", "coop"],
       "color": "#2E9CCA",
       "colorEnd": "#8A4A22",
       "description": "The brothers defend their treasure from the raft, taking turns at the bazooka. The online co-op mod gives up to four players a turn each; the team shares the credits in the shop.",
@@ -569,7 +571,7 @@
       "name": "Intrusion",
       "players": "Online mod in progress",
       "online": { "id": "intrusion" },
-      "categories": ["online"],
+      "categories": ["flash", "online"],
       "comingSoon": true,
       "color": "#7C8591",
       "colorEnd": "#24282E",
@@ -580,7 +582,7 @@
       "name": "Intrusion 2",
       "players": "Online mod in progress",
       "online": { "id": "intrusion2" },
-      "categories": ["online"],
+      "categories": ["flash", "online"],
       "comingSoon": true,
       "color": "#B0453A",
       "colorEnd": "#1E2228",
@@ -589,10 +591,11 @@
     {
       // A PC game mod: the launcher finds the game, installs the mod into it (every
       // file it replaces is backed up and put back on uninstall) and starts the game.
-      // The package is a .zip with "loader" and "mod" folders at its top level; where it
-      // is downloaded from comes from mods-info (download_url) for the id below.
+      // "package" says where the mod comes from; "components" map files of that package
+      // into the game folder. The release zip below is the game-folder layout itself.
       "id": "spooky-together",
       "name": "Spooky Together",
+      "site": "spooky",
       "players": "2-4 players (co-op)",
       "online": { "id": "spooky" },
       "categories": ["pc", "online", "coop"],
@@ -623,28 +626,143 @@
             "BepInEx/ErrorLog.log"
           ]
         },
+        // The mod's release zip also carries the loader, but the loader comes from its own release
+        // (BepInEx 5.4.23.5) so every mod gets it the same way; only the plugin is taken from the zip.
         "components": [
-          { "id": "loader", "name": "BepInEx mod loader", "source": "loader", "target": "${GAME_DIR}", "required": true },
-          { "id": "mod", "name": "Spooky Together", "source": "mod", "required": true }
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "mod", "name": "Spooky Together", "source": "BepInEx/plugins/SpookyTogether", "required": true }
         ],
         "launch": {
           // The game has to be started through Steam.
           "uri": "steam://rungameid/${STEAM_APP_ID}",
           "hint": "Press F5 in the game to open the multiplayer panel, then Host or pick a game from the list."
         },
-        "package": { "modsInfo": "spooky" }
+        // The newest release of the mod's repository (pre-releases count); its checksum comes from GitHub.
+        "package": {
+          "github": "multiplayereverything/spooky-together",
+          "asset": "SpookyTogether-BepInEx-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/spooky-together", "tag": "bepinex-5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }
+          ]
+        }
       }
     },
     {
       "id": "baldi-together",
       "name": "Baldi Together",
-      "players": "Online mod in testing",
-      "online": { "id": "baldi" },
-      "categories": ["pc", "online"],
-      "comingSoon": true,
+      "site": "baldi",
+      "players": "2-4 players (co-op)",
+      "categories": ["pc", "coop"],
       "color": "#3C9B45",
       "colorEnd": "#12331A",
-      "description": "Co-op for Baldi's Basics Plus (Steam), up to four players. Its installer isn't in the launcher yet."
+      "description": "Co-op for Baldi's Basics Plus (Steam): up to four players share one school, with Baldi, the other characters, items, the shop and elevators in sync. Play over your network or online through Steam. Everyone needs the same version.",
+      "mod": {
+        "id": "baldi-together",
+        "game": {
+          "name": "Baldi's Basics Plus",
+          "executable": "BALDI.exe",
+          "steamAppId": "1275890",
+          "validationFiles": ["${GAME_EXE}", "BALDI_Data", "UnityPlayer.dll"],
+          "processNames": ["BALDI.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\Baldi's Basics Plus" },
+            { "type": "steam", "appId": "1275890", "installDir": "Baldi's Basics Plus" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\BaldiTogether",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/patchers/**",
+            "BepInEx/config/BepInEx.cfg",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        // The release holds only the plugin; the loader (BepInEx 5.4.23.5, the version the mod is built for) is
+        // a release of the mod's repository, checked against the SHA-256 GitHub publishes for it.
+        "components": [
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "mod", "name": "Baldi Together", "source": "BepInEx/plugins/BaldiTogether", "required": true }
+        ],
+        "launch": {
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "In the game's main menu pick MULTIPLAYER (or press F5): host over LAN or on Steam, or join a friend."
+        },
+        "package": {
+          "github": "multiplayereverything/baldi-plus-coop",
+          "asset": "BaldiTogether-BepInEx-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/baldi-plus-coop", "tag": "bepinex-5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "miside-together",
+      "name": "MiSide Together",
+      "site": "miside",
+      "players": "2-4 players (co-op)",
+      "categories": ["pc", "coop"],
+      "color": "#E58AB0",
+      "colorEnd": "#3A1226",
+      "description": "Co-op for MiSide (Steam): two to four players play the story together, with Mita, the cutscenes and the dialogue in sync. Friends join through Steam, your network or an address. Everyone needs the same version.",
+      "mod": {
+        "id": "miside-together",
+        "game": {
+          "name": "MiSide",
+          "executable": "MiSideFull.exe",
+          "steamAppId": "2527500",
+          "validationFiles": ["${GAME_EXE}", "MiSideFull_Data", "GameAssembly.dll"],
+          "processNames": ["MiSideFull.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\MiSide" },
+            { "type": "steam", "appId": "2527500", "installDir": "MiSide" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\MiSideTogether",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          // The loader's first start writes these; they go again on uninstall.
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/interop/**",
+            "BepInEx/unity-libs/**",
+            "BepInEx/patchers/**",
+            "BepInEx/config/BepInEx.cfg",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        // MiSide runs on IL2CPP, so it needs BepInEx 6 (build be.790). The mod's repository carries that exact
+        // loader as its own release, checked against the SHA-256 GitHub publishes for it.
+        "components": [
+          { "id": "loader", "name": "BepInEx 6 mod loader", "source": "loader/BepInEx", "target": "${GAME_DIR}\\BepInEx", "required": true },
+          { "id": "loader-dotnet", "name": "BepInEx 6 mod loader", "source": "loader/dotnet", "target": "${GAME_DIR}\\dotnet", "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx 6 mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx 6 mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader-version", "name": "BepInEx 6 mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "mod", "name": "MiSide Together", "source": "BepInEx/plugins/MiSideTogether", "required": true }
+        ],
+        "launch": {
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "In the main menu open MULTIPLAYER: host a game, or join a Steam friend or a LAN game."
+        },
+        "package": {
+          "github": "multiplayereverything/miside-coop",
+          "asset": "MiSideTogether-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/miside-coop", "tag": "bepinex-6.0.0-be.790", "asset": "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.790.zip" }
+          ]
+        }
+      }
     }
   ]
 }

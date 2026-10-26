@@ -127,11 +127,12 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
             mod::Status st = mod::inspect(s, lib.vars(), chosenDir(g));
             mod::Source src;
             std::wstring err;
-            bool known = mod::resolveSource(s, modsInfo, src, err);
+            bool known = mod::resolveSource(s, modsInfo, src, err, cfg.updates.source.api, fs::join(lib.dataDir(), L"mods"));
             out(widen(g.id) + L"  " + g.name + L"\n");
             out(L"    game: " + (st.game.found() ? st.game.dir + L" (" + st.game.source + L")" : std::wstring(L"not found")) + L"\n");
             out(L"    installed: " + (st.installed ? st.installedVersion : std::wstring(L"no")) +
                 (st.problem.empty() ? L"" : L"  (" + st.problem + L")") + L"\n");
+            if (!st.missing.empty()) out(L"    needs: " + st.missing + L"\n");
             out(L"    newest: " + (!known ? L"unknown (" + err + L")" : src.published() ? src.version : std::wstring(L"not published yet")) + L"\n");
         }
         return 0;
@@ -151,6 +152,7 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
     mod::RunRequest req;
     req.gameDir = st.game.dir;
     req.cacheDir = fs::join(lib.dataDir(), L"mods");
+    req.githubApi = cfg.updates.source.api;
     if (!a.uninstallMod.empty()) {
         req.op = mod::Operation::Uninstall;
     } else {
@@ -159,7 +161,7 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
             return 4;
         }
         std::wstring err;
-        if (!mod::resolveSource(s, modsInfo, req.source, err)) {
+        if (!mod::resolveSource(s, modsInfo, req.source, err, req.githubApi, req.cacheDir)) {
             fail(L"Cannot read mods-info: " + err);
             return 1;
         }
