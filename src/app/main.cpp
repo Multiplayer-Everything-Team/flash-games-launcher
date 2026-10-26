@@ -404,7 +404,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         // Games the website lists that this launcher doesn't have yet become "Coming soon" cards, and the
         // website fills in what a game leaves out. The copy from the last run is used; the very first run
         // asks the website once, here.
-        if (!lr.config.downloads.site.empty()) {
+        if (!lr.config.downloads.site.empty() && !getenv("FL_NO_SITE")) {
             std::vector<SiteGame> siteList;
             std::wstring siteCache = fs::join(lib.dataDir(), L"site.json"), siteErr;
             SiteCache cached;

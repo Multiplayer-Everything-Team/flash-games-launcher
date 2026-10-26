@@ -68,7 +68,7 @@ int Launcher::run(const LauncherOptions& opt) {
         layoutDetail();
     }
 
-    if (snapshot_ && !cfg_.downloads.site.empty()) {
+    if (snapshot_ && !cfg_.downloads.site.empty() && !getenv("FL_NO_SITE")) {
         std::wstring err;
         loadSite(cfg_.downloads.site, fs::join(lib_.dataDir(), L"site.json"), site_, err);
         fetchSiteCovers(cfg_, site_, cfg_.downloads.site, fs::join(lib_.dataDir(), L"covers"));

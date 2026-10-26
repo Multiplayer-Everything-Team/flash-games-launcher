@@ -27,7 +27,7 @@ const SiteGame* Launcher::siteOf(int gi) const {
 }
 
 void Launcher::startSiteFetch() {
-    if (cfg_.downloads.site.empty()) return;
+    if (cfg_.downloads.site.empty() || getenv("FL_NO_SITE")) return;
     std::wstring url = cfg_.downloads.site, cache = fs::join(lib_.dataDir(), L"site.json"), dataDir = lib_.dataDir();
     HWND wnd = hwnd_;
     siteThread_ = std::thread([this, url, cache, wnd, dataDir] {

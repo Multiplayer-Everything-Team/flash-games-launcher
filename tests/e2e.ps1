@@ -14,6 +14,8 @@ $ErrorActionPreference = 'Stop'
 $env:FL_MOTION = '0'
 # The first-run name prompt would wait for a person; the lobby section asks for it on purpose.
 $env:FL_NO_NAME_PROMPT = '1'
+# The website's games would add cards to every test window; the tests use their own games only.
+$env:FL_NO_SITE = '1'
 $failures = 0
 function Check([bool]$ok, [string]$what) {
   if ($ok) { Write-Host "[ OK ] $what" } else { Write-Host "[FAIL] $what"; $script:failures++ }
