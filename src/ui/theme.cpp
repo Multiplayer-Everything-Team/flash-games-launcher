@@ -104,6 +104,12 @@ std::wstring fitText(HDC dc, HFONT font, const std::wstring& text, int width, in
 
 std::unique_ptr<Bitmap> loadImageFile(const std::wstring& path) {
     if (path.empty()) return nullptr;
+    // A picture that isn't there is not a bad picture: a website cover is downloaded after the first paint,
+    // and the cards look again when it arrives.
+    if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        logger().debug(L"Picture not there (yet): " + path);
+        return nullptr;
+    }
     std::unique_ptr<Bitmap> decoded(Bitmap::FromFile(path.c_str()));
     if (!decoded || decoded->GetLastStatus() != Ok || decoded->GetWidth() == 0) {
         logger().warn(L"Could not load image " + path + L" (use PNG, JPG or BMP)");

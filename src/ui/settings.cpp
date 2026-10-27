@@ -310,7 +310,9 @@ LRESULT Launcher::settingsHandle(HWND h, UINT m, WPARAM w, LPARAM l) {
                 refreshAll();
                 return 0;
             }
-            if (id == kSetName && code == EN_CHANGE) {
+            // The box announces its starting text while it is being created, before setName_ holds it: reading
+            // it then gave an empty name that was saved over the real one. Only the finished box counts.
+            if (id == kSetName && code == EN_CHANGE && setName_ && reinterpret_cast<HWND>(l) == setName_) {
                 // "|" separates fields in the mods' messages; keep it out of names.
                 wchar_t typed[64] = L"";
                 GetWindowTextW(setName_, typed, 64);

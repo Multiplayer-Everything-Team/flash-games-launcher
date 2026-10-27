@@ -55,7 +55,10 @@ void Launcher::relayout() {
     int x = top_.left + t.s(kPad), boxH = t.s(36), y = (height(top_) - boxH) / 2;
     int searchRight = top_.right - t.s(kPad);
     if (narrowMode) {  // no sidebar: Settings moves to the end of the top bar
-        int bw = t.s(96);
+        // As wide as its icon and label need (a fixed 96 cut "Settings" down to "Set..." in some languages and sizes).
+        HDC sdc = GetDC(hwnd_);
+        int bw = std::max<int>(t.s(96), textWidth(sdc, t.button, windowText(settingsBtn_)) + t.s(58));
+        ReleaseDC(hwnd_, sdc);
         MoveWindow(settingsBtn_, searchRight - bw, y, bw, boxH, TRUE);
         searchRight -= bw + t.s(10);
     } else {

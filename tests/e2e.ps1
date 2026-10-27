@@ -365,6 +365,9 @@ public static class Win2 {
 '@
 $env:FL_FAKE_MS = '500'
 Remove-Item "$work\args.txt" -ErrorAction SilentlyContinue
+# A saved player name: opening Settings must not wipe it (its name box once saved an empty name while being created).
+New-Item -ItemType Directory -Force "$work\rdata" | Out-Null
+'{ "playerName": "E2E Tester" }' | Set-Content "$work\rdata\settings.json" -Encoding ASCII
 $rw = Start-Process -FilePath $Launcher -ArgumentList @('--config', "`"$work\rooms.json`"") -PassThru
 try {
   WaitFor { $rw.Refresh(); $rw.MainWindowHandle -ne 0 } 10000 | Out-Null
@@ -422,6 +425,7 @@ try {
       WaitFor { $script:min = [Acc]::Controls($setWnd) | Where-Object { $_.Name -eq 'Minimize the launcher while a game runs' } | Select-Object -First 1; $null -ne $script:min } 5000 | Out-Null
       if ($min) { [Acc]::Do($min.Hwnd) }
       Check (WaitFor { (Get-Content "$work\rdata\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"minimize": 1' }) 'a Settings checkbox applies and saves at once'
+      Check ((Get-Content "$work\rdata\settings.json" -Raw -ErrorAction SilentlyContinue) -match '"playerName": "E2E Tester"') 'opening Settings keeps the saved player name'
       [Win2]::PostMessage($setWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
       Check (WaitFor { [Top]::Find([uint32]$rw.Id, 'MultiplayerEverythingLauncherSettings') -eq [IntPtr]::Zero } 5000) 'Settings closes'
       Check ([Win2]::IsWindowEnabled($h)) 'the library is usable again after Settings closes'
