@@ -101,7 +101,10 @@ int Launcher::run(const LauncherOptions& opt) {
         }
         onRooms();
     }
-    if (opt.guide && selected_ >= 0) openGuide(selected_);  // after the website's list, which the page uses
+    if (opt.guide && selected_ >= 0) {  // after the website's list, which the page uses
+        openGuide(selected_);
+        scrollGuide(opt.guideScroll);
+    }
     std::vector<std::unique_ptr<lobby::Session>> demoGuests;
     if (snapshot_ && !opt.lobby.empty() && selected_ >= 0 && usesLobby(selected_)) {
         openLobby(selected_);
@@ -429,14 +432,22 @@ void Launcher::applyFonts() {
 
 void Launcher::buildNav() {
     navItems_.clear();
-    navItems_.push_back({"all", cfg_.t("nav.all"), kIconAll});
+    // The platforms (PC mods, Flash mods) lead the sidebar; the other categories follow the views.
+    auto addCategories = [&](bool platform) {
+        for (const auto& c : cfg_.categories)
+            if ((c.group == "platform") == platform)
+                navItems_.push_back({"cat:" + c.id, c.name, c.icon, c.group.empty() ? "categories" : c.group});
+    };
+    addCategories(true);
+    // A launcher.json without platform categories has nothing to lead with, so it keeps the plain list of games.
+    if (navItems_.empty()) navItems_.push_back({"all", cfg_.t("nav.all"), kIconAll});
     navItems_.push_back({"fav", cfg_.t("nav.favorites"), kIconFav});
     navItems_.push_back({"ready", cfg_.t("nav.ready"), kIconReady});
     bool online = std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return !g.onlineId.empty(); });
     if (online) navItems_.push_back({"rooms", cfg_.t("nav.rooms"), kIconRooms});
     if (std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return g.comingSoon; }))
         navItems_.push_back({"soon", cfg_.t("nav.soon"), kIconSoon});
-    for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name, c.icon, c.group.empty() ? "categories" : c.group});
+    addCategories(false);
     for (auto& n : navItems_) {
         n.count = 0;
         if (n.key == "rooms") {
@@ -486,7 +497,7 @@ bool Launcher::matches(int gi) const {
     if (key.rfind("cat:", 0) == 0 &&
         std::find(g.categories.begin(), g.categories.end(), key.substr(4)) == g.categories.end())
         return false;
-    std::wstring hay = toLower(g.name + L" " + g.description + L" " + g.playerCount);
+    std::wstring hay = toLower(g.name + L" " + displayName(g) + L" " + g.description + L" " + g.playerCount);
     for (const auto& c : g.categories)
         if (auto cat = cfg_.findCategory(c)) hay += L" " + toLower(cat->name);
     for (const auto& word : split(toLower(trim(windowText(search_))), L' '))
@@ -497,9 +508,11 @@ bool Launcher::matches(int gi) const {
 int Launcher::gridRank(int gi) const {
     const GameSpec& g = cfg_.games[gi];
     const GameStats* st = user_.find(g.id);
-    if (g.comingSoon) return 3;
-    if (st && st->favorite) return 0;
-    return gameReady(gi) ? 1 : 2;
+    if (g.comingSoon) return 100;
+    // PC mods first, then Flash games; inside each, favorites, then what is ready, then the rest.
+    int platform = g.mod ? 0 : 10;
+    if (st && st->favorite) return platform;
+    return platform + (gameReady(gi) ? 1 : 2);
 }
 
 void Launcher::rebuildGrid() {
@@ -515,7 +528,7 @@ void Launcher::rebuildGrid() {
         LVITEMW it{};
         it.mask = LVIF_TEXT | LVIF_PARAM;
         it.iItem = static_cast<int>(i);
-        std::wstring name = cfg_.games[visible_[i]].name;
+        std::wstring name = displayName(cfg_.games[visible_[i]]);
         it.pszText = name.data();
         it.lParam = visible_[i];
         ListView_InsertItem(grid_, &it);

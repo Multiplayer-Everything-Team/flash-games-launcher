@@ -340,6 +340,31 @@ TEST(uninstall_cleanup_removes_runtime_files_but_keeps_older_ones) {
     CHECK(readText(f.game + L"\\Data\\original.dat") == "ORIGINAL");
 }
 
+
+// A loader the player already has is not ours: install leaves it alone, uninstall leaves it and its runtime files.
+TEST(a_loader_that_is_already_there_is_neither_installed_over_nor_removed) {
+    Fixture f("own-loader", R"(, "uninstallCleanup": ["Loader/cache/**"], "uninstallCleanupWith": "override")");
+    f.cfg.components[1].skipIfPresent = {L"Loader/core"};
+    writeText(f.game + L"\\Loader\\core\\their.dll", "theirs");
+    REQUIRE(f.run(Operation::Install, f.selection()).result == Outcome::Result::Success);
+    CHECK(readText(f.game + L"\\Data\\original.dat") == "ORIGINAL");  // the component was skipped
+    CHECK(exists(f.installDir() + L"\\Mod.dll"));                      // the mod itself went in
+    writeText(f.game + L"\\Loader\\cache\\theirs.bin", "player's cache");
+    REQUIRE(f.uninstall().result == Outcome::Result::Success);
+    CHECK(readText(f.game + L"\\Loader\\core\\their.dll") == "theirs");
+    CHECK(readText(f.game + L"\\Loader\\cache\\theirs.bin") == "player's cache");
+
+    // Without a loader there, the component goes in, is recorded, and its cleanup runs on uninstall.
+    Fixture g("no-loader", R"(, "uninstallCleanup": ["Loader/cache/**"], "uninstallCleanupWith": "override")");
+    g.cfg.components[1].skipIfPresent = {L"Loader/core"};
+    REQUIRE(g.run(Operation::Install, g.selection()).result == Outcome::Result::Success);
+    CHECK(readText(g.game + L"\\Data\\original.dat") == "MODDED");
+    writeText(g.game + L"\\Loader\\cache\\made.bin", "x");
+    REQUIRE(g.uninstall().result == Outcome::Result::Success);
+    CHECK(!exists(g.game + L"\\Loader\\cache\\made.bin"));
+    CHECK(readText(g.game + L"\\Data\\original.dat") == "ORIGINAL");
+}
+
 TEST(uninstall_cleanup_patterns_are_validated) {
     LoadResult r = loadConfig(modGameConfig(R"(, "uninstallCleanup": ["../outside/**", "**/*.log", "ok/cache/**"])"), L"C:\\x");
     CHECK(!r.ok());

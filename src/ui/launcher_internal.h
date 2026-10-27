@@ -168,6 +168,10 @@ inline std::wstring windowText(HWND h) {
     return s;
 }
 
+// What a game is called on its card and page: a PC mod shows the name of the game it goes into ("MiSide"),
+// not the mod's own name ("MiSide Together"), which still names its Install button and the line under the title.
+inline const std::wstring& displayName(const GameSpec& g) { return g.mod && !g.mod->game.name.empty() ? g.mod->game.name : g.name; }
+
 using FlashVars = std::vector<std::pair<std::wstring, std::wstring>>;
 
 // The action's own values first (online mode, your name), then this launch's

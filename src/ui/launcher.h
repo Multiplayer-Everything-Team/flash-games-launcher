@@ -38,6 +38,7 @@ struct LauncherOptions {
     int width = 0, height = 0;
     bool demoHost = false;   // snapshot: start the relay for the selected game
     bool guide = false;      // snapshot: open the selected game's guide page
+    int guideScroll = 0;     // ...and scroll it this many pixels
     std::string lobby;       // snapshot: "setup" or "room" renders the lobby window instead
 };
 
@@ -208,7 +209,7 @@ private:
     std::vector<HWND> guideLinkBtns_;
     std::wstring emptyTitle() const;
     std::wstring emptyBody() const;
-    int gridRank(int gameIndex) const;  // 0 favorites, 1 ready, 2 the rest, 3 coming soon
+    int gridRank(int gameIndex) const;  // PC mods before Flash games; favorites, ready, the rest; coming soon last
     void onPlayerChoice();
     void notice(const std::wstring& text, const Color& color);
     void save();

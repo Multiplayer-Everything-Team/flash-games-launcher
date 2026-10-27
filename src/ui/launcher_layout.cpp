@@ -133,7 +133,7 @@ void Launcher::layoutDetail() {
     int x = detail_.left + t.s(kPad), w = width(detail_) - t.s(kPad) * 2, y = t.s(kPad);
     // The header (art, title, meta, status) is placed after the controls so the
     // art can shrink on short windows instead of running into the buttons.
-    int titleH = textHeight(dc, t.title, g.name, w);
+    int titleH = textHeight(dc, t.title, displayName(g), w);
     std::wstring meta = categoryText(g);
     int metaH = meta.empty() ? 0 : textHeight(dc, t.caption, meta, w);
     bool hostingThis = relay_.running() && relayGame_ == selected_;

@@ -85,6 +85,8 @@
     // "group": categories with the same group sit together; a line separates groups.
     { "id": "pc", "name": "PC mods", "icon": "E7F4", "group": "platform" },
     { "id": "flash", "name": "Flash mods", "icon": "E8B8", "group": "platform" },
+    // Mods made by other people. A game tagged "community" (next to "pc") is listed here, so players can tell them from ours.
+    { "id": "community", "name": "Community mods", "icon": "E716", "group": "platform" },
     { "id": "online", "name": "Online multiplayer", "icon": "E774", "group": "kind" },
     { "id": "local", "name": "Local multiplayer", "icon": "E765", "group": "kind" },
     { "id": "coop", "name": "Co-op", "icon": "E716", "group": "kind" },
@@ -762,6 +764,7 @@
         "install": {
           "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\SpookyTogether",
           "stateDir": "${INSTALL_DIR}\\.installer",
+          "uninstallCleanupWith": "loader",
           "uninstallCleanup": [
             "BepInEx/cache/**",
             "BepInEx/patchers/**",
@@ -773,10 +776,10 @@
         // The mod's release zip also carries the loader, but the loader comes from its own release
         // (BepInEx 5.4.23.5) so every mod gets it the same way; only the plugin is taken from the zip.
         "components": [
-          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "required": true },
-          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
           { "id": "mod", "name": "Spooky Together", "source": "BepInEx/plugins/SpookyTogether", "required": true }
         ],
         "launch": {
@@ -853,6 +856,7 @@
         "install": {
           "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\BaldiTogether",
           "stateDir": "${INSTALL_DIR}\\.installer",
+          "uninstallCleanupWith": "loader",
           "uninstallCleanup": [
             "BepInEx/cache/**",
             "BepInEx/patchers/**",
@@ -864,10 +868,10 @@
         // The release holds only the plugin; the loader (BepInEx 5.4.23.5, the version the mod is built for) is
         // a release of the mod's repository, checked against the SHA-256 GitHub publishes for it.
         "components": [
-          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "required": true },
-          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
           { "id": "mod", "name": "Baldi Together", "source": "BepInEx/plugins/BaldiTogether", "required": true }
         ],
         "launch": {
@@ -940,6 +944,7 @@
           "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\MiSideTogether",
           "stateDir": "${INSTALL_DIR}\\.installer",
           // The loader's first start writes these; they go again on uninstall.
+          "uninstallCleanupWith": "loader",
           "uninstallCleanup": [
             "BepInEx/cache/**",
             "BepInEx/interop/**",
@@ -953,11 +958,11 @@
         // MiSide runs on IL2CPP, so it needs BepInEx 6 (build be.790). The mod's repository carries that exact
         // loader as its own release, checked against the SHA-256 GitHub publishes for it.
         "components": [
-          { "id": "loader", "name": "BepInEx 6 mod loader", "source": "loader/BepInEx", "target": "${GAME_DIR}\\BepInEx", "required": true },
-          { "id": "loader-dotnet", "name": "BepInEx 6 mod loader", "source": "loader/dotnet", "target": "${GAME_DIR}\\dotnet", "required": true },
-          { "id": "loader-winhttp", "name": "BepInEx 6 mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-doorstop", "name": "BepInEx 6 mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "required": true },
-          { "id": "loader-version", "name": "BepInEx 6 mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "required": true },
+          { "id": "loader", "name": "BepInEx 6 mod loader", "source": "loader/BepInEx", "target": "${GAME_DIR}\\BepInEx", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-dotnet", "name": "BepInEx 6 mod loader", "source": "loader/dotnet", "target": "${GAME_DIR}\\dotnet", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx 6 mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx 6 mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-version", "name": "BepInEx 6 mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
           { "id": "mod", "name": "MiSide Together", "source": "BepInEx/plugins/MiSideTogether", "required": true }
         ],
         "launch": {

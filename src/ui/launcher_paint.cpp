@@ -80,7 +80,7 @@ Bitmap* Launcher::art(int gi, int w, int h, bool detail) {
         gg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
         drawCover(gg, *images_[gi], RectF(0, 0, static_cast<REAL>(w), static_cast<REAL>(h)), 0, true, g.imageFocus);
     } else {
-        bmp = coverArt(g.name, g.color, g.colorEnd, w, h);
+        bmp = coverArt(displayName(g), g.color, g.colorEnd, w, h);
     }
     Bitmap* raw = bmp.get();
     artCache_[key] = std::move(bmp);
@@ -162,7 +162,7 @@ void Launcher::paintDetail(Graphics& g, HDC dc) {
         if (Bitmap* a = art(selected_, width(dl_.art), height(dl_.art), true))
             drawCover(g, *a, rf(dl_.art), t.sf(8), true);
     if (height(dl_.title) > 0) {
-        std::wstring title = game.name;
+        std::wstring title = displayName(game);
         if (ULONGLONG e = since(titleFrom_); e < kTitleMs)
             title = motion::scramble(title, static_cast<float>(e) / kTitleMs, static_cast<uint32_t>(e / 50));
         drawText(g, title, dl_.title, t.title, t.c.text, DT_WORDBREAK);
@@ -267,7 +267,7 @@ void Launcher::paintStatus(Graphics& g, HDC) {
         ULONGLONG secs = (GetTickCount64() - s.started) / 1000;
         wchar_t clock[32];
         swprintf(clock, 32, L"%llu:%02llu", secs / 60, secs % 60);
-        text = cfg_.t("bar.playing", {{L"GAME", cfg_.games[s.game].name + L" (" + s.player + L")"}, {L"TIME", clock}});
+        text = cfg_.t("bar.playing", {{L"GAME", displayName(cfg_.games[s.game]) + L" (" + s.player + L")"}, {L"TIME", clock}});
         color = t.c.online;
     }
     if (!text.empty()) {
@@ -329,7 +329,7 @@ void Launcher::drawCard(HDC dc, int gi, RECT tile, bool selected, bool focused) 
 
     int x = c.left + t.s(14), w = width(c) - t.s(28), y = artR.bottom + t.s(10);
     RECT nameR{x, y, x + w, y + t.s(26)};
-    drawText(g, game.name, nameR, t.name, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    drawText(g, displayName(game), nameR, t.name, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     y += t.s(28);
     // One block per player slot, in the players' own colors.
     int pip = t.s(10), pipGap = t.s(3), px = x;
@@ -605,6 +605,7 @@ void Launcher::drawNavItem(const DRAWITEMSTRUCT& d) {
 
 std::wstring Launcher::categoryText(const GameSpec& game) const {
     std::wstring out;
+    if (displayName(game) != game.name) out = game.name;  // a mod: its own name under the game's
     for (const auto& c : game.categories)
         if (auto cat = cfg_.findCategory(c)) out += (out.empty() ? L"" : L", ") + cat->name;
     return out;

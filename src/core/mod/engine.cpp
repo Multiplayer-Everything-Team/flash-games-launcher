@@ -172,6 +172,13 @@ PlanResult buildPlan(const Spec& cfg, const Resources& res, Operation op, const 
     std::map<std::wstring, size_t> byTarget;
     for (const auto& comp : cfg.components) {
         if (!chosen.count(comp.id)) continue;
+        // A loader the player already has stays theirs: not copied over, not recorded, so not removed later.
+        bool ours = p.previous && std::find(p.previous->components.begin(), p.previous->components.end(), comp.id) !=
+                                      p.previous->components.end();
+        if (!ours && std::any_of(comp.skipIfPresent.begin(), comp.skipIfPresent.end(), [&](const std::wstring& rel) {
+                return fs::exists(fs::normalize(fs::join(p.gameDir, rel)));
+            }))
+            continue;
         p.components.push_back(comp.id);
         if (comp.source.empty()) continue;
         std::wstring src = normRel(comp.source);
@@ -936,7 +943,9 @@ Outcome Engine::uninstall(const Plan& plan, Meter& m, CancelToken& cancel) {
             m.advance(kFileUnits);
             m.fileDone();
         }
-        cleanup = findCleanup(cfg_, st.gameDir, plan.stateDir);
+        const std::string& with = cfg_.install.uninstallCleanupWith;
+        if (with.empty() || std::find(st.components.begin(), st.components.end(), with) != st.components.end())
+            cleanup = findCleanup(cfg_, st.gameDir, plan.stateDir);
         for (const auto& f : cleanup.files) {
             current = f;
             if (cancel.cancelled()) throw Cancelled{};

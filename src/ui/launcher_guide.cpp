@@ -66,7 +66,7 @@ void Launcher::layoutGuidePage() {
     int backW = textWidth(dc, t.button, cfg_.t("guide.back")) + t.s(32), backH = t.s(34);
     SetWindowTextW(guideBack_, cfg_.t("guide.back").c_str());
     MoveWindow(guideBack_, x, y, backW, backH, TRUE);
-    std::wstring title = cfg_.t("guide.title", {{L"NAME", cfg_.games[guideGame_].name}});
+    std::wstring title = cfg_.t("guide.title", {{L"NAME", displayName(cfg_.games[guideGame_])}});
     int titleH = textHeight(dc, t.heading, title, w - backW - t.s(16), DT_SINGLELINE);
     guideHead_ = {x + backW + t.s(16), y + (backH - titleH) / 2, x + w, y + (backH - titleH) / 2 + titleH};
     y += backH + t.s(14);
@@ -146,7 +146,7 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
     if (!guidePage() || height(guideView_) <= 0) return;
     const Theme& t = theme_;
     (void)dc;
-    drawText(g, cfg_.t("guide.title", {{L"NAME", cfg_.games[guideGame_].name}}), guideHead_, t.heading, t.c.text,
+    drawText(g, cfg_.t("guide.title", {{L"NAME", displayName(cfg_.games[guideGame_])}}), guideHead_, t.heading, t.c.text,
              DT_SINGLELINE | DT_END_ELLIPSIS);
     // A line under the header and over the link bar, so the scrolling part reads as its own area.
     Pen line(gc(t.c.border), 1);
@@ -156,59 +156,68 @@ void Launcher::paintGuidePage(Graphics& g, HDC dc) {
         g.DrawLine(&line, static_cast<REAL>(guideFoot_.left), static_cast<REAL>(guideFoot_.top - t.s(4)),
                    static_cast<REAL>(guideFoot_.right), static_cast<REAL>(guideFoot_.top - t.s(4)));
 
-    Region clip(rf(guideView_));
-    g.SetClip(&clip);
-    int x = guideView_.left, w = width(guideView_) - t.s(4);
+    // The rows are drawn into a bitmap the size of the scrolling area and copied in, so nothing of a half-scrolled
+    // row can land over the header or the link bar (GDI text ignores the clip a Graphics object holds).
+    int viewW = width(guideView_), viewH0 = height(guideView_);
+    Bitmap page(viewW, viewH0, PixelFormat32bppRGB);
+    {
+        Graphics cg(&page);
+        SolidBrush pageBg(gc(t.c.background));
+        cg.SetSmoothingMode(SmoothingModeNone);  // the fill must cover every pixel, edges included
+        cg.FillRectangle(&pageBg, -1, -1, viewW + 2, viewH0 + 2);
+        cg.SetSmoothingMode(SmoothingModeAntiAlias);
+    int x = 0, w = viewW - t.s(4);
     for (const GuideRow& r : guideRows_) {
-        int top = guideView_.top + r.y - guideScroll_, bottom = top + r.h;
-        if (bottom < guideView_.top || top > guideView_.bottom) continue;
+        int top = r.y - guideScroll_, bottom = top + r.h;
+        if (bottom < 0 || top > viewH0) continue;
         const GuideBlock& b = guide_.blocks[r.block];
         switch (b.kind) {
             case Kind::Heading:
-                drawText(g, b.text, RECT{x, top, x + w, bottom}, t.heading, t.c.text, DT_SINGLELINE);
+                drawText(cg, b.text, RECT{x, top, x + w, bottom}, t.heading, t.c.text, DT_SINGLELINE);
                 break;
             case Kind::Text:
-                drawText(g, b.text, RECT{x, top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
+                drawText(cg, b.text, RECT{x, top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
                 break;
             case Kind::Step: {
                 // A numbered circle in neutral colors: red stays for the one button that starts the game.
                 int d = t.s(26);
                 RectF ring(static_cast<REAL>(x), static_cast<REAL>(top), static_cast<REAL>(d), static_cast<REAL>(d));
                 SolidBrush fill(gc(t.c.surface));
-                g.FillEllipse(&fill, ring);
+                cg.FillEllipse(&fill, ring);
                 Pen outline(gc(t.c.textMuted), t.sf(1.2));
-                g.DrawEllipse(&outline, ring);
-                drawText(g, std::to_wstring(b.number), RECT{x, top, x + d, top + d}, t.caption, t.c.text,
+                cg.DrawEllipse(&outline, ring);
+                drawText(cg, std::to_wstring(b.number), RECT{x, top, x + d, top + d}, t.caption, t.c.text,
                          DT_SINGLELINE | DT_CENTER | DT_VCENTER);
-                drawText(g, b.text, RECT{x + t.s(40), top + t.s(2), x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
+                drawText(cg, b.text, RECT{x + t.s(40), top + t.s(2), x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
                 break;
             }
             case Kind::Bullet: {
                 SolidBrush dot(gc(t.c.textMuted));
                 int lineH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE);
-                g.FillEllipse(&dot, static_cast<REAL>(x + t.s(4)), static_cast<REAL>(top + (lineH - t.s(6)) / 2 + t.s(1)),
+                cg.FillEllipse(&dot, static_cast<REAL>(x + t.s(4)), static_cast<REAL>(top + (lineH - t.s(6)) / 2 + t.s(1)),
                               t.sf(6), t.sf(6));
-                drawText(g, b.text, RECT{x + t.s(22), top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
+                drawText(cg, b.text, RECT{x + t.s(22), top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
                 break;
             }
             case Kind::Key: {
                 int kw = textWidth(dc, t.strong, b.text) + t.s(20);
                 kw = std::min(kw, t.s(kKeyW) - t.s(8));
                 RECT box{x, top, x + kw, top + t.s(26)};
-                fillRound(g, rf(box), t.sf(5), t.c.surfaceHover);
-                strokeRound(g, rf(box), t.sf(5), t.c.border, t.sf(1));
-                drawText(g, b.text, box, t.strong, t.c.text, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
-                drawText(g, b.detail, RECT{x + t.s(kKeyW) + t.s(12), top + t.s(2), x + w, bottom}, t.body, t.c.text,
+                fillRound(cg, rf(box), t.sf(5), t.c.surfaceHover);
+                strokeRound(cg, rf(box), t.sf(5), t.c.border, t.sf(1));
+                drawText(cg, b.text, box, t.strong, t.c.text, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
+                drawText(cg, b.detail, RECT{x + t.s(kKeyW) + t.s(12), top + t.s(2), x + w, bottom}, t.body, t.c.text,
                          DT_WORDBREAK);
                 break;
             }
             case Kind::Fact:
-                drawText(g, b.text, RECT{x, top + t.s(2), x + t.s(kLabelW), bottom}, t.caption, t.c.textMuted, DT_WORDBREAK);
-                drawText(g, b.detail, RECT{x + t.s(kLabelW) + t.s(12), top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
+                drawText(cg, b.text, RECT{x, top + t.s(2), x + t.s(kLabelW), bottom}, t.caption, t.c.textMuted, DT_WORDBREAK);
+                drawText(cg, b.detail, RECT{x + t.s(kLabelW) + t.s(12), top, x + w, bottom}, t.body, t.c.text, DT_WORDBREAK);
                 break;
         }
     }
-    g.ResetClip();
+    }
+    g.DrawImage(&page, static_cast<INT>(guideView_.left), static_cast<INT>(guideView_.top));
 
     // A thin scroll indicator when there is more than fits.
     int viewH = height(guideView_);

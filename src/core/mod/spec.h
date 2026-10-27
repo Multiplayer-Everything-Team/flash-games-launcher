@@ -39,6 +39,9 @@ struct Component {
     // files needs the original kept beside it; listing the copy first ("eax_orig.dll", then "eax.dll") keeps an
     // update from copying the wrapper over the copy.
     std::vector<std::wstring> sourceGame;
+    // Game-folder paths that mean "this is already there" (a mod loader the player installed): when one exists and
+    // this mod did not put it there, the component is left alone, and uninstall leaves it too.
+    std::vector<std::wstring> skipIfPresent;
     bool required = false, selected = true;
 };
 
@@ -64,6 +67,9 @@ struct Layout {
     // Globs relative to GAME_DIR for files the mod creates while running (loader
     // caches, logs); removed on uninstall unless they existed before the install.
     std::vector<std::wstring> uninstallCleanup;
+    // Run that cleanup only when this component was installed by the mod (not skipped because the loader was
+    // already there): the loader's runtime files then belong to the player.
+    std::string uninstallCleanupWith;
     std::vector<Requirement> requires_;  // checked before anything is downloaded
     bool backupOverwritten = true;
     int lockedFileRetries = 5;

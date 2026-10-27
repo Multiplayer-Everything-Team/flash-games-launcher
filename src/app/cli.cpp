@@ -54,6 +54,10 @@ Args parseArgs(int argc, wchar_t** argv) {
             if (a.relayPort < 1 || a.relayPort > 65535) a.error = L"--relay needs a port between 1 and 65535";
         } else if (k == L"--demo-host") a.demoHost = true;
         else if (k == L"--guide") a.guide = true;
+        else if (k == L"--guide-scroll") {
+            value(tmp);
+            a.guideScroll = _wtoi(tmp.c_str());
+        }
         else if (k == L"--lobby") value(a.lobby);
         else if (k == L"--list") a.list = true;
         else if (k == L"--version") a.version = true;

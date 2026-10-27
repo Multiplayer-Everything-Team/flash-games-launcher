@@ -786,6 +786,7 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
         is.strList("allowedRoots", m.install.allowedRoots);
         is.strList("preserve", m.install.preserve);
         is.strList("uninstallCleanup", m.install.uninstallCleanup);
+        is.str("uninstallCleanupWith", m.install.uninstallCleanupWith);
         if (auto rq = is.get("requires", Type::Array))
             for (size_t i = 0; i < rq->size(); ++i) {
                 mod::Requirement r;
@@ -809,6 +810,7 @@ mod::Spec readMod(const Value& v, const GameSpec& game, const std::wstring& wher
             cs.str("target", c.target);
             cs.str("targetName", c.targetName);
             cs.strList("sourceGame", c.sourceGame);
+            cs.strList("skipIfPresent", c.skipIfPresent);
             cs.boolean("required", c.required);
             cs.boolean("selected", c.selected);
             if (c.name.empty()) c.name = widen(c.id);
