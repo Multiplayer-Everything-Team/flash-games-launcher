@@ -103,8 +103,8 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
   answers and how fast. Lists refresh every 30 seconds.
 - **Updates itself.** At start the launcher checks the newest release here; when
   there is a newer one it downloads `MultiplayerEverythingLauncher.exe`, checks it against the
-  SHA-256 GitHub publishes for it, swaps it in and offers to restart (while a game
-  runs, it just starts next time). Settings can turn it off; `--update` does it now.
+  SHA-256 GitHub publishes for it, swaps it in and restarts into it by itself, without asking (while a game
+  runs or a room is open, it just starts next time). Settings can turn it off; `--update` does it now.
 - **One file.** `launcher.json` and the cover images are built into
   `MultiplayerEverythingLauncher.exe`, so the exe is all you need to send someone. A `launcher.json`
   or `covers\` folder next to the exe still wins, for your own changes.

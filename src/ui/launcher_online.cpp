@@ -511,26 +511,12 @@ void Launcher::startUpdateCheck() {
 }
 
 void Launcher::onUpdated(const std::wstring& version) {
-    // While a game runs (or a server is hosted) the launcher stays put; the new
-    // version simply starts next time.
-    if (!sessions_.empty() || relay_.running() || installing_) {
-        toast(cfg_.t("update.nextTime", {{L"VERSION", version}}), theme_.c.success);
-        return;
-    }
-    std::wstring title = cfg_.t("update.title", {{L"VERSION", version}}), body = cfg_.t("update.body");
-    std::wstring yes = cfg_.t("update.restart"), no = cfg_.t("update.later");
-    TASKDIALOG_BUTTON buttons[] = {{IDYES, yes.c_str()}, {IDNO, no.c_str()}};
-    TASKDIALOGCONFIG tdc{sizeof tdc};
-    tdc.hwndParent = hwnd_;
-    tdc.dwFlags = TDF_POSITION_RELATIVE_TO_WINDOW;
-    tdc.pszWindowTitle = cfg_.branding.subtitle.c_str();
-    tdc.pszMainInstruction = title.c_str();
-    tdc.pszContent = body.c_str();
-    tdc.cButtons = 2;
-    tdc.pButtons = buttons;
-    tdc.nDefaultButton = IDYES;
-    int choice = 0;
-    if (FAILED(TaskDialogIndirect(&tdc, &choice, nullptr, nullptr)) || choice != IDYES) {
+    // The new version is in place. Restart into it at once, without asking, unless the launcher is in the
+    // middle of something (a game runs, a room or server is open, a download or install, Settings): then it
+    // simply starts with the new version next time.
+    bool busy = !sessions_.empty() || relay_.running() || installing_ || (lobby_ && lobby_->running()) || settingsWnd_ ||
+                (lobbyWnd_ && IsWindowVisible(lobbyWnd_));
+    if (busy) {
         toast(cfg_.t("update.nextTime", {{L"VERSION", version}}), theme_.c.success);
         return;
     }
@@ -542,6 +528,7 @@ void Launcher::onUpdated(const std::wstring& version) {
         return;
     }
     CloseHandle(p.process);
+    logger().info(L"Restarting into launcher " + version);
     PostMessageW(hwnd_, WM_CLOSE, 0, 0);
 }
 
