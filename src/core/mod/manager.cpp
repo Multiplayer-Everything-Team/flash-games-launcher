@@ -269,6 +269,7 @@ bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& o
     if (have) {  // GitHub says no (rate limit, offline): the last answer is still a good one
         logger().warn(L"GitHub didn't answer (" + error + L"); using the last known release of " + spec.mod.id);
         out = cached;
+        out.stale = true;
         error.clear();
         return true;
     }

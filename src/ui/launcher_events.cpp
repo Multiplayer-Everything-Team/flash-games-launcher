@@ -310,6 +310,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 toastFrom_ = 0;
                 ShowWindow(toast_, SW_HIDE);
             }
+            if (++modPollTick_ % 2 == 0) pollModGames();
             if (!sessions_.empty() || (noticeUntil_ && GetTickCount64() >= noticeUntil_)) {
                 if (GetTickCount64() >= noticeUntil_) noticeUntil_ = 0;
                 InvalidateRect(hwnd_, &status_, FALSE);

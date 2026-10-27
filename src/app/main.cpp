@@ -134,7 +134,8 @@ int runModCommand(const Args& a, const Config& cfg, Library& lib, UserData& user
             out(L"    installed: " + (st.installed ? st.installedVersion : std::wstring(L"no")) +
                 (st.problem.empty() ? L"" : L"  (" + st.problem + L")") + L"\n");
             if (!st.missing.empty()) out(L"    needs: " + st.missing + L"\n");
-            out(L"    newest: " + (!known ? L"unknown (" + err + L")" : src.published() ? src.version : std::wstring(L"not published yet")) + L"\n");
+            out(L"    newest: " + (!known ? L"unknown (" + err + L")" : src.published() ? src.version : std::wstring(L"not published yet")) +
+                (known && src.stale ? L"  (couldn't ask GitHub just now: this is the last answer)" : L"") + L"\n");
         }
         return 0;
     }

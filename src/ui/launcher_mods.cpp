@@ -41,6 +41,26 @@ bool Launcher::gameReady(int gi) const {
     return lib_.gameState(cfg_.games[gi], user_) == ActionState::Ready;
 }
 
+void Launcher::pollModGames() {
+    if (snapshot_ || installing_) return;
+    bool selectedChanged = false, played = false, stopped = false;
+    for (auto& [gi, view] : mods_) {
+        if (!view.status.game.found()) continue;  // nothing to watch for a game that isn't on this PC
+        bool running = sys::isProcessRunning(modSpec(gi).game.processNames);
+        if (running) {
+            user_.stats(cfg_.games[gi].id).seconds += 2;  // this poll runs every two seconds
+            played = true;
+        }
+        if (running == view.status.running) continue;
+        view.status.running = running;
+        if (gi == selected_) selectedChanged = true;
+        if (!running) stopped = true;
+    }
+    if (stopped || (played && ++modSaveTick_ % 15 == 0)) save();  // when it closes, else about every half minute
+    if (selectedChanged) select(selected_);          // the buttons say whether the game has to be closed
+    else if (played) InvalidateRect(hwnd_, &detail_, FALSE);
+}
+
 void Launcher::refreshMods() {
     for (size_t i = 0; i < cfg_.games.size(); ++i) {
         if (!cfg_.games[i].mod) continue;
@@ -122,6 +142,11 @@ std::wstring Launcher::modStateText(int gi, Color& color) const {
         if (modUpdateAvailable(gi)) {
             color = theme_.c.online;
             return spec.t("mod.status.update", vars);
+        }
+        // GitHub refused the lookup (its hourly limit, or no connection): say so, the newest version shown may be old.
+        if (v->source.stale) {
+            color = theme_.c.warning;
+            return spec.t("mod.status.installedStale", vars);
         }
         color = theme_.c.success;
         return spec.t("mod.status.installed", vars);

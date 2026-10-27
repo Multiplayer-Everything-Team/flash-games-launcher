@@ -579,7 +579,7 @@ try {
   WaitFor { $mwin.Refresh(); $mwin.MainWindowHandle -ne 0 } 10000 | Out-Null
   $mh = $mwin.MainWindowHandle
   $btn = $null
-  WaitFor { $script:btn = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Install Mod Test' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
+  WaitFor { $script:btn = [Acc]::Controls($mh) | Where-Object { $_.Name -eq 'Install Fake Game' } | Select-Object -First 1; $null -ne $script:btn } 10000 | Out-Null
   Check ($null -ne $btn) 'the window offers Install for a mod whose game it found'
   if ($btn) {
     [Acc]::Do($btn.Hwnd)

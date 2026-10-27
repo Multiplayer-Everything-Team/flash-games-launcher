@@ -167,7 +167,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         // PC game mods in the window.
         {"mod.update", L"Update to ${VERSION}"},
         {"mod.update.sub", L"You have ${INSTALLED}"},
-        {"mod.install", L"Install ${MOD_NAME}"},
+        {"mod.install", L"Install ${GAME_NAME}"},
         {"mod.install.sub", L"Version ${VERSION}, into your ${GAME_NAME} folder"},
         {"mod.install.subUnknown", L"Into your ${GAME_NAME} folder"},
         {"mod.launch", L"Launch game"},
@@ -180,6 +180,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"mod.uninstall.sub", L"Restore the files the mod replaced"},
         {"mod.status.notInstalled", L"Not installed"},
         {"mod.status.installed", L"Installed ${INSTALLED}"},
+        {"mod.status.installedStale", L"Installed ${INSTALLED}, can't check for updates right now"},
         {"mod.status.update", L"Update ${VERSION} available"},
         {"mod.status.noGame", L"${GAME_NAME} not found"},
         {"mod.status.notPublished", L"Not published yet"},

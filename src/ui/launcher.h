@@ -292,6 +292,10 @@ private:
     const ModView* modView(int gi) const;
     bool gameReady(int gi) const;  // playable: a Flash game that can start, or an installed mod
     void refreshMods();
+    // A PC mod's game is opened and closed outside the launcher too (Steam, the desktop): look again every
+    // two seconds, so "Close <game> first" appears and goes away by itself, and count the time it runs.
+    void pollModGames();
+    int modPollTick_ = 0, modSaveTick_ = 0;
     void startModsFetch();
     void onModsFetched();
     bool modUpdateAvailable(int gi) const;

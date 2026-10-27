@@ -50,6 +50,9 @@ struct Source {
     std::wstring version, url, sha256;
     std::vector<ExtraDownload> extras;  // loader packages etc., unpacked beside it
     std::wstring minVersion, notice;  // from mods-info, for the window
+    // The newest version couldn't be looked up just now (GitHub's hourly limit, no connection): this is the
+    // last answer heard, which may be old.
+    bool stale = false;
     bool published() const { return !url.empty() && !version.empty(); }
 };
 // The newest package: the spec's own pinned package, else what mods-info says.
