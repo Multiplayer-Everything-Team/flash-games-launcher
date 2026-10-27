@@ -21,7 +21,7 @@
 Multiplayer Everything makes multiplayer mods for games that never had multiplayer before. Open the launcher, pick a game, and
 press **Play online**. For the **Flash games** it starts them in Ruffle or Flash Player with
 the right file and settings, and you join a room with a code: no IP addresses, no port
-forwarding. For the **PC game mods** (Spooky Together, Baldi Together and MiSide Together) it finds your copy
+forwarding. For the **PC game mods** (Spooky Together, Baldi Together, MiSide Together, CupHeads, Rick and Morty Together, Dave the Diver Multiplayer and more) it finds your copy
 of the game, installs the mod into it, keeps it up to date, and can take it out again,
 putting back every game file it replaced. Native C++20/Win32, no dependencies, and the
 whole app is one `.exe`.
@@ -32,7 +32,7 @@ Questions, bugs, or looking for people to play with? Join the [Multiplayer Every
 
 Games available now: **Gun Mayhem 2** · **Stealth Hunter 2** · **Bad Ice-Cream** ·
 **Territory War** · **Bow Man** · **Ultimate Crab Battle** · **Air Battle** · **Raft Wars** ·
-PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together** · **GTA San Andreas Co-op**. The sidebar keeps *PC mods* and *Flash mods* apart. Full list under [Games](#games).
+PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together** · **CupHeads** · **Rick and Morty Together** · **Dave the Diver Multiplayer** · **GTA San Andreas Co-op**. The sidebar keeps *PC mods* and *Flash mods* apart. Full list under [Games](#games).
 
 ## Quick start
 
@@ -180,6 +180,9 @@ Not Flash: installed into the game's own folder.
 | Spooky Together | Spooky's Jump Scare Mansion: HD Renovation (Steam) | Co-op for 2 to 4 players. Installs the mod from the newest release of [spooky-together](https://github.com/multiplayereverything/spooky-together), together with the BepInEx 5 loader published in the same repository. |
 | Baldi Together | Baldi's Basics Plus (Steam) | Co-op for 2 to 4 players, over LAN or Steam. Installs the mod from [baldi-plus-coop](https://github.com/multiplayereverything/baldi-plus-coop), together with the BepInEx 5.4.23.5 loader published in the same repository. |
 | MiSide Together | MiSide (Steam) | Co-op for 2 to 4 players, through Steam, LAN or an address. Installs the mod from [miside-coop](https://github.com/multiplayereverything/miside-coop), together with the BepInEx 6 (IL2CPP, be.790) loader it needs, which is published in that repository's releases. |
+| CupHeads | Cuphead (Steam) | Online co-op for 2 players over Steam invites or LAN, from [CupHeads](https://github.com/multiplayereverything/CupHeads) (a fork of [Germanized's CupHeads](https://github.com/Germanized/CupHeads)). Installs the mod and the BepInEx 5.4.23.5 loader published in that repository. |
+| Rick and Morty Together | Rick and Morty: Virtual Rick-ality (Steam, VR) | Co-op for 2 players, from [rick-and-morty-coop](https://github.com/multiplayereverything/rick-and-morty-coop). Installs the mod, its BepInEx settings (this game needs them) and the BepInEx 5.4.23.5 loader from the same repository. |
+| Dave the Diver Multiplayer | DAVE THE DIVER (Steam) | Two-player co-op through Steam or LAN, from [Dave-The-Divers-Coop](https://github.com/multiplayereverything/Dave-The-Divers-Coop) (a fork of [S1ii's Coop-Divers](https://github.com/S1ii/Coop-Divers)). Installs the mod and the BepInEx 6 (IL2CPP, be.790) loader published in that repository. |
 
 | GTA San Andreas Co-op | Grand Theft Auto: San Andreas, PC version 1.0 US (Steam or Rockstar) | Co-op for 2 to 4 players, based on CoopAndreas, from [gta-coop](https://github.com/multiplayereverything/gta-coop). Does what the mod's own `install.bat` does without running it: keeps the game's `eax.dll` as `eax_orig.dll`, puts the co-op `eax.dll` in its place, and Uninstall puts the original back. The host's server is installed under `CoopAndreas\server`. You need your own copy, downgraded to 1.0. |
 

@@ -241,6 +241,84 @@ TEST(a_required_file_blocks_the_install_until_it_is_there) {
     CHECK(missingRequirement(spec, base, root / L"Game").empty());
 }
 
+TEST(shipped_cupheads_installs_the_plugin_and_bepinex_5_and_uninstalls_cleanly) {
+    Config cfg = loadShipped();
+    const GameSpec* g = shippedMod(cfg, "cupheads");
+    REQUIRE(g != nullptr);
+    CHECK(g->mod->package.github == L"multiplayereverything/CupHeads");
+    REQUIRE(g->mod->package.extras.size() == 1);
+    CHECK(g->mod->package.extras[0].tag == L"bepinex-5.4.23.5");
+    TempDir root("cup-ship");
+    std::wstring game = root / L"Game", payload = root / L"Pkg";
+    writeText(game + L"\\Cuphead.exe", "game");
+    writeText(game + L"\\Cuphead_Data\\data", "d");
+    // CupHeads-BepInEx-1.7.0.zip is the plugin only; BepInEx_win_x64_5.4.23.5.zip is unpacked as "loader".
+    writeText(payload + L"\\BepInEx\\plugins\\CupheadOnline\\CupheadOnline.dll", "plugin");
+    for (const char* f : {"winhttp.dll", "doorstop_config.ini", ".doorstop_version", "changelog.txt", "BepInEx\\core\\BepInEx.dll"})
+        writeText(payload + L"\\loader\\" + widen(f), std::string("loader ") + f);
+    std::string before = folderSnapshot(game);
+    Outcome o = installShipped(cfg, *g, game, payload, "1.7.0");
+    if (o.result != Outcome::Result::Success) fprintf(stderr, "    %ls\n", o.message.c_str());
+    REQUIRE(o.result == Outcome::Result::Success);
+    CHECK(exists(game + L"\\winhttp.dll") && exists(game + L"\\BepInEx\\core\\BepInEx.dll"));
+    CHECK(exists(game + L"\\BepInEx\\plugins\\CupheadOnline\\CupheadOnline.dll"));
+    REQUIRE(uninstallShipped(cfg, *g, game).result == Outcome::Result::Success);
+    CHECK(folderSnapshot(game) == before);
+}
+
+TEST(shipped_rick_and_morty_installs_its_own_bepinex_cfg) {
+    Config cfg = loadShipped();
+    const GameSpec* g = shippedMod(cfg, "rick-and-morty-together");
+    REQUIRE(g != nullptr);
+    CHECK(g->mod->package.github == L"multiplayereverything/rick-and-morty-coop");
+    TempDir root("rick-ship");
+    std::wstring game = root / L"Game", payload = root / L"Pkg";
+    writeText(game + L"\\RickAndMortyVR.exe", "game");
+    writeText(game + L"\\RickAndMortyVR_Data\\data", "d");
+    // RickAndMortyTogether-BepInEx-0.1.0.zip: the plugin, the settings this game needs, and a readme.
+    writeText(payload + L"\\BepInEx\\plugins\\RickAndMortyTogether\\RickAndMortyTogether.dll", "plugin");
+    writeText(payload + L"\\BepInEx\\config\\BepInEx.cfg", "[Preloader.Entrypoint]");
+    writeText(payload + L"\\RickAndMortyTogether-README.md", "notes");
+    for (const char* f : {"winhttp.dll", "doorstop_config.ini", ".doorstop_version", "BepInEx\\core\\BepInEx.dll"})
+        writeText(payload + L"\\loader\\" + widen(f), std::string("loader ") + f);
+    std::string before = folderSnapshot(game);
+    Outcome o = installShipped(cfg, *g, game, payload, "0.1.0");
+    if (o.result != Outcome::Result::Success) fprintf(stderr, "    %ls\n", o.message.c_str());
+    REQUIRE(o.result == Outcome::Result::Success);
+    CHECK(readText(game + L"\\BepInEx\\config\\BepInEx.cfg") == "[Preloader.Entrypoint]");  // the mod's settings, not a default
+    CHECK(!exists(game + L"\\RickAndMortyTogether-README.md"));
+    REQUIRE(uninstallShipped(cfg, *g, game).result == Outcome::Result::Success);
+    CHECK(folderSnapshot(game) == before);
+}
+
+TEST(shipped_dave_the_diver_installs_bepinex_6_and_the_plugin) {
+    Config cfg = loadShipped();
+    const GameSpec* g = shippedMod(cfg, "dave-the-diver-multiplayer");
+    REQUIRE(g != nullptr);
+    CHECK(g->mod->package.github == L"multiplayereverything/Dave-The-Divers-Coop");
+    REQUIRE(g->mod->package.extras.size() == 1);
+    CHECK(g->mod->package.extras[0].tag == L"bepinex-6.0.0-be.790");
+    TempDir root("dave-ship");
+    std::wstring game = root / L"Game", payload = root / L"Pkg";
+    writeText(game + L"\\DaveTheDiver.exe", "game");
+    writeText(game + L"\\DaveTheDiver_Data\\data", "d");
+    writeText(game + L"\\GameAssembly.dll", "g");
+    // DaveTheDiverMP-0.19.0.zip: the plugin and its license; the be.790 IL2CPP zip is unpacked as "loader".
+    writeText(payload + L"\\BepInEx\\plugins\\DaveTheDiverMP\\DaveTheDiverMP.dll", "plugin");
+    writeText(payload + L"\\BepInEx\\plugins\\DaveTheDiverMP\\LICENSE.txt", "MIT");
+    for (const char* f : {"winhttp.dll", "doorstop_config.ini", ".doorstop_version", "BepInEx\\core\\BepInEx.Unity.IL2CPP.dll",
+                          "dotnet\\clrjit.dll"})
+        writeText(payload + L"\\loader\\" + widen(f), std::string("loader ") + f);
+    std::string before = folderSnapshot(game);
+    Outcome o = installShipped(cfg, *g, game, payload, "0.19.0");
+    if (o.result != Outcome::Result::Success) fprintf(stderr, "    %ls\n", o.message.c_str());
+    REQUIRE(o.result == Outcome::Result::Success);
+    CHECK(exists(game + L"\\BepInEx\\core\\BepInEx.Unity.IL2CPP.dll") && exists(game + L"\\dotnet\\clrjit.dll"));
+    CHECK(exists(game + L"\\BepInEx\\plugins\\DaveTheDiverMP\\DaveTheDiverMP.dll"));
+    REQUIRE(uninstallShipped(cfg, *g, game).result == Outcome::Result::Success);
+    CHECK(folderSnapshot(game) == before);
+}
+
 TEST(mod_config_github_extras_and_requires_are_validated) {
     auto load = [](const std::string& mod) {
         return loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",

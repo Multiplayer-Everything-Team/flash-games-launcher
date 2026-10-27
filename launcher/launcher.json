@@ -979,6 +979,254 @@
       }
     },
     {
+      "id": "cupheads",
+      "name": "CupHeads",
+      "site": "cuphead",
+      "players": "2 players (co-op)",
+      "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Cuphead on Steam. Ms. Chalice needs the DLC on both PCs.",
+          "Two different Steam accounts to play online over Steam (one account can't connect to itself).",
+          "Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of Cuphead and puts the mod, and the BepInEx loader it needs, in it.",
+          "Press Launch. MULTIPLAYER appears in the main menu.",
+          "The host picks MULTIPLAYER, HOST A GAME, then INVITE A FRIEND. The friend accepts the Steam invite, even with Cuphead closed.",
+          "No Steam? The host picks HOST ON LAN and COPY LOBBY CODE; the friend copies that address and picks JOIN A GAME (TCP port 27140).",
+          "The host plays Player One and owns the save; the guest plays Player Two on a live copy of the host's save."
+        ],
+        "keys": [
+          { "key": "F1", "does": "Shows the shortcuts card." },
+          { "key": "F6", "does": "Quick resync." },
+          { "key": "F9", "does": "Copies diagnostics for a bug report." }
+        ],
+        "tips": [
+          "The guest's own save files are not written during a session; they are backed up first.",
+          "Three or more players is experimental."
+        ],
+        "links": [
+          { "label": "CupHeads on GitHub", "url": "https://github.com/multiplayereverything/CupHeads" },
+          { "label": "Original CupHeads by Germanized", "url": "https://github.com/Germanized/CupHeads" },
+          { "label": "Multiplayer Everything Discord", "url": "https://discord.com/invite/P2MSSUf5GX" }
+        ]
+      },
+      "color": "#D9A21B",
+      "colorEnd": "#3A2A07",
+      "description": "Online co-op for Cuphead: both cups, the host's save, bosses, run-and-gun and plane levels and the world map, over Steam invites or LAN. Originally made by Germanized; this fork is maintained by Multiplayer Everything. Everyone needs the same version.",
+      "mod": {
+        "id": "cupheads",
+        "game": {
+          "name": "Cuphead",
+          "executable": "Cuphead.exe",
+          "steamAppId": "268910",
+          "validationFiles": ["${GAME_EXE}", "Cuphead_Data"],
+          "processNames": ["Cuphead.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\Cuphead" },
+            { "type": "steam", "appId": "268910", "installDir": "Cuphead" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\CupheadOnline",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          "uninstallCleanupWith": "loader",
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/patchers/**",
+            "BepInEx/config/BepInEx.cfg",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        // The release holds only the plugin; the loader (BepInEx 5.4.23.5) is a release of the mod's repository.
+        "components": [
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "mod", "name": "CupHeads", "source": "BepInEx/plugins/CupheadOnline", "required": true }
+        ],
+        "launch": {
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "In the main menu open MULTIPLAYER: host a game and invite a friend, or join one."
+        },
+        "package": {
+          "github": "multiplayereverything/CupHeads",
+          "asset": "CupHeads-BepInEx-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/CupHeads", "tag": "bepinex-5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rick-and-morty-together",
+      "name": "Rick and Morty Together",
+      "site": "rickandmorty",
+      "players": "2 players (co-op)",
+      "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Rick and Morty: Virtual Rick-ality on Steam, and a VR headset.",
+          "Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of the game and puts the mod, the BepInEx loader it needs and the mod's own BepInEx settings in it.",
+          "Press Launch.",
+          "On the desktop window (the mirror of your headset view) press F5 to open the panel. Set it up before you put the headset on, or ask someone at the PC.",
+          "Host on Steam opens a lobby (friends only by default, or public); invite Steam friends, or they pick Join Game on you in Steam.",
+          "No Steam? Host on LAN / direct IP listens on TCP port 27040; friends type your IP and press Join IP."
+        ],
+        "keys": [
+          { "key": "F5", "does": "Opens the multiplayer panel on the desktop window." }
+        ],
+        "tips": [
+          "Two players: a third is refused with a message.",
+          "The mod's BepInEx settings are part of the install: this game needs BepInEx to start at the first scene load.",
+          "Things the game spawns (machine results, dispensers) are not shared yet."
+        ],
+        "links": [
+          { "label": "Rick and Morty Together on GitHub", "url": "https://github.com/multiplayereverything/rick-and-morty-coop" },
+          { "label": "Multiplayer Everything Discord", "url": "https://discord.com/invite/P2MSSUf5GX" }
+        ]
+      },
+      "color": "#7BD16B",
+      "colorEnd": "#0F3A1E",
+      "description": "Co-op for Rick and Morty: Virtual Rick-ality (Steam, VR): two players share one game as Morty clones in the same garage, see each other's head and hands, and pass things from hand to hand, with the story and the lines in sync. Everyone needs the same version.",
+      "mod": {
+        "id": "rick-and-morty-together",
+        "game": {
+          "name": "Rick and Morty: Virtual Rick-ality",
+          "executable": "RickAndMortyVR.exe",
+          "steamAppId": "469610",
+          "validationFiles": ["${GAME_EXE}", "RickAndMortyVR_Data"],
+          "processNames": ["RickAndMortyVR.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\RickAndMortyVR" },
+            { "type": "steam", "appId": "469610", "installDir": "RickAndMortyVR" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\RickAndMortyTogether",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          // BepInEx.cfg is the mod's own (installed below), so it is not in this list.
+          "uninstallCleanupWith": "loader",
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/patchers/**",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        // The release holds the plugin and a BepInEx.cfg this game needs (BepInEx must start at the first scene load);
+        // the loader (BepInEx 5.4.23.5) is a release of the mod's repository.
+        "components": [
+          { "id": "loader", "name": "BepInEx mod loader", "source": "loader/BepInEx/core", "target": "${GAME_DIR}\\BepInEx\\core", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "loader-version", "name": "BepInEx mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core"], "required": true },
+          { "id": "config", "name": "BepInEx settings for this game", "source": "BepInEx/config/BepInEx.cfg", "target": "${GAME_DIR}\\BepInEx\\config", "required": true },
+          { "id": "mod", "name": "Rick and Morty Together", "source": "BepInEx/plugins/RickAndMortyTogether", "required": true }
+        ],
+        "launch": {
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "Press F5 on the desktop window to open the panel, then host or join."
+        },
+        "package": {
+          "github": "multiplayereverything/rick-and-morty-coop",
+          "asset": "RickAndMortyTogether-BepInEx-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/rick-and-morty-coop", "tag": "bepinex-5.4.23.5", "asset": "BepInEx_win_x64_5.4.23.5.zip" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dave-the-diver-multiplayer",
+      "name": "Dave the Diver Multiplayer",
+      "site": "davethediver",
+      "players": "2 players (co-op)",
+      "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Dave the Diver on Steam.",
+          "Everyone you play with needs the same game build and the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of the game and puts the mod, and BepInEx 6 which it needs, in it.",
+          "Press Launch. The first start after installing takes a minute or two.",
+          "On the title screen pick Online.",
+          "Host on Steam opens a friends-only lobby; friends see Join game on your Steam profile, or press Invite a friend.",
+          "No Steam? Create lobby (LAN) and give your friend your IP; they pick Join by IP (LAN) (UDP port 27777).",
+          "When your friend is connected they press Ready, and the host presses Start. The host's campaign is copied to the friend, and you continue it together."
+        ],
+        "keys": [],
+        "tips": [
+          "Your normal saves are never touched: the shared campaign uses manual save slot 7.",
+          "Two players: one friend per host."
+        ],
+        "links": [
+          { "label": "Dave the Diver Multiplayer on GitHub", "url": "https://github.com/multiplayereverything/Dave-The-Divers-Coop" },
+          { "label": "Original Coop-Divers by S1ii", "url": "https://github.com/S1ii/Coop-Divers" },
+          { "label": "Multiplayer Everything Discord", "url": "https://discord.com/invite/P2MSSUf5GX" }
+        ]
+      },
+      "color": "#2BA7C9",
+      "colorEnd": "#06303D",
+      "description": "Two-player online co-op for Dave the Diver: dive the Blue Hole together, see each other, and share the fish, the story and the sushi bar. Join a friend through Steam or LAN. Originally made by S1ii; this fork is maintained by Multiplayer Everything. Unofficial community mod. Everyone needs the same version.",
+      "mod": {
+        "id": "dave-the-diver-multiplayer",
+        "game": {
+          "name": "DAVE THE DIVER",
+          "executable": "DaveTheDiver.exe",
+          "steamAppId": "1868140",
+          "validationFiles": ["${GAME_EXE}", "DaveTheDiver_Data", "GameAssembly.dll"],
+          "processNames": ["DaveTheDiver.exe"],
+          "detection": [
+            { "type": "path", "path": "${folder:ProgramFilesX86}\\Steam\\steamapps\\common\\DAVE THE DIVER" },
+            { "type": "steam", "appId": "1868140", "installDir": "DAVE THE DIVER" }
+          ]
+        },
+        "install": {
+          "targetDir": "${GAME_DIR}\\BepInEx\\plugins\\DaveTheDiverMP",
+          "stateDir": "${INSTALL_DIR}\\.installer",
+          // The loader's first start writes these; they go again on uninstall.
+          "uninstallCleanupWith": "loader",
+          "uninstallCleanup": [
+            "BepInEx/cache/**",
+            "BepInEx/interop/**",
+            "BepInEx/unity-libs/**",
+            "BepInEx/patchers/**",
+            "BepInEx/config/BepInEx.cfg",
+            "BepInEx/LogOutput.log",
+            "BepInEx/ErrorLog.log"
+          ]
+        },
+        // Dave the Diver runs on IL2CPP, so it needs BepInEx 6 (build be.790): a release of the mod's repository.
+        "components": [
+          { "id": "loader", "name": "BepInEx 6 mod loader", "source": "loader/BepInEx", "target": "${GAME_DIR}\\BepInEx", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-dotnet", "name": "BepInEx 6 mod loader", "source": "loader/dotnet", "target": "${GAME_DIR}\\dotnet", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-winhttp", "name": "BepInEx 6 mod loader", "source": "loader/winhttp.dll", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-doorstop", "name": "BepInEx 6 mod loader", "source": "loader/doorstop_config.ini", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "loader-version", "name": "BepInEx 6 mod loader", "source": "loader/.doorstop_version", "target": "${GAME_DIR}", "skipIfPresent": ["BepInEx/core/BepInEx.Unity.IL2CPP.dll"], "required": true },
+          { "id": "mod", "name": "Dave the Diver Multiplayer", "source": "BepInEx/plugins/DaveTheDiverMP", "required": true }
+        ],
+        "launch": {
+          "uri": "steam://rungameid/${STEAM_APP_ID}",
+          "hint": "On the title screen pick Online: host on Steam or LAN, or join a friend."
+        },
+        "package": {
+          "github": "multiplayereverything/Dave-The-Divers-Coop",
+          "asset": "DaveTheDiverMP-*.zip",
+          "extras": [
+            { "dir": "loader", "github": "multiplayereverything/Dave-The-Divers-Coop", "tag": "bepinex-6.0.0-be.790", "asset": "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.790.zip" }
+          ]
+        }
+      }
+    },
+    {
       "id": "gta-coop",
       "name": "GTA San Andreas Co-op",
       "site": "gta",
