@@ -123,7 +123,12 @@ struct Builder {
         }
         fact("guide.site.players", s->players);
         fact("guide.site.connect", s->connect);
-        fact("guide.site.madeBy", s->maintainer);
+        if (s->community) {
+            fact("guide.site.origin", cfg.t(s->reviewed ? "guide.site.communityReviewed" : "guide.site.communityUnverified"));
+            fact("guide.site.madeBy", s->author.empty() ? s->maintainer : s->author);
+        } else {
+            fact("guide.site.madeBy", s->maintainer);
+        }
         std::wstring sync;
         for (const char* k : {"see", "story", "enemies", "world", "items"}) {
             auto it = s->synced.find(k);

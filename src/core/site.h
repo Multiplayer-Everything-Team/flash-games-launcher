@@ -24,6 +24,10 @@ struct SiteGame {
     // What the site shows for the game itself: used for games the launcher doesn't have yet, and to fill
     // in what a launcher game leaves out.
     std::wstring description, players, platform, color, colorEnd, cover, repo;  // repo: "owner/name" on GitHub  // cover: a path on the site, "covers/x.png"
+    // A mod made by someone else: "origin": "community". Anything but "official" counts as community, and a
+    // community mod is unverified unless the site says "reviewed": true.
+    bool community = false, reviewed = false;
+    std::wstring author, authorUrl;        // authorUrl: https://github.com/owner/name, nothing else
     int slots = 0;
     float coverFocus = 0.5f;
     // see, story, enemies, world, items -> synced | partly | unknown
@@ -36,6 +40,7 @@ struct SiteGame {
 // as "owner/name" of letters, digits, '-', '_' and '.', and a cover as "covers/<name>.png|jpg".
 bool isGithubRepo(const std::wstring& repo);
 bool isSiteCover(const std::string& path);
+bool isGithubRepoUrl(const std::wstring& url);  // exactly https://github.com/<owner>/<name>
 
 // The site's list. Returns false when `json` isn't a games.json.
 bool parseSite(std::string_view json, std::vector<SiteGame>& out);

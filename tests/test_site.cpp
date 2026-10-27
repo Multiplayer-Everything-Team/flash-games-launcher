@@ -189,3 +189,23 @@ TEST(the_website_cannot_steer_a_file_name_or_a_link_the_launcher_uses) {
         CHECK(file.find(L"..") == std::wstring::npos && file.find(L"/") == std::wstring::npos);
     }
 }
+
+TEST(community_mods_are_marked_unverified_and_their_links_stay_https_github) {
+    const char* json = R"({ "games": [
+      { "id": "a", "name": "Ours" },
+      { "id": "b", "name": "Theirs", "origin": "community", "author": "Sam", "authorUrl": "https://github.com/sam/mod" },
+      { "id": "c", "name": "Checked", "origin": "community", "reviewed": true, "authorUrl": "http://github.com/sam/mod" },
+      { "id": "d", "name": "Odd", "origin": "whatever", "authorUrl": "https://evil.example/sam/mod" },
+      { "id": "e", "name": "Explicit", "origin": "official", "reviewed": "yes" }
+    ] })";
+    std::vector<SiteGame> list;
+    REQUIRE(parseSite(json, list));
+    REQUIRE(list.size() == 5);
+    CHECK(!list[0].community);                                             // no origin: official
+    CHECK(list[1].community && !list[1].reviewed && list[1].author == L"Sam" && list[1].authorUrl == L"https://github.com/sam/mod");
+    CHECK(list[2].community && list[2].reviewed && list[2].authorUrl.empty());  // http is dropped
+    CHECK(list[3].community && !list[3].reviewed && list[3].authorUrl.empty());  // an unknown origin reads as community
+    CHECK(!list[4].community && !list[4].reviewed);                        // reviewed must be a real boolean
+    CHECK(isGithubRepoUrl(L"https://github.com/a/b") && !isGithubRepoUrl(L"https://github.com/a/b/c") &&
+          !isGithubRepoUrl(L"https://github.com.evil/a/b") && !isGithubRepoUrl(L"https://github.com/../x"));
+}

@@ -58,6 +58,11 @@ bool isSiteCover(const std::string& path) {
     return onlyChars(name.substr(0, name.size() - 4), "-_.", 80) && name.find("..") == std::string::npos;
 }
 
+bool isGithubRepoUrl(const std::wstring& url) {
+    const std::wstring prefix = L"https://github.com/";
+    return url.rfind(prefix, 0) == 0 && isGithubRepo(url.substr(prefix.size()));
+}
+
 bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
     out.clear();
     std::string err;
@@ -89,6 +94,11 @@ bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
         // A picture inside the site's own covers folder, nothing else.
         s.cover = isSiteCover(text(g, "cover")) ? widen(text(g, "cover")) : std::wstring();
         s.repo = isGithubRepo(widen(text(g, "repo"))) ? widen(text(g, "repo")) : std::wstring();
+        // Missing origin = official; any value other than "official" is treated as community (the careful reading).
+        if (const std::string origin = text(g, "origin"); !origin.empty() && origin != "official") s.community = true;
+        s.author = widen(text(g, "author"));
+        s.authorUrl = isGithubRepoUrl(widen(text(g, "authorUrl"))) ? widen(text(g, "authorUrl")) : std::wstring();
+        if (const json::Value* rv = g.find("reviewed"); rv && rv->isBool()) s.reviewed = rv->boolean();
         if (const json::Value* sl = g.find("slots"); sl && sl->isNumber()) s.slots = static_cast<int>(sl->number());
         if (const json::Value* cf = g.find("coverFocus"); cf && cf->isNumber())
             s.coverFocus = std::clamp(static_cast<float>(cf->number()), 0.0f, 1.0f);
