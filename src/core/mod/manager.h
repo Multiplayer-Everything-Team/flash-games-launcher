@@ -53,11 +53,12 @@ struct Source {
     bool published() const { return !url.empty() && !version.empty(); }
 };
 // The newest package: the spec's own pinned package, else what mods-info says.
-// `githubApi` empty = api.github.com. A mod that comes from GitHub is asked about at most once an hour per
-// `cacheDir` (and not at all while GitHub's rate limit is used up: the last answer is used), because GitHub
-// answers 60 questions an hour per address without a login.
+// `githubApi` empty = api.github.com. A mod that comes from GitHub is asked about at most once every ten minutes
+// per `cacheDir` (and not at all while GitHub's rate limit is used up: the last answer is used), because GitHub
+// answers 60 questions an hour per address without a login. `forceFresh` skips the ten minutes (the F5 rescan).
+// A loader pinned by tag is remembered for good: it costs no question after the first.
 bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
-                   const std::wstring& githubApi = L"", const std::wstring& cacheDir = L"");
+                   const std::wstring& githubApi = L"", const std::wstring& cacheDir = L"", bool forceFresh = false);
 
 // Phase text, 0..1 fraction of the current phase, and the current item (a file).
 using Report = std::function<void(const std::wstring& phase, double fraction, const std::wstring& item)>;

@@ -28,7 +28,7 @@ single file such as `winhttp.dll`) with a `target` in the game folder. Spooky To
 work this way: see their entries in `launcher/launcher.json`. A loader that isn't in your zip can come from its own release with
 `package.extras` (MiSide Together's loader is a release of its own repository), or be demanded with `install.requires` when it
 can't be downloaded with a checksum. GitHub answers 60 questions an hour per address without a login, so the launcher asks about
-a mod's newest release at most once an hour and otherwise reuses the last answer (`mods\sources.json` in its data folder).
+a mod's newest release at most once every ten minutes (F5 asks again at once) and otherwise reuses the last answer (`mods\sources.json` in its data folder).
 
 ## 2. Publish it
 

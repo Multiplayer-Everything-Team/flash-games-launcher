@@ -57,14 +57,16 @@ void Launcher::startModsFetch() {
     if (modsThread_.joinable()) modsThread_.join();
     HWND wnd = hwnd_;
     std::wstring base = cfg_.modsInfoBase();
-    modsThread_ = std::thread([this, wnd, base] {
+    bool fresh = forceModsFetch_;  // F5 asks GitHub again, whatever was heard a few minutes ago
+    forceModsFetch_ = false;
+    modsThread_ = std::thread([this, wnd, base, fresh] {
         std::map<std::string, ModSource> found;
         for (const auto& g : cfg_.games) {
             if (!g.mod) continue;
             mod::Spec spec = *g.mod;
             ModSource s;
             std::wstring err;
-            s.known = mod::resolveSource(spec, base, s.source, err, cfg_.updates.source.api, fs::join(lib_.dataDir(), L"mods"));
+            s.known = mod::resolveSource(spec, base, s.source, err, cfg_.updates.source.api, fs::join(lib_.dataDir(), L"mods"), fresh);
             if (!s.known) logger().warn(L"mods-info: " + g.name + L": " + err);
             found[g.id] = std::move(s);
         }

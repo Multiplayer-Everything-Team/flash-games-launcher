@@ -1,18 +1,83 @@
 // The PC mods the launcher ships, installed from the layouts of their real GitHub
 // release zips (file names only), into fake game folders: files land where the
 // mod needs them, and an uninstall leaves the game folder exactly as it was.
+#include <atomic>
 #include <filesystem>
+#include <thread>
 
 #include "core/config.h"
+#include "core/json.h"
 #include "core/mod/manager.h"
 #include "core/mod/package.h"
 #include "core/win.h"
 #include "test.h"
+// win.h first (WIN32_LEAN_AND_MEAN keeps the old winsock.h out).
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 using namespace fl;
 using namespace fl::mod;
 
 namespace {
+
+// A stand-in for api.github.com that counts its questions: every request gets the release list whose newest
+// release is `version` (assets "Mod-<version>.zip") or, for a tag, the loader release.
+class FakeGithub {
+public:
+    FakeGithub() {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        sockaddr_in a{};
+        a.sin_family = AF_INET;
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bind(listener_, reinterpret_cast<sockaddr*>(&a), sizeof a);
+        listen(listener_, 8);
+        int len = sizeof a;
+        getsockname(listener_, reinterpret_cast<sockaddr*>(&a), &len);
+        port_ = ntohs(a.sin_port);
+        thread_ = std::thread([this] {
+            while (!stop_) {
+                fd_set rd;
+                FD_ZERO(&rd);
+                FD_SET(listener_, &rd);
+                timeval tv{0, 50000};
+                if (select(0, &rd, nullptr, nullptr, &tv) <= 0) continue;
+                SOCKET c = accept(listener_, nullptr, nullptr);
+                char buf[4096];
+                int n = recv(c, buf, sizeof buf - 1, 0);
+                std::string req(buf, n > 0 ? n : 0);
+                bool tag = req.find("/releases/tags/") != std::string::npos;
+                ++(tag ? tagHits : listHits);
+                std::string asset = tag ? "Loader.zip" : "Mod-" + narrow(version) + ".zip";
+                std::string rel = std::string("{\"tag_name\":\"") + (tag ? "loader-1" : "v" + narrow(version)) +
+                                  "\",\"draft\":false,\"assets\":[{\"name\":\"" + asset +
+                                  "\",\"browser_download_url\":\"https://example.invalid/" + asset +
+                                  "\",\"digest\":\"sha256:" + std::string(64, 'a') + "\"}]}";
+                std::string body = tag ? rel : "[" + rel + "]";
+                std::string reply = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
+                                    "\r\nConnection: close\r\n\r\n" + body;
+                send(c, reply.data(), static_cast<int>(reply.size()), 0);
+                closesocket(c);
+            }
+        });
+    }
+    ~FakeGithub() {
+        stop_ = true;
+        thread_.join();
+        closesocket(listener_);
+        WSACleanup();
+    }
+    std::wstring address() const { return L"http://127.0.0.1:" + std::to_wstring(port_); }
+    std::atomic<int> listHits{0}, tagHits{0};
+    std::wstring version = L"1.0.0";
+
+private:
+    SOCKET listener_ = INVALID_SOCKET;
+    int port_ = 0;
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+};
 
 Config loadShipped() {
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
@@ -317,6 +382,49 @@ TEST(shipped_dave_the_diver_installs_bepinex_6_and_the_plugin) {
     CHECK(exists(game + L"\\BepInEx\\plugins\\DaveTheDiverMP\\DaveTheDiverMP.dll"));
     REQUIRE(uninstallShipped(cfg, *g, game).result == Outcome::Result::Success);
     CHECK(folderSnapshot(game) == before);
+}
+
+TEST(a_new_release_shows_within_ten_minutes_and_a_pinned_loader_is_asked_once) {
+    LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
+                       "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": [ {"id": "r", "paths": ["r.exe"]} ],
+        "games": [ { "id": "g", "name": "G", "mod": { "id": "g-mod", "game": {"name": "G", "executable": "G.exe",
+        "detection": [{"type": "path", "path": "C:\\x"}]}, "components": [{"id": "m", "source": "a"}],
+        "package": {"github": "o/r", "asset": "Mod-*.zip",
+                    "extras": [{"dir": "loader", "github": "o/r", "tag": "loader-1", "asset": "Loader.zip"}]} } } ] })",
+                              L"C:\\x");
+    REQUIRE(r.ok());
+    Spec spec = *r.config.games[0].mod;
+    TempDir cache("sources-cache");
+    FakeGithub api;
+    std::wstring err;
+    Source s;
+
+    REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+    CHECK(s.version == L"1.0.0" && s.extras.size() == 1);
+    CHECK(api.listHits == 1 && api.tagHits == 1);  // the first time: the release list and the loader
+
+    api.version = L"1.0.1";  // a new release appears; the answer heard a moment ago is still used...
+    REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+    CHECK(s.version == L"1.0.0" && api.listHits == 1);
+    // ...but F5 asks again, and the loader (pinned by tag) is not asked about a second time
+    REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path(), true));
+    CHECK(s.version == L"1.0.1");
+    CHECK(api.listHits == 2 && api.tagHits == 1);
+    CHECK(s.extras.size() == 1 && s.extras[0].url.find(L"Loader.zip") != std::wstring::npos);
+
+    // An answer older than ten minutes is asked again without F5.
+    api.version = L"1.0.2";
+    std::string text = readText(cache / L"sources.json");
+    std::string perr;
+    json::Value all = json::parse(text, &perr);
+    REQUIRE(all.isObject() && all.find("g-mod"));
+    json::Value entry = *all.find("g-mod");
+    entry.set("at", 1000);
+    all.set("g-mod", entry);
+    std::string aged = json::serialize(all, true);
+    writeText(cache / L"sources.json", aged);
+    REQUIRE(resolveSource(spec, L"", s, err, api.address(), cache.path()));
+    CHECK(s.version == L"1.0.2" && api.listHits == 3 && api.tagHits == 1);
 }
 
 TEST(mod_config_github_extras_and_requires_are_validated) {

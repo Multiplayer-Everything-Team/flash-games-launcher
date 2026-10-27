@@ -304,6 +304,7 @@ private:
     void chooseGameFolder();
     std::wstring modJobText() const;
     std::map<int, ModView> mods_;  // by game index
+    bool forceModsFetch_ = false;  // the next mods lookup skips the short cache (set by F5)
     std::thread modsThread_;
     std::map<std::string, ModSource> pendingSources_;  // handed over in WM_APP_MODS (under installMu_)
     // The running mod job (the install thread is shared with player and game downloads).

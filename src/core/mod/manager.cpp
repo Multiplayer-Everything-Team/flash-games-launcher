@@ -134,8 +134,10 @@ Outcome uninstall(const Spec& spec, const Vars& base, const std::wstring& gameDi
 
 namespace {
 
+// `known`: what was resolved last time. A loader pinned by tag never changes, so it is taken from there instead of
+// asking GitHub again: checking for a mod's new release stays one question, not one per download.
 bool resolveSourceUncached(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
-                           const std::wstring& githubApi) {
+                           const std::wstring& githubApi, const Source* known = nullptr) {
     out = {};
     if (!spec.package.github.empty()) {
         GithubAsset a;
@@ -164,8 +166,15 @@ bool resolveSourceUncached(const Spec& spec, const std::wstring& modsInfoBase, S
         ExtraDownload d;
         d.dir = e.dir;
         d.sha256 = toLower(e.sha256);
+        const ExtraDownload* before = nullptr;
+        if (known && !e.tag.empty())
+            for (const auto& k : known->extras)
+                if (iequals(k.dir, e.dir) && !k.url.empty() && !k.sha256.empty()) before = &k;
         if (!e.url.empty()) {
             d.url = e.url;
+        } else if (before) {
+            d.url = before->url;
+            if (d.sha256.empty()) d.sha256 = before->sha256;
         } else {
             GithubAsset a;
             if (!findGithubAsset(e.github, e.tag, e.asset, githubApi, a, error)) return false;
@@ -185,7 +194,7 @@ std::string sourceSignature(const Spec& spec) {
     return sig;
 }
 
-constexpr int64_t kSourceCacheSeconds = 3600;
+constexpr int64_t kSourceCacheSeconds = 600;  // a new release shows within ten minutes of its publishing
 
 json::Value sourceToJson(const Source& s, const std::string& sig, int64_t at) {
     json::Value o = json::Value::object();
@@ -233,7 +242,7 @@ bool sourceFromJson(const json::Value& o, const std::string& sig, Source& out, i
 }  // namespace
 
 bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& out, std::wstring& error,
-                   const std::wstring& githubApi, const std::wstring& cacheDir) {
+                   const std::wstring& githubApi, const std::wstring& cacheDir, bool forceFresh) {
     if (spec.package.github.empty() || cacheDir.empty())
         return resolveSourceUncached(spec, modsInfoBase, out, error, githubApi);
     std::wstring file = fs::join(cacheDir, L"sources.json");
@@ -246,11 +255,11 @@ bool resolveSource(const Spec& spec, const std::wstring& modsInfoBase, Source& o
     bool have = false;
     if (const json::Value* e = all.find(key)) have = sourceFromJson(*e, sig, cached, at);
     int64_t now = unixNow();
-    if (have && now - at >= 0 && now - at < kSourceCacheSeconds) {
+    if (have && !forceFresh && now - at >= 0 && now - at < kSourceCacheSeconds) {
         out = cached;
         return true;
     }
-    if (resolveSourceUncached(spec, modsInfoBase, out, error, githubApi)) {
+    if (resolveSourceUncached(spec, modsInfoBase, out, error, githubApi, have ? &cached : nullptr)) {
         all.set(key, sourceToJson(out, sig, now));
         std::string data = json::serialize(all, true);
         fs::ensureDir(cacheDir, nullptr, nullptr);

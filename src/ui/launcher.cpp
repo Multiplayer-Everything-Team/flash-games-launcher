@@ -207,6 +207,7 @@ int Launcher::run(const LauncherOptions& opt) {
                 }
             }
             if (msg.wParam == VK_F5) {
+                forceModsFetch_ = true;
                 refreshAll();
                 continue;
             }
