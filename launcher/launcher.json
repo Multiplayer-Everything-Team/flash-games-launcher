@@ -98,6 +98,18 @@
       "players": "1-4 players",
       "online": { "id": "gm2", "join": "online" },
       "categories": ["flash", "online", "local", "versus"],
+      "guide": {
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game: MODE, HOST and JOIN."
+          }
+        ],
+        "tips": [
+          "The host is Player 1; friends join as Players 2, 3 and 4.",
+          "Play on one keyboard (up to four players) is under Other ways to connect, once Settings shows offline play."
+        ]
+      },
       "color": "#FF6A3D",
       "colorEnd": "#B4234E",
       "image": "covers\\gunmayhem2.png",
@@ -196,6 +208,24 @@
       "players": "1-4 players (online co-op)",
       "online": { "id": "sh2", "join": "online" },
       "categories": ["flash", "online", "coop"],
+      "guide": {
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game press F9, or click ONLINE CO-OP on the title screen, then HOST or JOIN with a friend's room code.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game."
+          }
+        ],
+        "tips": [
+          "Co-op for up to four players. The host runs the world and each player moves their own character on their own PC.",
+          "If anyone dies, the team restarts the mission.",
+          "This game runs in Ruffle only."
+        ]
+      },
       "color": "#2BD4C5",
       "colorEnd": "#1B3A6B",
       "image": "covers\\stealthhunter2.png",
@@ -286,6 +316,12 @@
       "players": "1-2 players (online co-op)",
       "online": { "id": "bic", "join": "online", "lobby": { "version": "2" } },
       "categories": ["flash", "online", "local", "coop"],
+      "guide": {
+        "tips": [
+          "Two players on two PCs. The host is Player 1 and picks the levels; the friend is Player 2.",
+          "The same game file plays co-op on one keyboard (Settings, Show offline play)."
+        ]
+      },
       "color": "#B983FF",
       "colorEnd": "#3CCB7F",
       "image": "covers\\badicecream.png",
@@ -328,6 +364,22 @@
       "maxPlayers": 4,
       "online": { "id": "tw", "join": "online" },
       "categories": ["flash", "online", "versus"],
+      "guide": {
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game click ONLINE PLAY on the main menu, or press F9, then HOST or JOIN with a room code.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game."
+          }
+        ],
+        "tips": [
+          "Red against blue on up to four PCs. Each team's sticks are shared out between that team's players."
+        ]
+      },
       "color": "#6BA539",
       "colorEnd": "#2C4A1E",
       "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. The online mod puts red against blue on up to four PCs; each team's sticks are shared out between its players.",
@@ -377,6 +429,17 @@
       "maxPlayers": 2,
       "online": { "id": "bowman", "join": "online" },
       "categories": ["flash", "online", "versus"],
+      "guide": {
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game choose VS Online on the title menu, then HOST or JOIN with a room code.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "tips": [
+          "Two archers on two PCs, taking turns.",
+          "This game runs in Ruffle only."
+        ]
+      },
       "color": "#C98A4B",
       "colorEnd": "#3B2A1A",
       "description": "Two archers take turns: drag to aim, release to shoot, mind the wind. The online mod puts each archer on their own PC.",
@@ -426,6 +489,23 @@
       "maxPlayers": 4,
       "online": { "id": "ucb", "join": "online" },
       "categories": ["flash", "online", "coop"],
+      "guide": {
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game."
+          }
+        ],
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game press F9, set MODE to ONLINE, then HOST (you get a room code) or type a friend's code and press JOIN.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "tips": [
+          "Up to four ships against the same crab, sharing one HP bar.",
+          "Friends can join in the middle of a fight."
+        ]
+      },
       "color": "#E8603C",
       "colorEnd": "#1D3C6E",
       "description": "One giant crab, up to four ships. The online co-op mod gives every player their own ship on their own PC; the team shares one HP bar.",
@@ -475,6 +555,22 @@
       "maxPlayers": 4,
       "online": { "id": "airbattle", "join": "online" },
       "categories": ["flash", "online", "coop"],
+      "guide": {
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game click ONLINE CO-OP on the main menu, or press F9, then HOST or JOIN with a room code.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game."
+          }
+        ],
+        "tips": [
+          "Up to four players fly the levels together, one balloon boat each."
+        ]
+      },
       "color": "#5AB4E6",
       "colorEnd": "#B4621E",
       "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player.",
@@ -524,6 +620,22 @@
       "maxPlayers": 4,
       "online": { "id": "raftwars", "join": "online" },
       "categories": ["flash", "online", "coop"],
+      "guide": {
+        "steps": [
+          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
+          "In the game click PLAY ONLINE on the main menu, or press F9, then HOST or JOIN with a room code.",
+          "Friends can also find your room in the Rooms list and press Join."
+        ],
+        "keys": [
+          {
+            "key": "F9",
+            "does": "Opens the online panel in the game."
+          }
+        ],
+        "tips": [
+          "Two to four players on the brothers' raft, taking turns at the bazooka, with shared credits in the shop."
+        ]
+      },
       "color": "#2E9CCA",
       "colorEnd": "#8A4A22",
       "description": "The brothers defend their treasure from the raft, taking turns at the bazooka. The online co-op mod gives up to four players a turn each; the team shares the credits in the shop.",
@@ -599,6 +711,38 @@
       "players": "2-4 players (co-op)",
       "online": { "id": "spooky" },
       "categories": ["pc", "online", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Spooky's Jump Scare Mansion: HD Renovation on Steam, with Steam running and signed in on every PC.",
+          "Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of the game and puts the mod in it.",
+          "Press Launch. The game starts through Steam, which it needs.",
+          "In the game press F5 to open the multiplayer panel, then set your name and colour.",
+          "Pick Online (Steam) or LAN / direct. Online (Steam): the host presses Host on Steam; friends pick the game from the Steam games list, press Join Game on the host's Steam profile, or accept the host's invite.",
+          "LAN / direct: the host presses Host (TCP port 27020 must be reachable: forward it, or use a LAN or a VPN such as Tailscale or ZeroTier). Friends pick the host's game from the server list, or type its address and press Join.",
+          "The host starts a run from the main menu (New Game or Continue). Every friend is pulled into the same mansion."
+        ],
+        "keys": [
+          {
+            "key": "F5",
+            "does": "Opens the multiplayer panel in the game."
+          }
+        ],
+        "tips": [
+          "Only the host starts a run.",
+          "If the host disconnects, the others keep playing alone: there is no host migration.",
+          "Starting the game's exe directly makes it quit and relaunch through Steam. Use Launch.",
+          "Joining over Steam has only been tested between copies on one PC so far."
+        ],
+        "links": [
+          {
+            "label": "Multiplayer Everything Discord",
+            "url": "https://discord.com/invite/P2MSSUf5GX"
+          }
+        ]
+      },
       "color": "#D6264F",
       "colorEnd": "#2A0A16",
       "description": "Co-op for Spooky's Jump Scare Mansion: HD Renovation (Steam). Play the mansion with up to four friends: shared rooms, keys, items, specimens, the axe and endings, with a LAN server list. Everyone needs the same version.",
@@ -656,6 +800,40 @@
       "site": "baldi",
       "players": "2-4 players (co-op)",
       "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Baldi's Basics Plus (version 0.14.5) on Steam. For Steam play: the game started from Steam, signed in.",
+          "Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of the game and puts the mod, and the BepInEx loader it needs, in it.",
+          "Press Launch.",
+          "In the main menu pick MULTIPLAYER (above the copyright), or press F5.",
+          "Host over your LAN, or pick STEAM GAME and HOST ON STEAM (friends only or public).",
+          "Friends join from FIND STEAM GAMES, from your invite, or with Join Game on your Steam profile.",
+          "The host starts the run; everyone shares one school."
+        ],
+        "keys": [
+          {
+            "key": "F5",
+            "does": "Opens the multiplayer menu."
+          },
+          {
+            "key": "F2",
+            "does": "Opens the debug console, used for bug reports."
+          }
+        ],
+        "tips": [
+          "Experimental: expect bugs, and send reports to the Discord.",
+          "Only the host starts a run."
+        ],
+        "links": [
+          {
+            "label": "Multiplayer Everything Discord",
+            "url": "https://discord.com/invite/P2MSSUf5GX"
+          }
+        ]
+      },
       "color": "#3C9B45",
       "colorEnd": "#12331A",
       "description": "Co-op for Baldi's Basics Plus (Steam): up to four players share one school, with Baldi, the other characters, items, the shop and elevators in sync. Play over your network or online through Steam. Everyone needs the same version.",
@@ -711,6 +889,37 @@
       "site": "miside",
       "players": "2-4 players (co-op)",
       "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of MiSide on Steam.",
+          "Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."
+        ],
+        "steps": [
+          "Press Install. The launcher finds your copy of MiSide and puts the mod, and BepInEx 6 which it needs, in it.",
+          "Press Launch. The first start after installing takes about a minute.",
+          "In the main menu open MULTIPLAYER, a new entry above Exit.",
+          "The host picks HOST GAME. Steam friends and players on your network can then join.",
+          "Friends pick JOIN <name> (STEAM) for each Steam friend hosting, JOIN <name> (LAN) for a game on your network or VPN, or JOIN BY ADDRESS to type one (TCP port 27030).",
+          "The host plays the story as usual (New game, Continue or Chapters). Everyone else follows automatically."
+        ],
+        "keys": [
+          {
+            "key": "F5",
+            "does": "Join by address: opens the panel to type the host's address."
+          }
+        ],
+        "tips": [
+          "Up to four players.",
+          "A friend who connects in the middle of a chapter waits in the menu and comes along when the next chapter starts.",
+          "If the host leaves, the next player becomes the host and the others reconnect to them."
+        ],
+        "links": [
+          {
+            "label": "Multiplayer Everything Discord",
+            "url": "https://discord.com/invite/P2MSSUf5GX"
+          }
+        ]
+      },
       "color": "#E58AB0",
       "colorEnd": "#3A1226",
       "description": "Co-op for MiSide (Steam): two to four players play the story together, with Mita, the cutscenes and the dialogue in sync. Friends join through Steam, your network or an address. Everyone needs the same version.",
@@ -770,6 +979,38 @@
       "site": "gta",
       "players": "2-4 players (co-op)",
       "categories": ["pc", "coop"],
+      "guide": {
+        "needs": [
+          "Your own copy of Grand Theft Auto: San Andreas, version 1.0 US. Steam and Rockstar Launcher copies must be downgraded to 1.0 first.",
+          "The DirectX End-User Runtime (June 2010), if the game says d3dx9_43.dll is missing.",
+          "Everyone you play with needs the same version of the mod."
+        ],
+        "steps": [
+          "Press Install. The co-op files go next to gta_sa.exe and the game's own eax.dll is kept.",
+          "Hosting? Run server.exe from the CoopAndreas/server folder in your GTA folder, and leave it open. Allow it through the firewall. Friends reach you by forwarding UDP port 6767, or through a VPN such as Tailscale, ZeroTier or Radmin VPN (easiest).",
+          "Everyone, the host too: press Launch, which starts LaunchCoopAndreas.exe, then Start Game.",
+          "Enter a nickname, the host's address (the host types 127.0.0.1) and port 6767, then Connect.",
+          "The host joins first: the first player in runs the story."
+        ],
+        "keys": [
+          {
+            "key": "F6",
+            "does": "Opens the chat. Type /report and what went wrong to save a bug report."
+          }
+        ],
+        "tips": [
+          "CLEO+ breaks shot sync. Move CLEO/CLEO+.cleo out of your GTA folder; the mod's own install.bat does that, the launcher does not.",
+          "Cutscenes skip when every player presses the skip key.",
+          "Don't start a mission in the first seconds after the game loads: walk to the marker first.",
+          "A crash closes the game quietly and writes a log to the CoopAndreas_crashes folder in your GTA folder."
+        ],
+        "links": [
+          {
+            "label": "Multiplayer Everything Discord",
+            "url": "https://discord.com/invite/P2MSSUf5GX"
+          }
+        ]
+      },
       "color": "#E07A1F",
       "colorEnd": "#3A1B07",
       "description": "Co-op for Grand Theft Auto: San Andreas (PC, version 1.0 US): the whole story with up to four friends, with missions, cutscenes, money, saves and gang territories in sync. Based on CoopAndreas. You need your own copy of the game, downgraded to 1.0, and everyone needs the same version.",

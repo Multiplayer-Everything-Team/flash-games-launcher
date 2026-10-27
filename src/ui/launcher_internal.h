@@ -80,6 +80,12 @@ enum : int {
     kIdFav = 110,
     kIdLocate,
     kIdFolder,
+    kIdAbout,
+    kIdGuideBack,
+    kIdGuideLink0,
+    kIdGuideLink1,
+    kIdGuideLink2,
+    kIdGuideLink3,
     kIdGetPlayer,
     kIdStopHost,
     kIdCopy,
@@ -102,7 +108,7 @@ enum : int {
 };
 
 // Icon-font glyphs (Segoe Fluent Icons / MDL2 Assets) for the window's own items.
-constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] = L"\uE768", kIconRooms[] = L"\uE902",
+constexpr wchar_t kIconAll[] = L"\uE8A9", kIconFav[] = L"\uE734", kIconReady[] = L"\uE768", kIconRooms[] = L"\uE902", kIconSoon[] = L"\uE916",
                   kIconSettings[] = L"\uE713", kIconMore[] = L"\uE70D", kIconLess[] = L"\uE70E", kIconQuick[] = L"\uE945";
 constexpr wchar_t kIconInstall[] = L"\uE896", kIconUpdate[] = L"\uE777", kIconRepair[] = L"\uE90F",
                   kIconUninstall[] = L"\uE74D";

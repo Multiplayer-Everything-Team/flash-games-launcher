@@ -173,6 +173,20 @@ struct LobbySpec {
     int port = 7790;              // Direct IP hosting listens here
 };
 
+// A link on a game's guide page (a button at the bottom); always https://.
+struct GuideLink {
+    std::wstring label, url;
+};
+constexpr size_t kGuideMaxLinks = 4;
+
+// What a game's guide page says, written in launcher.json. Anything left out is filled in from a default for
+// that kind of game (core/guide.h), so a game needs no `guide` at all.
+struct GuideSpec {
+    std::vector<std::wstring> needs, steps, tips;
+    std::vector<std::pair<std::wstring, std::wstring>> keys;  // key -> what it does
+    std::vector<GuideLink> links;
+};
+
 struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
@@ -184,6 +198,7 @@ struct GameSpec {
     std::string onlineId, joinAction;
     std::string siteId;  // the game's id on the website when it differs from `id` ("baldi" for "baldi-together")
     LobbySpec lobby;
+    GuideSpec guide;
     std::vector<std::string> categories;
     bool comingSoon = false;  // listed with "Coming soon" and no buttons (its mod isn't built yet)
     // A PC game mod: installed into the game's folder instead of played in Ruffle.

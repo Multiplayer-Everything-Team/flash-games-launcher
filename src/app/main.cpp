@@ -419,6 +419,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         opt.width = a.width;
         opt.height = a.height;
         opt.demoHost = a.demoHost;
+        opt.guide = a.guide;
         opt.lobby = narrow(a.lobby);
         code = launcher.run(opt);
     }

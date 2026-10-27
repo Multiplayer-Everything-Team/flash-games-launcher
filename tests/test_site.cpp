@@ -159,3 +159,33 @@ TEST(games_the_launcher_lacks_become_coming_soon_and_the_site_fills_in_what_is_m
     CHECK(again.findGame("site-planned") == nullptr);
     CHECK(again.findGame("site-native") != nullptr);  // the entry the native game no longer claims is listed instead
 }
+
+TEST(the_website_cannot_steer_a_file_name_or_a_link_the_launcher_uses) {
+    const char* json = R"({ "games": [
+      { "id": "../escape", "name": "Bad id" },
+      { "id": "ok-game_1", "name": "Fine", "repo": "owner/name.v2", "cover": "covers/fine.png" },
+      { "id": "has space", "name": "Space" },
+      { "id": "x", "name": "Bad repo", "repo": "owner/name/../../other" },
+      { "id": "y", "name": "Bad repo 2", "repo": "owner/na me?x=1" },
+      { "id": "z", "name": "Bad covers", "cover": "../covers/z.png" },
+      { "id": "w", "name": "Other covers", "cover": "https://evil.example/w.png" },
+      { "id": "v", "name": "Wrong type", "cover": "covers/v.exe" }
+    ] })";
+    std::vector<SiteGame> list;
+    REQUIRE(parseSite(json, list));
+    REQUIRE(list.size() == 6);  // the two with a bad id are dropped
+    CHECK(list[0].id == "ok-game_1" && list[0].repo == L"owner/name.v2" && list[0].cover == L"covers/fine.png");
+    for (size_t i = 1; i < list.size(); ++i) {
+        CHECK(list[i].repo.empty() || list[i].id == "ok-game_1");  // a bad repo is never kept
+        CHECK(list[i].cover.empty());                              // nor a cover outside covers/<name>.png|jpg
+    }
+    CHECK(isGithubRepo(L"owner/name") && isGithubRepo(L"a-b_c/d.e") && !isGithubRepo(L"owner") && !isGithubRepo(L"a/b/c") &&
+          !isGithubRepo(L"../x") && !isGithubRepo(L"a/..") && !isGithubRepo(L"a/b c") && !isGithubRepo(L""));
+    CHECK(isSiteCover("covers/x.png") && isSiteCover("covers/Some-Game_2.JPG") && !isSiteCover("covers/") &&
+          !isSiteCover("covers/a/b.png") && !isSiteCover("covers/..png") && !isSiteCover("x/covers/a.png"));
+    // The cover file always sits directly in the covers folder.
+    for (const auto& s : list) {
+        std::wstring file = siteCoverFile(L"covers", s);
+        CHECK(file.find(L"..") == std::wstring::npos && file.find(L"/") == std::wstring::npos);
+    }
+}

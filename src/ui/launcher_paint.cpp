@@ -117,12 +117,14 @@ void Launcher::paint(HDC dc, const RECT& dirty) {
 
         if (roomsPage()) {
             paintRoomsPage(g);
+        } else if (guidePage()) {
+            paintGuidePage(g, buf.dc);
         } else if (visible_.empty()) {
             RECT r = gridRc_;
             r.top += t.s(80);
-            drawText(g, cfg_.t("empty.title"), r, t.heading, t.c.text, DT_CENTER | DT_SINGLELINE);
+            drawText(g, emptyTitle(), r, t.heading, t.c.text, DT_CENTER | DT_SINGLELINE);
             r.top += t.s(30);
-            drawText(g, cfg_.t("empty.body"), r, t.body, t.c.textMuted, DT_CENTER | DT_SINGLELINE);
+            drawText(g, emptyBody(), r, t.body, t.c.textMuted, DT_CENTER | DT_SINGLELINE);
         }
         paintDetail(g, buf.dc);
         paintStatus(g, buf.dc);

@@ -218,13 +218,16 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 navIndex_ = static_cast<size_t>(SendMessageW(nav_, LB_GETCURSEL, 0, 0));
                 SendMessageW(navCombo_, CB_SETCURSEL, navIndex_, 0);
                 user_.category = navItems_[navIndex_].key;
+                closeGuide();
                 rebuildGrid();
             } else if (id == kIdNavCombo && code == CBN_SELCHANGE) {
                 navIndex_ = static_cast<size_t>(SendMessageW(navCombo_, CB_GETCURSEL, 0, 0));
                 SendMessageW(nav_, LB_SETCURSEL, navIndex_, 0);
                 user_.category = navItems_[navIndex_].key;
+                closeGuide();
                 rebuildGrid();
             } else if (id == kIdSearch && code == EN_CHANGE) {
+                closeGuide();
                 rebuildGrid();
             } else if (id == kIdSearch && (code == EN_SETFOCUS || code == EN_KILLFOCUS)) {
                 InvalidateRect(hwnd_, &searchBox_, FALSE);
@@ -241,6 +244,14 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
+                else if (id == kIdAbout) {
+                    if (guidePage() && guideGame_ == selected_) closeGuide();
+                    else openGuide(selected_);
+                } else if (id == kIdGuideBack) closeGuide();
+                else if (id >= kIdGuideLink0 && id <= kIdGuideLink3) {
+                    size_t i = static_cast<size_t>(id - kIdGuideLink0);
+                    if (i < guide_.links.size()) sys::openPath(guide_.links[i].url);
+                }
                 else if (id == kIdGetPlayer) getPlayer();
                 else if (id == kIdStopHost) {
                     if (Session* s = webHostSession(selected_)) {
@@ -279,6 +290,10 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_MOUSEWHEEL:
+            if (guidePage()) {
+                scrollGuide(-GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA * theme_.s(48));
+                return 0;
+            }
             if (roomsPage()) {
                 pageScroll_ -= GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
                 layoutRoomsPage();

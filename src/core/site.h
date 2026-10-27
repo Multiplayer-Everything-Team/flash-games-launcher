@@ -23,7 +23,7 @@ struct SiteGame {
     std::wstring version, updated, connect, maintainer, engine;
     // What the site shows for the game itself: used for games the launcher doesn't have yet, and to fill
     // in what a launcher game leaves out.
-    std::wstring description, players, platform, color, colorEnd, cover;  // cover: a path on the site, "covers/x.png"
+    std::wstring description, players, platform, color, colorEnd, cover, repo;  // repo: "owner/name" on GitHub  // cover: a path on the site, "covers/x.png"
     int slots = 0;
     float coverFocus = 0.5f;
     // see, story, enemies, world, items -> synced | partly | unknown
@@ -31,6 +31,11 @@ struct SiteGame {
     // lab, friends, online2, four, launcher, release -> done | partly | none
     std::map<std::string, std::string> progress;
 };
+
+// What the launcher accepts from the website (anything else is dropped, see docs/SECURITY_REVIEW.md): a repository
+// as "owner/name" of letters, digits, '-', '_' and '.', and a cover as "covers/<name>.png|jpg".
+bool isGithubRepo(const std::wstring& repo);
+bool isSiteCover(const std::string& path);
 
 // The site's list. Returns false when `json` isn't a games.json.
 bool parseSite(std::string_view json, std::vector<SiteGame>& out);

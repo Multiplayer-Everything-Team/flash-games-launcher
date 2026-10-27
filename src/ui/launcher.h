@@ -15,6 +15,7 @@
 
 #include "core/config.h"
 #include "core/discord.h"
+#include "core/guide.h"
 #include "core/install.h"
 #include "core/library.h"
 #include "core/lobby.h"
@@ -36,6 +37,7 @@ struct LauncherOptions {
     std::string select;      // game id to select at start
     int width = 0, height = 0;
     bool demoHost = false;   // snapshot: start the relay for the selected game
+    bool guide = false;      // snapshot: open the selected game's guide page
     std::string lobby;       // snapshot: "setup" or "room" renders the lobby window instead
 };
 
@@ -187,6 +189,26 @@ private:
     void copyText(const std::wstring& text);
     std::wstring roomCountText(const std::string& gameId) const;
     void toggleFavorite();
+    // The guide page (launcher_guide.cpp): steps, keys and tips for the selected game, in place of the grid.
+    struct GuideRow {
+        size_t block = 0;
+        int y = 0, h = 0;  // from the top of the page's content
+    };
+    bool guidePage() const;
+    void openGuide(int gameIndex);
+    void closeGuide();
+    void layoutGuidePage();
+    void paintGuidePage(Gdiplus::Graphics& g, HDC dc);
+    void scrollGuide(int pixels);
+    int guideGame_ = -1, guideScroll_ = 0, guideContentH_ = 0;
+    GuidePage guide_;
+    std::vector<GuideRow> guideRows_;
+    RECT guideView_{}, guideHead_{}, guideFoot_{};
+    HWND guideBack_ = nullptr;
+    std::vector<HWND> guideLinkBtns_;
+    std::wstring emptyTitle() const;
+    std::wstring emptyBody() const;
+    int gridRank(int gameIndex) const;  // 0 favorites, 1 ready, 2 the rest, 3 coming soon
     void onPlayerChoice();
     void notice(const std::wstring& text, const Color& color);
     void save();
@@ -247,6 +269,7 @@ private:
     void startSiteFetch();
     void onSite(int newCovers);
     void paintGradeChip(Gdiplus::Graphics& g, const RECT& box, const std::string& grade);
+    void drawGlyphCentered(Gdiplus::Graphics& g, const std::wstring& glyph, const RECT& box, const Color& color);
     int siteBlockHeight(HDC dc, int width, const SiteGame* s, bool soon);
     int siteDotsHeight(HDC dc, int width, const SiteGame& s);
     std::wstring siteFacts(const SiteGame& s, bool soon) const;
@@ -313,6 +336,7 @@ private:
     Theme theme_;
     HWND hwnd_ = nullptr, nav_ = nullptr, navCombo_ = nullptr, search_ = nullptr, grid_ = nullptr,
          playerCombo_ = nullptr;
+    HWND aboutBtn_ = nullptr;
     HWND favBtn_ = nullptr, locateBtn_ = nullptr, folderBtn_ = nullptr, getPlayerBtn_ = nullptr,
          stopHostBtn_ = nullptr, copyBtn_ = nullptr;
     std::vector<HWND> actionBtns_;

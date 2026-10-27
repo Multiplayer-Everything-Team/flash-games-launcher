@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MultiplayerEverythingLauncher VERSION 2.0.1 LANGUAGES CXX RC)
+project(MultiplayerEverythingLauncher VERSION 2.1.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +38,7 @@ add_library(launcher_core STATIC
   src/core/relay.cpp
   src/core/rooms.cpp
   src/core/site.cpp
+  src/core/guide.cpp
   src/core/settings.cpp
   src/core/strings.cpp
   src/core/vars.cpp
@@ -86,6 +87,7 @@ add_executable(launcher WIN32
   src/ui/launcher_online.cpp
   src/ui/launcher_paint.cpp
   src/ui/launcher_site.cpp
+  src/ui/launcher_guide.cpp
   src/ui/settings.cpp
   src/app/app.manifest
   "${APP_RC}"
@@ -96,7 +98,7 @@ target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 u
 
 # ---- tests ----------------------------------------------------------------
 enable_testing()
-add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_mod.cpp tests/test_shipped_mods.cpp tests/test_site.cpp tests/test_relay.cpp tests/test_lobby.cpp)
+add_executable(launcher_tests tests/test_main.cpp tests/test_core.cpp tests/test_mod.cpp tests/test_shipped_mods.cpp tests/test_site.cpp tests/test_guide.cpp tests/test_relay.cpp tests/test_lobby.cpp)
 target_link_libraries(launcher_tests PRIVATE launcher_core shell32)
 add_test(NAME core_and_relay COMMAND launcher_tests)
 add_test(NAME end_to_end

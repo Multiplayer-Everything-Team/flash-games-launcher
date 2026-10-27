@@ -101,6 +101,7 @@ int Launcher::run(const LauncherOptions& opt) {
         }
         onRooms();
     }
+    if (opt.guide && selected_ >= 0) openGuide(selected_);  // after the website's list, which the page uses
     std::vector<std::unique_ptr<lobby::Session>> demoGuests;
     if (snapshot_ && !opt.lobby.empty() && selected_ >= 0 && usesLobby(selected_)) {
         openLobby(selected_);
@@ -188,6 +189,19 @@ int Launcher::run(const LauncherOptions& opt) {
             if (ctrl && msg.wParam == VK_OEM_COMMA) {
                 openSettings();
                 continue;
+            }
+            if (guidePage() && msg.hwnd != search_ && msg.hwnd != tabCodeEdit_ && msg.hwnd != pageCodeEdit_) {
+                int page = std::max(theme_.s(48), height(guideView_) - theme_.s(48));
+                switch (msg.wParam) {
+                    case VK_ESCAPE: closeGuide(); continue;
+                    case VK_NEXT: scrollGuide(page); continue;
+                    case VK_PRIOR: scrollGuide(-page); continue;
+                    case VK_DOWN: scrollGuide(theme_.s(48)); continue;
+                    case VK_UP: scrollGuide(-theme_.s(48)); continue;
+                    case VK_HOME: scrollGuide(-guideContentH_); continue;
+                    case VK_END: scrollGuide(guideContentH_); continue;
+                    default: break;
+                }
             }
             if (msg.wParam == VK_F5) {
                 refreshAll();
@@ -322,6 +336,9 @@ void Launcher::createControls() {
     playerCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdPlayer);
     favBtn_ = makeButton(kIdFav, BtnStyle::Ghost);
     folderBtn_ = makeButton(kIdFolder, BtnStyle::Ghost);
+    aboutBtn_ = makeButton(kIdAbout, BtnStyle::Ghost);
+    guideBack_ = makeButton(kIdGuideBack, BtnStyle::Secondary);
+    for (int i = 0; i < static_cast<int>(kGuideMaxLinks); ++i) guideLinkBtns_.push_back(makeButton(kIdGuideLink0 + i, BtnStyle::Secondary));
     locateBtn_ = makeButton(kIdLocate, BtnStyle::Secondary);
     getPlayerBtn_ = makeButton(kIdGetPlayer, BtnStyle::Secondary);
     copyBtn_ = makeButton(kIdCopy, BtnStyle::Secondary);
@@ -417,6 +434,8 @@ void Launcher::buildNav() {
     navItems_.push_back({"ready", cfg_.t("nav.ready"), kIconReady});
     bool online = std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return !g.onlineId.empty(); });
     if (online) navItems_.push_back({"rooms", cfg_.t("nav.rooms"), kIconRooms});
+    if (std::any_of(cfg_.games.begin(), cfg_.games.end(), [](const GameSpec& g) { return g.comingSoon; }))
+        navItems_.push_back({"soon", cfg_.t("nav.soon"), kIconSoon});
     for (const auto& c : cfg_.categories) navItems_.push_back({"cat:" + c.id, c.name, c.icon, c.group.empty() ? "categories" : c.group});
     for (auto& n : navItems_) {
         n.count = 0;
@@ -427,9 +446,10 @@ void Launcher::buildNav() {
         for (size_t i = 0; i < cfg_.games.size(); ++i) {
             const auto& g = cfg_.games[i];
             const GameStats* st = user_.find(g.id);
-            bool in = n.key == "all" || (n.key == "fav" && st && st->favorite) ||
-                      (n.key == "ready" && gameReady(static_cast<int>(i))) ||
-                      (n.key.rfind("cat:", 0) == 0 &&
+            // Games that aren't released yet get a view of their own; the other lists show what you can use.
+            bool in = (n.key == "all" && !g.comingSoon) || (n.key == "soon" && g.comingSoon) ||
+                      (n.key == "fav" && st && st->favorite) || (n.key == "ready" && gameReady(static_cast<int>(i))) ||
+                      (n.key.rfind("cat:", 0) == 0 && !g.comingSoon &&
                        std::find(g.categories.begin(), g.categories.end(), n.key.substr(4)) != g.categories.end());
             if (in) ++n.count;
         }
@@ -457,8 +477,12 @@ bool Launcher::matches(int gi) const {
     const std::string& key = navItems_.empty() ? std::string("all") : navItems_[navIndex_].key;
     const GameStats* st = user_.find(g.id);
     if (key == "rooms") return false;  // the Rooms page replaces the grid
+    bool searching = !trim(windowText(search_)).empty();
     if (key == "fav" && !(st && st->favorite)) return false;
     if (key == "ready" && !gameReady(gi)) return false;
+    if (key == "soon" && !g.comingSoon) return false;
+    // Coming soon games show only in their own view, or when you search for one by name.
+    if (g.comingSoon && key != "soon" && key != "fav" && !searching) return false;
     if (key.rfind("cat:", 0) == 0 &&
         std::find(g.categories.begin(), g.categories.end(), key.substr(4)) == g.categories.end())
         return false;
@@ -470,10 +494,19 @@ bool Launcher::matches(int gi) const {
     return true;
 }
 
+int Launcher::gridRank(int gi) const {
+    const GameSpec& g = cfg_.games[gi];
+    const GameStats* st = user_.find(g.id);
+    if (g.comingSoon) return 3;
+    if (st && st->favorite) return 0;
+    return gameReady(gi) ? 1 : 2;
+}
+
 void Launcher::rebuildGrid() {
     visible_.clear();
     for (size_t i = 0; i < cfg_.games.size(); ++i)
         if (matches(static_cast<int>(i))) visible_.push_back(static_cast<int>(i));
+    std::stable_sort(visible_.begin(), visible_.end(), [this](int a, int b) { return gridRank(a) < gridRank(b); });
     suppressSelect_ = true;
     SendMessageW(grid_, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(grid_);
@@ -494,7 +527,7 @@ void Launcher::rebuildGrid() {
     }
     SendMessageW(grid_, WM_SETREDRAW, TRUE, 0);
     suppressSelect_ = false;
-    ShowWindow(grid_, visible_.empty() || roomsPage() ? SW_HIDE : SW_SHOW);
+    ShowWindow(grid_, visible_.empty() || roomsPage() || guidePage() ? SW_HIDE : SW_SHOW);
     hoverItem_ = -1;
     pageScroll_ = 0;
     layoutRoomsPage();
@@ -503,6 +536,7 @@ void Launcher::rebuildGrid() {
 }
 
 void Launcher::select(int gi) {
+    if (guidePage() && gi != guideGame_) closeGuide();
     if (gi != selected_ && gi >= 0 && motion_) titleFrom_ = GetTickCount64();
     selected_ = gi;
     if (gi >= 0) user_.selectedGame = cfg_.games[gi].id;

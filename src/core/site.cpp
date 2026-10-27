@@ -2,6 +2,8 @@
 
 #include "config.h"
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 
 #include "fs.h"
 #include "install.h"
@@ -19,6 +21,13 @@ std::string text(const json::Value& o, const char* key) {
     return v && v->isString() ? v->str() : std::string();
 }
 
+bool onlyChars(const std::string& s, const char* extra, size_t maxLen) {
+    if (s.empty() || s.size() > maxLen) return false;
+    for (unsigned char c : s)
+        if (!(isalnum(c) || strchr(extra, c))) return false;
+    return true;
+}
+
 std::map<std::string, std::string> stringMap(const json::Value& o, const char* key) {
     std::map<std::string, std::string> out;
     const json::Value* v = o.find(key);
@@ -29,6 +38,25 @@ std::map<std::string, std::string> stringMap(const json::Value& o, const char* k
 }
 
 }  // namespace
+
+bool isGithubRepo(const std::wstring& repo) {
+    size_t slash = repo.find(L'/');
+    if (slash == std::wstring::npos || repo.find(L'/', slash + 1) != std::wstring::npos) return false;
+    auto part = [](const std::wstring& p) {
+        return onlyChars(narrow(p), "-_.", 100) && p != L"." && p != L"..";
+    };
+    return part(repo.substr(0, slash)) && part(repo.substr(slash + 1));
+}
+
+bool isSiteCover(const std::string& path) {
+    const std::string dir = "covers/";
+    if (path.size() <= dir.size() + 4 || path.compare(0, dir.size(), dir) != 0) return false;
+    std::string name = path.substr(dir.size());
+    std::string ext = name.size() > 4 ? name.substr(name.size() - 4) : "";
+    for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    if (ext != ".png" && ext != ".jpg") return false;
+    return onlyChars(name.substr(0, name.size() - 4), "-_.", 80) && name.find("..") == std::string::npos;
+}
 
 bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
     out.clear();
@@ -41,7 +69,8 @@ bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
         if (!g.isObject()) continue;
         SiteGame s;
         s.id = text(g, "id");
-        if (s.id.empty()) continue;
+        // The id becomes part of a file name (the cover) and of a game id here: letters, digits, '-' and '_' only.
+        if (!onlyChars(s.id, "-_", 48)) continue;
         s.modId = text(g, "modId");
         s.kind = text(g, "kind");
         s.name = widen(text(g, "name"));
@@ -57,7 +86,9 @@ bool parseSite(std::string_view jsonText, std::vector<SiteGame>& out) {
         s.platform = widen(text(g, "platform"));
         s.color = widen(text(g, "color"));
         s.colorEnd = widen(text(g, "colorEnd"));
-        s.cover = widen(text(g, "cover"));
+        // A picture inside the site's own covers folder, nothing else.
+        s.cover = isSiteCover(text(g, "cover")) ? widen(text(g, "cover")) : std::wstring();
+        s.repo = isGithubRepo(widen(text(g, "repo"))) ? widen(text(g, "repo")) : std::wstring();
         if (const json::Value* sl = g.find("slots"); sl && sl->isNumber()) s.slots = static_cast<int>(sl->number());
         if (const json::Value* cf = g.find("coverFocus"); cf && cf->isNumber())
             s.coverFocus = std::clamp(static_cast<float>(cf->number()), 0.0f, 1.0f);
@@ -130,7 +161,7 @@ int fetchSiteCovers(const Config& cfg, const std::vector<SiteGame>& list, const 
     int got = 0;
     for (const auto& g : cfg.games) {
         const SiteGame* s = findSite(list, g.siteId, g.id, g.onlineId);
-        if (!s || s->cover.empty() || s->cover.find(L"..") != std::wstring::npos) continue;
+        if (!s || s->cover.empty()) continue;
         std::wstring dest = siteCoverFile(coverDir, *s);
         if (g.image != dest || fs::isFile(dest)) continue;  // not using the site's cover, or already have it
         std::wstring err;

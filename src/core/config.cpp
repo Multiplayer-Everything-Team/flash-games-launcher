@@ -249,7 +249,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"button.unfavorite", L"\u2605  Favorite"},
         {"button.locate", L"Locate game file\u2026"},
         {"button.locateFor", L"Locate file for \u201C${ACTION}\u201D\u2026"},
-        {"button.folder", L"Open folder"},
+        {"button.folder", L"Folder"},
         {"button.getPlayer", L"Get ${PLAYER}"},
         {"button.installPlayer", L"Install ${PLAYER}"},
         {"button.downloadGame", L"Download game files (${SIZE})"},
@@ -365,6 +365,64 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"name.body", L"Choose your player name. Other players see it in rooms and in the game. You can change it later in Settings."},
         {"name.label", L"Player name"},
         {"name.ok", L"Continue"},
+        {"nav.soon", L"Coming soon"},
+        {"button.guide", L"Guide"},
+        {"guide.back", L"Back to games"},
+        {"guide.title", L"Guide: ${NAME}"},
+        {"guide.h.about", L"About"},
+        {"guide.h.needs", L"What you need"},
+        {"guide.h.steps", L"How to play"},
+        {"guide.h.keys", L"Keys"},
+        {"guide.h.tips", L"Good to know"},
+        {"guide.h.site", L"From the website"},
+        {"guide.github", L"Open its GitHub page"},
+        {"guide.soon", L"This one isn't available yet. When it is, it appears in the main list and you can install or play it from here."},
+        {"guide.need.game", L"Your own copy of ${GAME}, on this PC."},
+        {"guide.need.version", L"Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."},
+        {"guide.need.player", L"Ruffle or Flash Player. The launcher installs Ruffle for you the first time."},
+        {"guide.need.name", L"A player name: the launcher asks for it on the first start, and Settings changes it."},
+        {"guide.mod.1", L"Press Install. The launcher finds your copy of ${GAME} and puts the mod in it."},
+        {"guide.mod.launch", L"Press Launch. The game starts the way the mod needs it to."},
+        {"guide.mod.friends", L"Friends do the same steps on their PC, then join your game from the mod's menu."},
+        {"guide.mod.tip", L"Uninstall puts your game back exactly as it was."},
+        {"guide.lobby.1", L"Press Play online. The lobby opens."},
+        {"guide.lobby.2", L"Host a room, or pick an open room from the list (or type its code) and press Join."},
+        {"guide.lobby.3", L"Everyone presses I'm ready. The host presses Start game, and the game opens for everyone."},
+        {"guide.lobby.tip", L"Rooms use the Multiplayer Everything server, so nobody needs an IP address or port forwarding. Direct IP is there for Radmin, ZeroTier and LAN."},
+        {"guide.online.1", L"Press Play online. Quick play joins the busiest open room, or starts a room if none is open."},
+        {"guide.online.2", L"In the game press F9, set MODE to ONLINE, and press HOST (you get a room code) or type a friend's code and press JOIN."},
+        {"guide.online.3", L"Friends can also find your room in the Rooms list and press Join."},
+        {"guide.online.tip", L"Rooms use the Multiplayer Everything server, so nobody needs an IP address or port forwarding."},
+        {"guide.play.1", L"Press the Play button."},
+        {"guide.site.stage", L"Stage"},
+        {"guide.site.quality", L"Quality"},
+        {"guide.site.version", L"Newest version"},
+        {"guide.site.updated", L"Last updated"},
+        {"guide.site.connect", L"Connects through"},
+        {"guide.site.madeBy", L"Made by"},
+        {"guide.site.players", L"Players"},
+        {"guide.site.sync", L"What stays in sync"},
+        {"site.planned", L"We are working on this one. It gets a grade once friends have played it."},
+        {"button.about", L"About"},
+        {"about.title", L"${NAME}"},
+        {"about.github", L"Open its GitHub page"},
+        {"about.close", L"Close"},
+        {"about.stage", L"Stage"},
+        {"about.quality", L"Quality"},
+        {"about.version", L"Newest version"},
+        {"about.updated", L"Last updated"},
+        {"about.connect", L"Connects through"},
+        {"about.madeBy", L"Made by"},
+        {"about.players", L"Players"},
+        {"about.sync", L"What stays in sync"},
+        {"empty.fav.title", L"No favorites yet"},
+        {"empty.fav.body", L"Open a game and press Favorite to keep it here."},
+        {"empty.ready.title", L"Nothing is ready to play yet"},
+        {"empty.ready.body", L"Install a mod, or download a game's files from its page."},
+        {"empty.soon.title", L"Nothing is coming soon"},
+        {"empty.soon.body", L"Games we are working on show up here."},
+        {"empty.search.title", L"No game matches"},
+        {"empty.search.body", L"Try other words, or clear the search."},
         {"site.status.available", L"Available"},
         {"site.status.testing", L"In testing"},
         {"site.status.not-on-server", L"Not on the server yet"},
@@ -976,6 +1034,33 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.str("controls", g.controls);
             s.str("image", g.image);
             s.str("site", g.siteId);
+            if (auto gv = s.get("guide", Type::Object)) {
+                Section gs(gv, s.child("guide"), issues);
+                gs.strList("needs", g.guide.needs);
+                gs.strList("steps", g.guide.steps);
+                gs.strList("tips", g.guide.tips);
+                if (auto keys = gs.get("keys", Type::Array))
+                    for (size_t k = 0; k < keys->size(); ++k) {
+                        Section ks(&keys->at(k), gs.child("keys") + L"[" + std::to_wstring(k) + L"]", issues);
+                        std::wstring key, does;
+                        ks.str("key", key);
+                        ks.str("does", does);
+                        if (key.empty() || does.empty()) ks.error(L"key", L"give both \"key\" and \"does\"");
+                        else g.guide.keys.emplace_back(key, does);
+                    }
+                if (auto links = gs.get("links", Type::Array))
+                    for (size_t k = 0; k < links->size(); ++k) {
+                        Section ls(&links->at(k), gs.child("links") + L"[" + std::to_wstring(k) + L"]", issues);
+                        GuideLink link;
+                        ls.str("label", link.label);
+                        ls.str("url", link.url);
+                        if (link.label.empty() || !startsWithI(link.url, L"https://"))
+                            ls.error(L"url", L"give a \"label\" and an https:// \"url\"");
+                        else if (g.guide.links.size() >= kGuideMaxLinks)
+                            ls.error(L"url", L"at most four links");
+                        else g.guide.links.push_back(std::move(link));
+                    }
+            }
             s.real("imageFocus", g.imageFocus, 0, 1);
             s.boolean("comingSoon", g.comingSoon);
             s.idList("categories", g.categories);

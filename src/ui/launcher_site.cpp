@@ -4,10 +4,12 @@
 
 #include "core/fs.h"
 #include "core/log.h"
+#include "core/process.h"
 #include "core/strings.h"
 #include "launcher.h"
 #include "launcher_internal.h"
 // win.h (via theme.h) first: these need the full Windows types.
+#include <commctrl.h>
 
 namespace fl::ui {
 
@@ -54,6 +56,10 @@ void Launcher::onSite(int newCovers) {
         site_ = std::move(pendingSite_);
         pendingSite_.clear();
     }
+    if (guidePage()) {  // the page uses the website's facts: build it again with them
+        guide_ = buildGuide(cfg_, cfg_.games[guideGame_], siteOf(guideGame_));
+        layoutGuidePage();
+    }
     InvalidateRect(grid_, nullptr, FALSE);
     layoutDetail();
     InvalidateRect(hwnd_, &detail_, FALSE);
@@ -74,11 +80,34 @@ Color gradeFill(const std::string& q) {
 
 }  // namespace
 
+// One capital letter or sign in the middle of `box`. Centering the font's whole line box leaves a capital sitting
+// high or low (the display font has a tall ascent), so the baseline is placed from the font's real cap height.
+void Launcher::drawGlyphCentered(Graphics& g, const std::wstring& glyph, const RECT& box, const Color& color) {
+    const Theme& t = theme_;
+    HDC dc = g.GetHDC();
+    HGDIOBJ old = SelectObject(dc, t.button);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    GLYPHMETRICS gm{};
+    MAT2 identity{{0, 1}, {0, 0}, {0, 0}, {0, 1}};
+    int capH = tm.tmAscent - tm.tmInternalLeading;  // fallback: the em height above the baseline
+    if (GetGlyphOutlineW(dc, L'H', GGO_METRICS, &gm, 0, nullptr, &identity) != GDI_ERROR && gm.gmBlackBoxY > 0)
+        capH = static_cast<int>(gm.gmBlackBoxY);
+    int ascent = tm.tmAscent;
+    SelectObject(dc, old);
+    g.ReleaseHDC(dc);
+    // The baseline goes capH/2 below the middle; the text's top is `ascent` above the baseline.
+    int top = (box.top + box.bottom) / 2 + capH / 2 - ascent;
+    // DT_CENTER centers the advance width, which leaves the ink a pixel to the left of the middle.
+    RECT r{box.left + t.s(1), top, box.right + t.s(1), top + tm.tmHeight};
+    drawText(g, glyph, r, t.button, color, DT_SINGLELINE | DT_CENTER | DT_TOP | DT_NOCLIP);
+}
+
 // A rounded square with the grade letter; `box` is its place.
 void Launcher::paintGradeChip(Graphics& g, const RECT& box, const std::string& grade) {
     const Theme& t = theme_;
     fillRound(g, rf(box), t.sf(5), gradeFill(grade));
-    drawText(g, widen(grade), box, t.button, Color{0x15, 0x17, 0x1C, 255}, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+    drawGlyphCentered(g, widen(grade), box, Color{0x15, 0x17, 0x1C, 255});
 }
 
 // ---- the details panel's block -------------------------------------------------------
@@ -97,8 +126,9 @@ int Launcher::siteBlockHeight(HDC dc, int w, const SiteGame* s, bool soon) {
     const Theme& t = theme_;
     int h = 0;
     // Grade row: the chip and its meaning (wraps).
-    std::wstring note = !s->quality.empty() && cfg_.text.count("site.quality." + s->quality) ? cfg_.t("site.quality." + s->quality)
-                                                                                                   : cfg_.t("site.unrated");
+    std::wstring note = soon ? cfg_.t("site.planned")
+                        : !s->quality.empty() && cfg_.text.count("site.quality." + s->quality) ? cfg_.t("site.quality." + s->quality)
+                                                                                                : cfg_.t("site.unrated");
     int chip = t.s(24);
     h += std::max(chip, textHeight(dc, t.caption, note, w - chip - t.s(10))) + t.s(8);
     h += textHeight(dc, t.caption, siteFacts(*s, soon), w) + t.s(8);
@@ -149,8 +179,9 @@ void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s, 
     const Theme& t = theme_;
     int w = width(r), y = r.top;
     // Grade chip and what it means.
-    std::wstring note = !s.quality.empty() && cfg_.text.count("site.quality." + s.quality) ? cfg_.t("site.quality." + s.quality)
-                                                                                           : cfg_.t("site.unrated");
+    std::wstring note = soon ? cfg_.t("site.planned")
+                        : !s.quality.empty() && cfg_.text.count("site.quality." + s.quality) ? cfg_.t("site.quality." + s.quality)
+                                                                                              : cfg_.t("site.unrated");
     int chip = t.s(24);
     bool graded = !s.quality.empty() && cfg_.text.count("site.quality." + s.quality);
     int noteH = textHeight(dc, t.caption, note, w - chip - t.s(10));
@@ -160,8 +191,8 @@ void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s, 
     } else {
         strokeRound(g, rf(RECT{r.left, y + (rowH - chip) / 2, r.left + chip, y + (rowH - chip) / 2 + chip}), t.sf(5),
                     t.c.textMuted, t.sf(1.2));
-        drawText(g, L"?", RECT{r.left, y + (rowH - chip) / 2, r.left + chip, y + (rowH - chip) / 2 + chip}, t.button,
-                 t.c.textMuted, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+        drawGlyphCentered(g, L"?", RECT{r.left, y + (rowH - chip) / 2, r.left + chip, y + (rowH - chip) / 2 + chip},
+                          t.c.textMuted);
     }
     drawText(g, note, RECT{r.left + chip + t.s(10), y, r.right, y + rowH}, t.caption, t.c.text, DT_WORDBREAK | DT_VCENTER);
     y += rowH + t.s(8);
@@ -203,6 +234,25 @@ void Launcher::paintSite(Graphics& g, HDC dc, const RECT& r, const SiteGame& s, 
                  state == "unknown" ? t.c.textMuted : t.c.text, DT_SINGLELINE | DT_VCENTER);
         x += iw;
     }
+}
+
+// What an empty list says, by the view it is in.
+std::wstring Launcher::emptyTitle() const {
+    std::string key = navItems_.empty() ? "all" : navItems_[navIndex_].key;
+    if (!trim(windowText(search_)).empty()) return cfg_.t("empty.search.title");
+    if (key == "fav") return cfg_.t("empty.fav.title");
+    if (key == "ready") return cfg_.t("empty.ready.title");
+    if (key == "soon") return cfg_.t("empty.soon.title");
+    return cfg_.t("empty.title");
+}
+
+std::wstring Launcher::emptyBody() const {
+    std::string key = navItems_.empty() ? "all" : navItems_[navIndex_].key;
+    if (!trim(windowText(search_)).empty()) return cfg_.t("empty.search.body");
+    if (key == "fav") return cfg_.t("empty.fav.body");
+    if (key == "ready") return cfg_.t("empty.ready.body");
+    if (key == "soon") return cfg_.t("empty.soon.body");
+    return cfg_.t("empty.body");
 }
 
 }  // namespace fl::ui

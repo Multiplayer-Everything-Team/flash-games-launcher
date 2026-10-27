@@ -77,6 +77,7 @@ void Launcher::relayout() {
                width(gridRc_) - t.s(kPad) * 2 + t.s(kGap), height(gridRc_), TRUE);
     layoutGrid();
     layoutRoomsPage();
+    layoutGuidePage();
     layoutDetail();
     layoutToast();
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -114,7 +115,7 @@ void Launcher::layoutDetail() {
     }
     dl_ = {};
     tabRows_.clear();
-    std::vector<HWND> all = {playerCombo_, favBtn_,      locateBtn_,   folderBtn_,  getPlayerBtn_,
+    std::vector<HWND> all = {playerCombo_, favBtn_,      aboutBtn_,    locateBtn_,   folderBtn_,  getPlayerBtn_,
                              stopHostBtn_, copyBtn_,     downloadBtn_, tabPlayBtn_, tabRoomsBtn_,
                              moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_};
     all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
@@ -212,8 +213,21 @@ void Launcher::layoutDetail() {
         SetWindowTextW(favBtn_, cfg_.t(st && st->favorite ? "button.unfavorite" : "button.favorite").c_str());
         SetWindowTextW(folderBtn_, cfg_.t("button.folder").c_str());
         int half = (w - gap) / 2;
-        MoveWindow(favBtn_, x, bottom - rowH, half, rowH, TRUE);
-        MoveWindow(folderBtn_, x + half + gap, bottom - rowH, w - half - gap, rowH, TRUE);
+        // Three small buttons share the row: Favorite, About (the whole description), Open folder.
+        // Each is as wide as its own label needs; what is left over is shared out evenly.
+        SetWindowTextW(aboutBtn_, cfg_.t("button.guide").c_str());
+        int want[3];
+        HWND row[3] = {favBtn_, aboutBtn_, folderBtn_};
+        for (int i = 0; i < 3; ++i) want[i] = textWidth(dc, t.button, windowText(row[i])) + t.s(36);
+        int spare = std::max(0, w - 2 * gap - (want[0] + want[1] + want[2])) / 3;
+        int bx = x;
+        for (int i = 0; i < 3; ++i) {
+            int bw = i == 2 ? x + w - bx : want[i] + spare;
+            MoveWindow(row[i], bx, bottom - rowH, bw, rowH, TRUE);
+            bx += bw + gap;
+        }
+        shown.insert(aboutBtn_);
+        (void)half;
         shown.insert(favBtn_);
         shown.insert(folderBtn_);
         bottom -= rowH + gap;
@@ -403,7 +417,7 @@ void Launcher::layoutDetail() {
     } else {
         // Text between the tabs and the controls, dropped when it doesn't fit.
         int textBottom = bottom - t.s(8);
-        std::wstring stats = statsText(st);
+        std::wstring stats = g.comingSoon ? std::wstring() : statsText(st);
         int statsH = textHeight(dc, t.caption, stats, w);
         if (textBottom - statsH >= y) {
             dl_.stats = {x, textBottom - statsH, x + w, textBottom};
