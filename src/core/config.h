@@ -167,6 +167,10 @@ struct ActionSpec {
     bool original = false;  // "edition": "original": the unmodded game, shown only when Settings asks
     bool isWeb() const { return !page.empty() || server.enabled() || joinLink; }
     bool isMod() const { return !modOp.empty(); }
+    // A button that opens an https page (a mod made by someone else, installed with its own setup).
+    // It needs no player and no file.
+    std::wstring link;
+    bool isLink() const { return !link.empty(); }
 };
 
 // The launcher's own lobby (core/lobby.h) for a mod that talks to the localhost

@@ -1256,6 +1256,66 @@
       }
     },
     {
+      // Made by someone else and installed with its own setup program: the launcher only links to it.
+      "id": "mdk2-coop",
+      "name": "MDK2 HD Co-op",
+      "players": "2-16 players (alpha)",
+      "categories": ["community"],
+      "maxPlayers": 4,
+      "color": "#E8A33D",
+      "colorEnd": "#8A3B12",
+      "guide": {
+        "needs": ["Your own copy of MDK2 HD on Steam, or the Overhaul Games (Beamdog) version."],
+        "steps": [
+          "Press Open the mod's page, download the newest zip and unzip it anywhere (not inside the game folder).",
+          "Open MDK2-Coop-Setup.exe and choose Install / Repair.",
+          "Start MDK2 HD as usual: the mod's own launcher opens first, where you host, join or play solo."
+        ],
+        "tips": [
+          "Made by TommoDotCommo, not by Multiplayer Everything. The launcher doesn't install, update or support it.",
+          "It is an alpha: expect rough edges, and report problems on its GitHub page.",
+          "Everyone needs the same version of the mod."
+        ]
+      },
+      "description": "Online co-op for MDK2 HD by TommoDotCommo: one player hosts, friends join over Steam or direct UDP, and you play the campaign together with shared enemies, doors and pickups. Alpha.",
+      "actions": [
+        {
+          "id": "page",
+          "label": "Open the mod's page",
+          "icon": "E774",
+          "description": "github.com/TommoDotCommo/mdk2-coop",
+          "link": "https://github.com/TommoDotCommo/mdk2-coop/releases"
+        }
+      ]
+    },
+    {
+      "id": "witness-coop",
+      "name": "The Witness Co-op",
+      "players": "Dev preview",
+      "categories": ["community"],
+      "maxPlayers": 4,
+      "color": "#3FA9A0",
+      "colorEnd": "#1C3E59",
+      "guide": {
+        "needs": ["Your own copy of The Witness on Steam, build 11370412."],
+        "steps": ["Press Open the mod's page to read how far it is and follow its progress."],
+        "tips": [
+          "Made by TommoDotCommo, not by Multiplayer Everything. The launcher doesn't install, update or support it.",
+          "It is a dev preview and not playable with friends yet: two copies of the game on one PC can see each other, and some puzzles are shared. It has no installer or release."
+        ]
+      },
+      "description": "Co-op for The Witness by TommoDotCommo. A dev preview: two games on one PC share some panels and doors and show each other as characters; playing with friends over the internet is not possible yet.",
+      "actions": [
+        {
+          "id": "page",
+          "label": "Open the mod's page",
+          "icon": "E774",
+          "description": "github.com/TommoDotCommo/witness-coop",
+          "link": "https://github.com/TommoDotCommo/witness-coop"
+        }
+      ]
+    },
+    {
       "id": "gta-coop",
       "name": "GTA San Andreas Co-op",
       "site": "gta",

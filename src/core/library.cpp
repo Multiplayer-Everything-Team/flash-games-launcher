@@ -157,6 +157,10 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
     v.set(L"GAME_ID", widen(g.id));
     v.set(L"GAME_NAME", g.name);
     v.set(L"PORT", std::to_wstring(a.relay.port));
+    if (a.isLink()) {  // opens a web page: nothing to find
+        r.state = ActionState::Ready;
+        return r;
+    }
 
     std::wstring userSwf;
     if (stats) {

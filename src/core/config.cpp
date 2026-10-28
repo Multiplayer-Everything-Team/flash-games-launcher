@@ -708,6 +708,7 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
     }
     s.strList("args", a.args);
     s.strList("joinArgs", a.joinArgs);
+    s.str("link", a.link);
     s.idList("players", a.players);
     if (auto o = s.get("overrides", Type::Object)) {
         for (size_t i = 0; i < o->size(); ++i) {
@@ -1259,6 +1260,10 @@ void validateConfig(const Config& cfg, std::vector<ConfigIssue>& issues) {
             if (!validId(a.id)) err(aw + L".id", L"must be letters, digits, '-', '_' or '.'");
             else if (!actionIds.insert(a.id).second) err(aw + L".id", L"duplicate action id \"" + widen(a.id) + L"\"");
             if (a.isMod()) continue;  // made by the launcher: no file to check
+            if (a.isLink()) {
+                if (!startsWithI(a.link, L"https://")) err(aw + L".link", L"must be an https:// address");
+                continue;
+            }
             if (a.isWeb()) {
                 if (a.server.enabled() && a.server.url.empty())
                     err(aw + L".server.url", L"give the address the game opens at, e.g. \"http://localhost:2053/\"");

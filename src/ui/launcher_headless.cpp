@@ -53,6 +53,10 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         message = cfg.t("notice.launched", {{L"GAME", game.name}, {L"PLAYER", game.name}});
         return 0;
     }
+    if (action.isLink()) {
+        message = L"\"" + action.label + L"\" opens " + action.link + L" in your browser and needs the launcher window.";
+        return 3;
+    }
     ResolvedAction r = lib.resolve(game, action, user);
     if (r.state != ActionState::Ready) {
         message = cfg.t("notice.notReady", {{L"GAME", game.name}, {L"REASON", stateReason(cfg, r)}});

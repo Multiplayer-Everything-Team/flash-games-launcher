@@ -48,6 +48,13 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
     const GameSpec& g = cfg_.games[gi];
     const ActionSpec& a = g.actions[ai];
     if (a.isMod()) return runModAction(gi, a);
+    if (a.isLink()) {
+        if (!sys::openPath(a.link)) {
+            notice(cfg_.t("notice.launchFailed", {{L"PLAYER", g.name}, {L"ERROR", a.link}}), theme_.c.error);
+            return false;
+        }
+        return true;
+    }
     // A mod on the launcher's lobby plays online through the lobby window; the
     // lobby calls back here with the room's values once the host starts.
     if (usesLobby(gi) && ai == joinActionIndex(g) && given.empty()) {
