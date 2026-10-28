@@ -440,7 +440,24 @@ void Launcher::offerGameDownload(const GameSpec& game) {
         installStatus_ = {};
     }
     HWND wnd = hwnd_;
-    installThread_ = std::thread([this, files, dir, wnd] {
+    std::wstring catalogUrl = cfg_.downloads.catalog;
+    installThread_ = std::thread([this, files, dir, wnd, catalogUrl]() mutable {
+        // The list loaded at startup can be hours old: a game updated since then has a new size and
+        // checksum, and downloading it against the old ones would always fail. Use the live entries.
+        {
+            std::vector<CatalogFile> fresh;
+            std::string raw;
+            std::wstring err;
+            if (fetchCatalog(catalogUrl, fresh, raw, err, &installCancel_)) {
+                for (auto& f : files)
+                    for (const auto& n : fresh)
+                        if (n.game == f.game && toLower(n.name) == toLower(f.name)) f = n;
+                std::lock_guard<std::mutex> lock(installMu_);
+                catalogRaw_ = std::move(raw);
+            } else {
+                logger().warn(L"Game catalog not refreshed before the download: " + err);
+            }
+        }
         InstallResult r = downloadGameFiles(
             files, dir,
             [this, wnd](const InstallStatus& s) {

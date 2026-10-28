@@ -500,12 +500,15 @@
         ],
         "steps": [
           "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
-          "In the game press F9, set MODE to ONLINE, then HOST (you get a room code) or type a friend's code and press JOIN.",
-          "Friends can also find your room in the Rooms list and press Join."
+          "In the game press F9 for the online panel. With MODE on RELAY (the default) press HOST to get a room code, or type a friend's code and press JOIN.",
+          "Friends can also find your room in the Rooms list and press Join.",
+          "No room codes? Press MODE to switch to DIRECT: the host starts a relay on their PC and friends connect to the host's IP address and port."
         ],
         "tips": [
           "Up to four ships against the same crab, sharing one HP bar.",
-          "Friends can join in the middle of a fight."
+          "Friends can join in the middle of a fight.",
+          "If the panel says the server doesn't host the game yet, use MODE DIRECT until it is added.",
+          "Ruffle only: Flash Player can't run this online mod."
         ]
       },
       "color": "#E8603C",
@@ -517,7 +520,7 @@
           "label": "Play online",
           "icon": "E774",
           "description": "Host or join a room, no IP needed",
-          "hint": "On the difficulty menu press ONLINE (or F9): HOST gives you a room code; friends type it and press JOIN. Arrows fly, A fires.",
+          "hint": "Press F9 for the online panel: HOST gives you a room code; friends type it and press JOIN. MODE switches between room codes (RELAY) and an IP address (DIRECT). Arrows fly, A fires.",
           // The online mods run in Ruffle: it lets a local file use the network.
           "players": ["ruffle"],
           "swf": [

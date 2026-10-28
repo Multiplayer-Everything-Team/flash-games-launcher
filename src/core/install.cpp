@@ -192,7 +192,8 @@ bool downloadVerified(const std::wstring& url, const std::wstring& dest, const s
         &length, cancel, error);
     fclose(f);
     if (ok && size && got != size) {
-        error = L"The download is incomplete (" + formatBytes(got) + L" of " + formatBytes(size) + L")";
+        error = L"The download is incomplete (" + formatBytes(got) + L" of " + formatBytes(size) + L"; " +
+                std::to_wstring(got) + L" of " + std::to_wstring(size) + L" bytes)";
         ok = false;
     }
     if (ok && !sha256.empty() && widen(hash.hex()) != toLower(sha256)) {
