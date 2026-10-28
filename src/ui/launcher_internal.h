@@ -182,7 +182,9 @@ inline FlashVars gameValues(const ActionSpec& a, const std::wstring& playerName,
         std::wstring v = replaceAll(value, L"${PLAYER_NAME}", playerName);
         if (!v.empty()) out.emplace_back(key, v);
     }
-    out.insert(out.end(), given.begin(), given.end());
+    // An action that takes its room on the command line (joinArgs) must give the game the same settings on
+    // every PC, so the room code and "host" are not passed as values too.
+    if (a.joinArgs.empty()) out.insert(out.end(), given.begin(), given.end());
     return out;
 }
 
