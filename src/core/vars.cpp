@@ -71,7 +71,7 @@ const std::vector<std::wstring>& knownVariableNames() {
         L"LAUNCHER_DIR", L"GAMES_DIR", L"PLAYERS_DIR", L"DATA_DIR", L"FLASHPOINT",
         L"GAME_ID",      L"GAME_NAME", L"SWF",         L"SWF_DIR",  L"PORT",
         L"TITLE",        L"SUBTITLE",  L"URL",       L"FILE",     L"FILE_DIR",
-        L"PLAYER_NAME",
+        L"PLAYER_NAME", L"CODE", L"SERVER", L"ADDRESS",
         L"MOD_ID",     L"MOD_NAME",   L"MOD_VERSION", L"MOD_PUBLISHER", L"MOD_WEBSITE",
         L"MOD_SUPPORT_URL", L"MOD_DESCRIPTION",
         L"GAME_EXE",   L"STEAM_APP_ID", L"GAME_DIR", L"INSTALL_DIR", L"STATE_DIR", L"INSTALLED_VERSION",

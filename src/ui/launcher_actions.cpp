@@ -55,7 +55,10 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
         return true;
     }
     FlashVars flashvars = gameValues(a, user_.playerName, given);
-    ResolvedAction r = lib_.resolve(g, a, user_);
+    std::wstring code;
+    for (const auto& [key, value] : given)
+        if (key == L"join") code = value;
+    ResolvedAction r = lib_.resolve(g, a, user_, !code.empty());
     if (r.state != ActionState::Ready) {
         notice(cfg_.t("notice.notReady", {{L"GAME", g.name}, {L"REASON", stateReason(cfg_, r)}}), theme_.c.warning);
         if (r.state == ActionState::NoSwf) SetFocus(IsWindowVisible(downloadBtn_) ? downloadBtn_ : locateBtn_);
@@ -63,6 +66,30 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
         return false;
     }
     if (r.web) return runWeb(gi, a, r, flashvars);
+    // A player that takes its room and name on the command line (Ruffle Together's --coop-* options).
+    {
+        std::wstring address, server;
+        bool wantsAddress = false;
+        for (const auto& arg : r.args)
+            if (arg.find(L"${ADDRESS}") != std::wstring::npos) wantsAddress = true;
+        if (wantsAddress) {
+            address = clipboardText();
+            if (!looksLikeAddress(address)) {
+                notice(cfg_.t("notice.needAddress", {{L"ACTION", a.label}}), theme_.c.warning);
+                return false;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(installMu_);
+            server = roomServer_.empty() ? cfg_.rooms.server : roomServer_;
+        }
+        std::wstring missing = fillPlaceholders(r, user_.playerName, code, server, address);
+        if (!missing.empty()) {
+            notice(cfg_.t(missing == L"CODE" ? "notice.needCode" : "notice.needServer", {{L"ACTION", a.label}}),
+                   theme_.c.warning);
+            return false;
+        }
+    }
     addFlashVars(r, flashvars);
     bool startedRelay = false;
     std::wstring warning;

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="MultiplayerEverything.Launcher" version="1.0.3.0"/>
+  <assemblyIdentity type="win32" name="MultiplayerEverything.Launcher" version="1.0.31.0"/>
   <dependency>
     <dependentAssembly>
       <!-- Common Controls 6: themed controls and NM_CUSTOMDRAW for buttons. -->

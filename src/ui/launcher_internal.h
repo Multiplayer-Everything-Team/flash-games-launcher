@@ -198,6 +198,34 @@ inline void addFlashVars(ResolvedAction& r, const FlashVars& vars) {
     r.args.insert(pos, extra.begin(), extra.end());
 }
 
+// Fills ${PLAYER_NAME}, ${CODE}, ${SERVER} and ${ADDRESS} in the final arguments (the game file and
+// flashvars never contain them). Returns the name of a placeholder that has no value, or empty.
+inline std::wstring fillPlaceholders(ResolvedAction& r, const std::wstring& name, const std::wstring& code,
+                                     const std::wstring& server, const std::wstring& address) {
+    const std::pair<const wchar_t*, const std::wstring*> values[] = {
+        {L"PLAYER_NAME", &name}, {L"CODE", &code}, {L"SERVER", &server}, {L"ADDRESS", &address}};
+    for (auto& arg : r.args)
+        for (const auto& [key, value] : values) {
+            std::wstring token = std::wstring(L"${") + key + L"}";
+            if (arg.find(token) == std::wstring::npos) continue;
+            if (value->empty() && std::wstring(key) != L"PLAYER_NAME") return key;
+            arg = replaceAll(arg, token, *value);
+        }
+    return {};
+}
+
+// "host:port" the way a friend copies it: an address or name, a colon, a port.
+inline bool looksLikeAddress(const std::wstring& s) {
+    size_t colon = s.rfind(L':');
+    if (colon == std::wstring::npos || colon == 0 || colon + 1 >= s.size() || s.size() > 260) return false;
+    for (size_t i = colon + 1; i < s.size(); ++i)
+        if (s[i] < L'0' || s[i] > L'9') return false;
+    for (size_t i = 0; i < colon; ++i)
+        if (!(iswalnum(s[i]) || s[i] == L'.' || s[i] == L'-' || s[i] == L'_' || s[i] == L'[' || s[i] == L']' || s[i] == L':'))
+            return false;
+    return true;
+}
+
 inline std::wstring stateReason(const Config& cfg, const ResolvedAction& r) {
     if (r.state == ActionState::NoRuntime) return cfg.t("status.noRuntime", {{L"RUNTIME", r.action->server.name}});
     if (r.state == ActionState::NoSwf) return cfg.t("status.noSwf");

@@ -148,7 +148,7 @@ std::vector<const PlayerSpec*> Library::allowedPlayers(const ActionSpec& a, cons
     return out;
 }
 
-ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const UserData& user) const {
+ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const UserData& user, bool joining) const {
     ResolvedAction r;
     r.game = &g;
     r.action = &a;
@@ -197,7 +197,7 @@ ResolvedAction Library::resolve(const GameSpec& g, const ActionSpec& a, const Us
                 }
             };
             add(p->args);
-            add(ov && ov->hasArgs ? ov->args : a.args);
+            add(joining && !a.joinArgs.empty() ? a.joinArgs : ov && ov->hasArgs ? ov->args : a.args);
             if (!mentionsSwf) c.args.push_back(swf);
             // Flash loads a game's extra files relative to the working folder.
             c.workDir = av.get(L"SWF_DIR");

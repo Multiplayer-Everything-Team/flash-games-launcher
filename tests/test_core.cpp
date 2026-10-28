@@ -92,6 +92,29 @@ TEST(config_text_substitution) {
     CHECK(r.config.t("bar.found", {{L"PLAYER", L"Ruffle"}}).find(L"Ruffle") == 0);
 }
 
+TEST(library_uses_join_args_when_a_room_code_comes_with_the_launch) {
+    TempDir dir("lib-join-args");
+    writeText(dir / L"players\\ruffle.exe", "x");
+    writeText(dir / L"games\\game.swf", "x");
+    LoadResult r = loadConfig(minimalConfig(R"([{ "id": "g", "name": "Game",
+        "actions": [{ "id": "online", "swf": ["${GAMES_DIR}\\game.swf"],
+                      "args": ["--host", "${SERVER}"], "joinArgs": ["--join", "${SERVER}", "--code", "${CODE}"] }] }])"),
+                              dir.path());
+    REQUIRE(r.ok());
+    Library lib(r.config, baseVars(dir));
+    UserData user;
+    const GameSpec& g = r.config.games[0];
+    ResolvedAction host = lib.resolve(g, g.actions[0], user);
+    REQUIRE(host.state == ActionState::Ready && host.args.size() == 3);
+    CHECK(host.args[0] == L"--host");
+    CHECK(host.args[1] == L"${SERVER}");  // filled in by the launcher at start
+    ResolvedAction join = lib.resolve(g, g.actions[0], user, true);
+    REQUIRE(join.args.size() == 5);
+    CHECK(join.args[0] == L"--join");
+    CHECK(join.args[3] == L"${CODE}");
+    CHECK(join.args[4] == join.swf);
+}
+
 TEST(library_resolves_player_swf_and_args) {
     TempDir dir("lib-resolve");
     writeText(dir / L"players\\ruffle.exe", "x");

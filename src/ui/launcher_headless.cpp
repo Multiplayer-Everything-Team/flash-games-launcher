@@ -96,7 +96,16 @@ int Launcher::launchHeadless(const Config& cfg, Library& lib, UserData& user, co
         }
         for (auto& arg : r.args) arg = replaceAll(arg, L"${URL}", url);
     }
-    if (!r.web) addFlashVars(r, gameValues(action, user.playerName, {}));
+    if (!r.web) {
+        // No window: no room code and no clipboard, so only the name and the central server can be filled in.
+        std::wstring missing = fillPlaceholders(r, user.playerName, {}, cfg.rooms.server, {});
+        if (!missing.empty()) {
+            message = L"\"" + action.label + L"\" needs a " + (missing == L"CODE" ? L"room code" : L"value for ${" + missing + L"}") +
+                      L" and needs the launcher window.";
+            return 3;
+        }
+        addFlashVars(r, gameValues(action, user.playerName, {}));
+    }
     sys::Started p;
     std::wstring err;
     if (!sys::startProcess(r.playerExe, r.args, r.workDir, p, err)) {

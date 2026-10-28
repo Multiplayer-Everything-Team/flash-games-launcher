@@ -55,7 +55,8 @@ public:
 
     // Players this action may use, in the order they would be tried.
     std::vector<const PlayerSpec*> allowedPlayers(const ActionSpec& a, const std::string& preferred) const;
-    ResolvedAction resolve(const GameSpec& g, const ActionSpec& a, const UserData& user) const;
+    // joining: a room code comes with this launch, so the action's joinArgs replace its args.
+    ResolvedAction resolve(const GameSpec& g, const ActionSpec& a, const UserData& user, bool joining = false) const;
     // The game's overall state: Ready when any action can start.
     ActionState gameState(const GameSpec& g, const UserData& user) const;
 

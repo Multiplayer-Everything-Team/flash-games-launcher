@@ -494,6 +494,9 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"notice.quitFast", L"${PLAYER} closed right away (exit code ${CODE}). Details are in the log."},
         {"notice.launchFailed", L"Could not start ${PLAYER}: ${ERROR}"},
         {"notice.notReady", L"${GAME} can't start: ${REASON}"},
+        {"notice.needCode", L"${ACTION} needs a room code: type it in Join by code or pick a room in the Rooms list."},
+        {"notice.needAddress", L"${ACTION}: copy your friend's address and port (for example 192.168.1.20:7790) first, then press it again."},
+        {"notice.needServer", L"${ACTION} needs the central server's address, which isn't set."},
         {"notice.copied", L"Copied ${ADDRESS} to the clipboard."},
         {"notice.located", L"${GAME} will use ${FILE}."},
         {"notice.relayStopped", L"Stopped hosting."},
@@ -703,6 +706,7 @@ ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<Con
         ss.str("lan", a.server.lan);
     }
     s.strList("args", a.args);
+    s.strList("joinArgs", a.joinArgs);
     s.idList("players", a.players);
     if (auto o = s.get("overrides", Type::Object)) {
         for (size_t i = 0; i < o->size(); ++i) {

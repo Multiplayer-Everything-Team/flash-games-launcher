@@ -148,7 +148,11 @@ struct ActionSpec {
     ServerSpec server;
     bool joinLink = false;  // HTML5: open the http(s) link on the clipboard (a friend's game)
     std::vector<std::wstring> args;     // added after the player's own args
-    std::vector<std::string> players;   // allowed players in order of preference; empty = all
+    // Used instead of `args` when a room code comes with the launch (Rooms list, join by code).
+    // ${CODE}, ${SERVER} (the central server), ${ADDRESS} (host:port copied to the clipboard) and
+    // ${PLAYER_NAME} are filled in when the game starts.
+    std::vector<std::wstring> joinArgs;
+    std::vector<std::string> players;  // allowed players in order of preference; empty = all
     std::map<std::string, PlayerOverride> overrides;  // per player id
     RelaySpec relay;                    // "host" actions start the built-in relay
     // Values handed to the game at start through the player's flashvarArg, such
