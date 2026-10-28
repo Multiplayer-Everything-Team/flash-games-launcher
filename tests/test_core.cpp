@@ -58,10 +58,18 @@ TEST(config_loads_shipped_launcher_json) {
     CHECK(r.config.findGame("gunmayhem2") != nullptr);
     CHECK(r.config.findGame("stealthhunter2") != nullptr);
     const GameSpec* gm2 = r.config.findGame("gunmayhem2");
-    bool hostHasRelay = false;
-    for (const auto& a : gm2->actions)
-        if (a.id == "host") hostHasRelay = a.relay.enabled && a.relay.port == 7777;
-    CHECK(hostHasRelay);
+    // Gun Mayhem 2 online is Ruffle Together's lockstep co-op: options on the command line, no relay of ours,
+    // and no FlashVars (every PC must run with identical settings).
+    bool online = false, host4 = false;
+    for (const auto& a : gm2->actions) {
+        CHECK(!a.relay.enabled && a.flashvars.empty());
+        if (a.id == "online")
+            online = !a.joinArgs.empty() && a.args.size() > 1 && a.args[0] == L"--coop-host-relay" &&
+                     std::find(a.joinArgs.begin(), a.joinArgs.end(), L"${CODE}") != a.joinArgs.end();
+        if (a.id == "host4")
+            host4 = std::find(a.args.begin(), a.args.end(), L"--coop-players") != a.args.end() && a.args.back() == L"4";
+    }
+    CHECK(online && host4);
 }
 
 TEST(config_reports_typos_and_bad_references) {
