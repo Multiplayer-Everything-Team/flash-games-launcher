@@ -39,6 +39,7 @@ constexpr UINT WM_APP_MODDONE = WM_APP + 13;     // a mod job ended; lParam: Mod
 constexpr UINT WM_APP_SITE = WM_APP + 16;       // the website's games.json arrived
 constexpr UINT WM_APP_LOBBY = WM_APP + 14;      // the lobby session changed
 constexpr UINT WM_APP_LOBBYNET = WM_APP + 15;   // direct-IP checks finished; lParam: std::wstring* text
+constexpr UINT WM_APP_PLAYERUPDATED = WM_APP + 17;  // a newer player is in place; lParam: std::wstring* "Name tag"
 constexpr UINT WM_APP_UPDATED = WM_APP + 10;    // a newer launcher is in place; lParam: std::wstring* version
 
 struct ServerLine {

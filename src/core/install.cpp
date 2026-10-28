@@ -204,6 +204,12 @@ bool downloadVerified(const std::wstring& url, const std::wstring& dest, const s
     return ok;
 }
 
+// Release tags are "v1.2.0"; the shared version compare wants "1.2.0".
+std::wstring_view bareVersion(std::wstring_view v) {
+    if (!v.empty() && (v[0] == L'v' || v[0] == L'V')) v.remove_prefix(1);
+    return v;
+}
+
 }  // namespace
 
 bool downloadImage(const std::wstring& url, const std::wstring& dest, uint64_t maxBytes, std::wstring& error) {
@@ -320,9 +326,41 @@ InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const In
     removeTree(work);
     r.ok = true;
     r.exe = fs::join(target, exe);
+    // Remember which release this is, so a newer one can be told apart later.
+    if (!asset.version.empty()) {
+        std::string tag = narrow(asset.version);
+        fs::writeFile(fs::join(target, kPlayerVersionFile), tag.data(), tag.size(), nullptr);
+    }
     logger().info(player.name + L" installed: " + r.exe);
     report(InstallStatus::Stage::Done);
     return r;
+}
+
+PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel) {
+    PlayerUpdate u;
+    const InstallSpec& spec = player.install;
+    if (spec.github.empty()) return u;  // only a player the launcher installed from a release is kept current
+    std::wstring target = fs::normalize(vars.expand(spec.dir));
+    std::wstring exe = spec.exe.empty() ? std::wstring(L"ruffle.exe") : spec.exe;
+    if (target.empty() || !fs::isFile(fs::join(target, exe))) return u;  // not installed by the launcher
+    Asset asset;
+    std::wstring error;
+    if (!findAsset(spec, asset, cancel, error)) {
+        u.error = error;
+        return u;
+    }
+    u.checked = true;
+    u.version = asset.version;
+    // A copy installed before the version was recorded has no file: treat it as older.
+    std::string installed;
+    fs::readText(fs::join(target, kPlayerVersionFile), installed);
+    std::wstring have = trim(widen(installed));
+    if (!have.empty() && compareVersions(bareVersion(asset.version), bareVersion(have)) <= 0) return u;
+    logger().info(player.name + L" " + (have.empty() ? std::wstring(L"(unknown version)") : have) + L" -> " + asset.version);
+    InstallResult r = installPlayer(player, vars, nullptr, cancel);
+    u.updated = r.ok;
+    if (!r.ok) u.error = r.error;
+    return u;
 }
 
 bool parseCatalog(std::string_view text, const std::wstring& baseUrl, std::vector<CatalogFile>& out,
@@ -368,14 +406,6 @@ std::vector<CatalogFile> outdatedGameFiles(const std::vector<CatalogFile>& catal
     }
     return out;
 }
-
-namespace {
-// Release tags are "v1.2.0"; the shared version compare wants "1.2.0".
-std::wstring_view bareVersion(std::wstring_view v) {
-    if (!v.empty() && (v[0] == L'v' || v[0] == L'V')) v.remove_prefix(1);
-    return v;
-}
-}  // namespace
 
 std::wstring oldExePath(const std::wstring& exePath) { return exePath + L".old"; }
 

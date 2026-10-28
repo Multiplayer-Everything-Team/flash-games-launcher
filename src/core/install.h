@@ -32,6 +32,19 @@ using InstallProgress = std::function<void(const InstallStatus&)>;
 InstallResult installPlayer(const PlayerSpec& player, const Vars& vars, const InstallProgress& progress,
                             const std::atomic<bool>* cancel);
 
+// The release tag of the launcher-installed player is kept in this file inside its folder.
+inline constexpr const wchar_t* kPlayerVersionFile = L".version";
+
+struct PlayerUpdate {
+    bool checked = false;  // the newest release was looked up
+    bool updated = false;  // a newer release is now installed
+    std::wstring version;  // the newest release's tag
+    std::wstring error;
+};
+// When the launcher installed `player` from a GitHub release and a newer release exists, installs it over the old
+// one. A player the launcher didn't install (not in install.dir) is left alone. Needs the player not to be running.
+PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, const std::atomic<bool>* cancel);
+
 // One downloadable game file from the game catalog (catalog.json in the
 // flash-games repository): `name` is the file name in the games folder and
 // `game` the launcher's game id.

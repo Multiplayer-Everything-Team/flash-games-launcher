@@ -496,18 +496,41 @@ bool Launcher::anyBusy() const {
 
 void Launcher::startUpdateCheck() {
     removeOldUpdate(fs::selfExePath());  // what the last update set aside
-    if (!cfg_.updates.enabled() || !user_.autoUpdate || !user_.online) return;
+    if (!user_.autoUpdate || !user_.online) return;
     HWND wnd = hwnd_;
+    bool selfUpdate = cfg_.updates.enabled();
     InstallSpec source = cfg_.updates.source;
-    updateThread_ = std::thread([wnd, source, this] {
-        UpdateResult r = updateSelf(source, LAUNCHER_VERSION, fs::selfExePath(), &installCancel_);
-        if (!r.ok) logger().warn(L"Update check: " + r.error);
-        else if (!r.updated) logger().info(L"Launcher is up to date (newest release " + r.version + L")");
-        else {
-            logger().info(L"Installed launcher " + r.version + L"; it runs from the next start");
-            PostMessageW(wnd, WM_APP_UPDATED, 0, reinterpret_cast<LPARAM>(new std::wstring(r.version)));
+    std::vector<PlayerSpec> players = cfg_.players;
+    Vars vars = lib_.vars();
+    updateThread_ = std::thread([wnd, selfUpdate, source, players, vars, this] {
+        if (selfUpdate) {
+            UpdateResult r = updateSelf(source, LAUNCHER_VERSION, fs::selfExePath(), &installCancel_);
+            if (!r.ok) logger().warn(L"Update check: " + r.error);
+            else if (!r.updated) logger().info(L"Launcher is up to date (newest release " + r.version + L")");
+            else {
+                logger().info(L"Installed launcher " + r.version + L"; it runs from the next start");
+                PostMessageW(wnd, WM_APP_UPDATED, 0, reinterpret_cast<LPARAM>(new std::wstring(r.version)));
+                return;  // the launcher restarts (or starts new next time) and checks the player then
+            }
+        }
+        // A player the launcher installed from a release (Ruffle Together) is kept on the newest one: everyone
+        // in a co-op session has to run the same build.
+        for (const auto& p : players) {
+            PlayerUpdate u = updateInstalledPlayer(p, vars, &installCancel_);
+            if (!u.error.empty()) logger().warn(p.name + L" update check: " + u.error);
+            else if (u.updated)
+                PostMessageW(wnd, WM_APP_PLAYERUPDATED, 0,
+                             reinterpret_cast<LPARAM>(new std::wstring(p.name + L" " + u.version)));
+            else if (u.checked)
+                logger().info(p.name + L" is up to date (newest release " + u.version + L")");
         }
     });
+}
+
+void Launcher::onPlayerUpdated(const std::wstring& what) {
+    lib_.refresh();
+    toast(cfg_.t("update.player", {{L"PLAYER", what}}), theme_.c.success);
+    select(selected_);
 }
 
 void Launcher::onUpdated(const std::wstring& version) {

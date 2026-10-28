@@ -211,6 +211,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"phase.shortcuts", L"Removing shortcuts"},
         {"phase.finishing", L"Finishing up"},
         {"phase.rollback", L"Undoing changes\u2026"},
+        {"update.player", L"${PLAYER} is installed."},
         {"update.nextTime", L"Multiplayer Everything Launcher ${VERSION} is installed and starts next time."},
         {"settings.autoUpdate", L"Update the launcher automatically"},
         {"discord.room", L"Room ${CODE}"},

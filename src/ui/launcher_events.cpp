@@ -365,6 +365,11 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             onUpdated(*version);
             return 0;
         }
+        case WM_APP_PLAYERUPDATED: {
+            std::unique_ptr<std::wstring> what(reinterpret_cast<std::wstring*>(l));
+            onPlayerUpdated(*what);
+            return 0;
+        }
         case WM_APP_SERVERREADY:
             onServerReady(static_cast<int>(w), l != 0);
             return 0;

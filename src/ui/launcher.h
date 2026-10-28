@@ -456,6 +456,7 @@ private:
     // Self-update: checked once at start on a worker thread (core/install.h).
     std::thread updateThread_;
     void startUpdateCheck();
+    void onPlayerUpdated(const std::wstring& what);
     void onUpdated(const std::wstring& version);
     HWND setAutoUpdate_ = nullptr;
     std::string catalogRaw_;  // fetched by catalogThread_, handed over in WM_APP_CATALOG

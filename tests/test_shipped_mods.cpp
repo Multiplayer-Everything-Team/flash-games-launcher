@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "core/config.h"
+#include "core/install.h"
 #include "core/json.h"
 #include "core/mod/manager.h"
 #include "core/mod/package.h"
@@ -54,7 +55,8 @@ public:
                                   "\",\"draft\":false,\"assets\":[{\"name\":\"" + asset +
                                   "\",\"browser_download_url\":\"https://example.invalid/" + asset +
                                   "\",\"digest\":\"sha256:" + std::string(64, 'a') + "\"}]}";
-                std::string body = tag ? rel : "[" + rel + "]";
+                bool latest = req.find("/releases/latest") != std::string::npos;  // a player's lookup: one release, not a list
+                std::string body = tag || latest ? rel : "[" + rel + "]";
                 std::string reply = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
                                     "\r\nConnection: close\r\n\r\n" + body;
                 send(c, reply.data(), static_cast<int>(reply.size()), 0);
@@ -454,4 +456,47 @@ TEST(mod_config_github_extras_and_requires_are_validated) {
     CHECK(!load(R"("components": [{"id": "m", "source": "a"}], "package": {"github": "o/r"},
         "install": {"requires": [{"message": "no path"}]})")
                .ok());
+}
+
+TEST(a_player_the_launcher_installed_is_updated_only_when_a_newer_release_exists) {
+    TempDir dir("player-update");
+    FakeGithub api;
+    std::string player = R"([{ "id": "rt", "name": "Ruffle Together", "paths": ["rt.exe"],
+        "install": { "github": "o/r", "asset": "Mod-*.zip", "api": ")" + narrow(api.address()) +
+                         R"(", "dir": "${PLAYERS_DIR}\\rt", "exe": "rt.exe" } }])";
+    LoadResult r = loadConfig(R"({ "paths": {"games": "${LAUNCHER_DIR}\\games", "players": "${LAUNCHER_DIR}\\players",
+                       "data": "${LAUNCHER_DIR}\\data", "flashpoint": []}, "players": )" + player + R"(, "games": [{ "id": "g", "name": "G", "actions": [{ "id": "p", "swf": "a.swf" }] }] })",
+                              dir.path());
+    REQUIRE(r.ok());
+    Vars vars;
+    vars.set(L"PLAYERS_DIR", dir.path() + L"\\players");
+    const PlayerSpec& p = r.config.players[0];
+    const std::wstring exe = dir.path() + L"\\players\\rt\\rt.exe";
+    const std::wstring marker = dir.path() + L"\\players\\rt\\.version";
+
+    // Not installed by the launcher (no file in its folder): left alone, GitHub isn't even asked.
+    PlayerUpdate none = updateInstalledPlayer(p, vars, nullptr);
+    CHECK(!none.checked && !none.updated && none.error.empty() && api.listHits == 0);
+
+    // The newest release is the one installed: nothing to do.
+    writeText(exe, "old");
+    writeText(marker, "v1.0.1");
+    api.version = L"1.0.1";
+    PlayerUpdate same = updateInstalledPlayer(p, vars, nullptr);
+    CHECK(same.checked && !same.updated && same.error.empty());
+    CHECK(readText(exe) == "old");
+
+    // A newer release exists but can't be downloaded here: the installed copy stays exactly as it was.
+    api.version = L"1.0.2";
+    PlayerUpdate newer = updateInstalledPlayer(p, vars, nullptr);
+    CHECK(newer.checked && !newer.updated && !newer.error.empty());
+    CHECK(readText(exe) == "old");
+    CHECK(readText(marker) == "v1.0.1");
+
+    // A copy from before the version was recorded counts as older, so even the same release is installed over it.
+    api.version = L"1.0.1";
+    std::filesystem::remove(marker);
+    PlayerUpdate unmarked = updateInstalledPlayer(p, vars, nullptr);
+    CHECK(unmarked.checked && !unmarked.updated && !unmarked.error.empty());  // it tried (the download fails here)
+    CHECK(readText(exe) == "old");
 }
