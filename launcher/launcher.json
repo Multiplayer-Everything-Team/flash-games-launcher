@@ -47,35 +47,23 @@
   "players": [
     {
       "id": "ruffle",
-      "name": "Ruffle",
-      "website": "https://ruffle.rs/downloads",
-      // Ruffle passes values into a game as FlashVars (used to hand a room code to the mods).
+      // The only Flash player: Ruffle Together, our Ruffle build with online co-op. Everyone in a
+      // room has to run the same build, so no other Ruffle or Flash Player is looked for. The id
+      // stays "ruffle" so every game's "players" list and saved settings keep working.
+      "name": "Ruffle Together",
+      "website": "https://github.com/multiplayereverything/ruffle-coop/releases",
+      // Passes values into a game as FlashVars (used to hand a room code to the mods).
       "flashvarArg": "-P${KEY}=${VALUE}",
-      // When Ruffle isn't found, the launcher offers to install the latest stable
-      // release from Ruffle's official GitHub page (checked against its SHA-256).
+      // When it isn't found, the launcher offers to install the newest release (checked against its SHA-256).
       "install": {
-        "github": "ruffle-rs/ruffle",
-        "asset": "*windows-x86_64.zip",
-        "dir": "${PLAYERS_DIR}\\ruffle",
-        "exe": "ruffle.exe"
+        "github": "multiplayereverything/ruffle-coop",
+        "asset": "RuffleTogether-*-windows-x64.zip",
+        "dir": "${PLAYERS_DIR}\\ruffle-together",
+        "exe": "ruffle_desktop.exe"
       },
       "paths": [
-        "${PLAYERS_DIR}\\ruffle\\ruffle.exe",
-        "${PLAYERS_DIR}\\ruffle.exe",
-        "${env:ProgramFiles}\\ruffle\\bin\\ruffle.exe",
-        "${env:LOCALAPPDATA}\\Programs\\ruffle\\ruffle.exe",
-        "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\ruffle\\ruffle.exe",
-        "ruffle.exe"
-      ]
-    },
-    {
-      "id": "flash",
-      "name": "Flash Player",
-      "website": "https://flashpointarchive.org/downloads",
-      "paths": [
-        "${PLAYERS_DIR}\\flashplayer\\flashplayer_32_sa.exe",
-        "${PLAYERS_DIR}\\flashplayer_32_sa.exe",
-        "${FLASHPOINT}\\FPSoftware\\Flash\\flashplayer_32_sa.exe"
+        "${PLAYERS_DIR}\\ruffle-together\\ruffle_desktop.exe",
+        "${PLAYERS_DIR}\\ruffle_desktop.exe"
       ]
     }
   ],
@@ -131,9 +119,7 @@
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
-            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           },
           // Handed to the game at start; the mod's F9 panel uses them once it reads them.
           "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
@@ -164,9 +150,7 @@
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
-            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           },
           "relay": { "port": 7777 }
         },
@@ -183,9 +167,7 @@
             "${FLASHPOINT}\\Data\\Games\\gm2-mod\\package\\GunMayhem2-Online\\gunmayhem2_online.swf"
           ],
           "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] },
-            // The Flash Player build is served by Flashpoint's local web server (keep Flashpoint open).
-            "flash": { "swf": ["http://localflash/gm2online/gunmayhem2_online.swf"] }
+            "ruffle": { "args": ["--tcp-connections", "allow"] }
           }
         },
         {

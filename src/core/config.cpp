@@ -376,7 +376,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"guide.soon", L"This one isn't available yet. When it is, it appears in the main list and you can install or play it from here."},
         {"guide.need.game", L"Your own copy of ${GAME}, on this PC."},
         {"guide.need.version", L"Everyone you play with needs the same version of the mod. The launcher keeps yours up to date."},
-        {"guide.need.player", L"Ruffle or Flash Player. The launcher installs Ruffle for you the first time."},
+        {"guide.need.player", L"Ruffle Together. The launcher installs it for you the first time."},
         {"guide.need.name", L"A player name: the launcher asks for it on the first start, and Settings changes it."},
         {"guide.mod.1", L"Press Install. The launcher finds your copy of ${GAME} and puts the mod in it."},
         {"guide.mod.launch", L"Press Launch. The game starts the way the mod needs it to."},

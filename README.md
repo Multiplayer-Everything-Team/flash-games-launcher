@@ -19,7 +19,7 @@
 </p>
 
 Multiplayer Everything makes multiplayer mods for games that never had multiplayer before. Open the launcher, pick a game, and
-press **Play online**. For the **Flash games** it starts them in Ruffle or Flash Player with
+press **Play online**. For the **Flash games** it starts them in Ruffle Together (our Ruffle build with online co-op) with
 the right file and settings, and you join a room with a code: no IP addresses, no port
 forwarding. For the **PC game mods** (Spooky Together, Baldi Together, MiSide Together, CupHeads, Rick and Morty Together, Dave the Diver Multiplayer and more) it finds your copy
 of the game, installs the mod into it, keeps it up to date, and can take it out again,
@@ -39,7 +39,7 @@ PC mods: **Spooky Together** · **Baldi Together** · **MiSide Together** · **C
 1. Download `MultiplayerEverythingLauncher.exe` from [Releases](https://github.com/multiplayereverything/multiplayer-mods-launcher/releases/latest)
    (or the `.zip` with the editable `launcher.json` and covers next to it) and put it in
    its own folder: game files are saved in a `games\` folder beside it.
-2. Run it. If no Flash player is found it offers to install Ruffle; say yes.
+2. Run it. If Ruffle Together is not found it offers to install it; say yes.
 3. Set your name in Settings once (Ctrl+,).
 4. **Flash game:** select it and press *Play online*, or *Quick play* to join the busiest
    open room. **PC mod:** select it and press *Install*, then *Launch*.
@@ -50,9 +50,9 @@ More detail: [Playing a Flash game](#playing-a-flash-game) and [PC game mods](#p
 
 | | Flash games | PC game mods |
 |---|---|---|
-| What the launcher does | Finds Ruffle or Flash Player and the game's `.swf`, builds the exact command line, starts it, watches it exit | Finds the game, downloads the mod's package, installs it into the game's folder, keeps it updated |
+| What the launcher does | Finds Ruffle Together and the game's `.swf`, builds the exact command line, starts it, watches it exit | Finds the game, downloads the mod's package, installs it into the game's folder, keeps it updated |
 | Online play | Rooms with a code on the central server; direct IP through the built-in relay (Radmin, LAN, Tailscale) | The mod connects through the same central server |
-| Safety | Checksums on every download (Ruffle, game files, the launcher itself) | One all-or-nothing install with a SHA-256 check; backups of replaced files; Uninstall restores the game |
+| Safety | Checksums on every download (Ruffle Together, game files, the launcher itself) | One all-or-nothing install with a SHA-256 check; backups of replaced files; Uninstall restores the game |
 | Where it's configured | `launcher/launcher.json` | the game's `mod` object in `launcher/launcher.json` |
 | Guide | [CONFIG.md](CONFIG.md) | [docs/MOD_PACKAGES.md](docs/MOD_PACKAGES.md) |
 
@@ -69,14 +69,13 @@ A new game or mod never needs a code change: everything lives in `launcher.json`
   *Update*, *Repair* and *Uninstall* work the same way, and a mod installed earlier by
   its stand-alone setup is recognised as installed. Mods are installed per game and
   need the game closed.
-- **Finds everything itself.** Ruffle (its own `players\` folder, `Program Files`,
-  PATH), Flashpoint's Flash Player 32, and each game's `.swf` in `games\` or your
-  Flashpoint folder. Anything missing gets a button that fixes it: *Locate game
-  file...* or *Install Ruffle*.
-- **Installs Ruffle for you.** With no Flash player on the PC, the launcher offers
-  to install Ruffle: it downloads the latest stable release from Ruffle's official
+- **Finds everything itself.** Ruffle Together (its own `players\ruffle-together\`
+  folder) and each game's `.swf` in `games\` or your Flashpoint folder. Anything missing gets a button that fixes it: *Locate game
+  file...* or *Install Ruffle Together*.
+- **Installs Ruffle Together for you.** Without it, the launcher offers
+  to install it: it downloads the newest release from our ruffle-coop
   GitHub page, checks it against the published SHA-256 checksum, and unpacks it
-  into `players\ruffle\`. Nothing is downloaded without your OK.
+  into `players\ruffle-together\`. Nothing is downloaded without your OK.
 - **Player slots.** Every game shows how many players it takes, in the players'
   own colors (P1 red, P2 blue, P3 green, P4 yellow). While you host, the slots fill
   with the names of the people who joined.
@@ -192,9 +191,6 @@ Pick the mod, press *Install*, then *Launch*. *Update*, *Repair* and *Uninstall*
 
 ## Playing a Flash game
 
-Flash Player itself can't be installed automatically: Adobe stopped distributing
-it, so there is no official download left. Install [Flashpoint](https://flashpointarchive.org/downloads)
-if a game needs Flash Player instead of Ruffle (Ruffle is [installed for you](#what-it-does)).
 
 **Hosting:** set your name in Settings once. Select the game, press *Play online*,
 then in the game press **F9**, set MODE to ONLINE and click **HOST**. Send friends
@@ -267,8 +263,8 @@ reinstall, first-run prompt, the window's download button). `-Dist` makes
 | `tests/` | C++ tests and the end-to-end script |
 | [CONFIG.md](CONFIG.md) | Every `launcher.json` option |
 
-Ruffle is open source ([ruffle.rs](https://ruffle.rs)). Flash Player and the
-games belong to their owners; this project ships neither.
+Ruffle Together is built from Ruffle, which is open source ([ruffle.rs](https://ruffle.rs)). The
+games belong to their owners; this project ships neither the player nor any game.
 
 ## Made with
 
