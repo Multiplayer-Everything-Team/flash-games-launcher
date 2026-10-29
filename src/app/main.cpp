@@ -256,6 +256,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         lib.setGamesDirOverride(user.gamesDir);
         lib.refresh();
     }
+    // The game and player folders belong to the user (Documents by default), so they exist
+    // from the first start and are easy to find, not only after the first download.
+    fs::ensureDir(lib.vars().get(L"GAMES_DIR"), nullptr, nullptr);
+    fs::ensureDir(lib.vars().get(L"PLAYERS_DIR"), nullptr, nullptr);
 
     if (!a.rooms.empty()) {
         const GameSpec* g = cfg.findGame(a.rooms);

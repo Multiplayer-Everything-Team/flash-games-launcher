@@ -68,6 +68,8 @@ Any path or argument can use these:
 | `data` | `"${env:LOCALAPPDATA}\\MultiplayerEverything\\MultiplayerEverythingLauncher"` |
 | `flashpoint` | `["C:\\Flashpoint", "D:\\Flashpoint", "${folder:Profile}\\Flashpoint"]` |
 
+The shipped `launcher.json` points `games` and `players` at `${folder:Documents}\\MultiplayerEverythingLauncher\\games` and `\\players`; the launcher creates both folders when it starts.
+
 ### behavior
 
 | Key | Default | |
