@@ -208,111 +208,117 @@
       ]
     },
     {
-      // Stealth Hunter 2 runs only in Ruffle: the mod's network code and its
-      // fixes are built for it, so Flash Player is never offered.
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
       "id": "stealthhunter2",
       "name": "Stealth Hunter 2",
       "players": "1-4 players (online co-op)",
-      "online": { "id": "sh2", "join": "online" },
+      "maxPlayers": 4,
+      "online": { "id": "ruffle-coop", "join": "online" },
       "categories": ["flash", "online", "coop"],
       "guide": {
         "steps": [
-          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
-          "In the game press F9, or click ONLINE CO-OP on the title screen, then HOST or JOIN with a friend's room code.",
-          "Friends can also find your room in the Rooms list and press Join."
-        ],
-        "keys": [
-          {
-            "key": "F9",
-            "does": "Opens the online panel in the game."
-          }
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "On the title screen the host picks the number of players, then starts the mission."
         ],
         "tips": [
-          "Co-op for up to four players. The host runs the world and each player moves their own character on their own PC.",
+          "Co-op for up to four players on one shared view; every player has their own keys.",
           "If anyone dies, the team restarts the mission.",
-          "This game runs in Ruffle only."
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
         ]
       },
       "color": "#2BD4C5",
       "colorEnd": "#1B3A6B",
       "image": "covers\\stealthhunter2.png",
       "imageFocus": 0.62,
-      "description": "Sneak through guarded bases, pick locks and take out guards without raising the alarm. The co-op mod lets up to four players play the campaign together: the host runs the world, everyone goes through doors together, and if anyone dies the team restarts the mission.",
+      "description": "Sneak through guarded bases, pick locks and take out guards without raising the alarm. Online play runs in Ruffle Together: up to four players play the campaign together on a shared view, and if anyone dies the team restarts the mission.",
       "actions": [
         {
           "id": "online",
-          "players": ["ruffle"],
           "label": "Play online",
           "icon": "E774",
-          "description": "Host or join a co-op room, no IP needed",
-          "hint": "Press F9 (or ONLINE CO-OP on the title screen) and set MODE to ONLINE: HOST gives you a room code, or type a friend's code and press JOIN.",
-          "swf": [
-            "${GAMES_DIR}\\stealthhunter2_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
-          ],
-          "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] }
-          },
-          // Handed to the game at start ("join" is added when you pick a room).
-          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2"]
         },
         {
-          "id": "solo",
-          "players": ["ruffle"],
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "stealth-hunter-2"]
+        },
+        {
+          "id": "offline",
           "label": "Play solo",
           "icon": "E77B",
           "offline": true,
           "description": "The campaign on your own",
-          "swf": [
-            "${GAMES_DIR}\\stealthhunter2_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
-          ]
-        },
-        {
-          "id": "host",
-          "players": ["ruffle"],
-          "label": "Host with your IP",
-          "description": "Direct connect: starts the relay on port 7778",
-          "hint": "Press F9, set MODE to DIRECT, type a name and press HOST. Then start a level.",
-          "more": true,
-          "swf": [
-            "${GAMES_DIR}\\stealthhunter2_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
-          ],
-          "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] }
-          },
-          "relay": { "port": 7778 }
-        },
-        {
-          "id": "join",
-          "players": ["ruffle"],
-          "label": "Join by IP",
-          "description": "Direct connect to a friend's address",
-          "hint": "Press F9, set MODE to DIRECT, type a name and the host's address (IP or IP:7778), then press JOIN.",
-          "more": true,
-          "swf": [
-            "${GAMES_DIR}\\stealthhunter2_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\mod\\dist\\stealthhunter2_online.swf"
-          ],
-          "overrides": {
-            "ruffle": { "args": ["--tcp-connections", "allow"] }
-          }
+          "swf": ["${GAMES_DIR}\\stealthhunter2_online.swf"]
         },
         {
           "id": "play",
-          "players": ["ruffle"],
           "label": "Play the original",
-          "description": "The single-player game, without the co-op mod",
+          "description": "Without the online mod",
           "edition": "original",
           "swf": [
             "${GAMES_DIR}\\stealth_hunter_2.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\stealth_hunter_2.swf",
-            "${FLASHPOINT}\\Data\\Games\\stealthhunter2\\stealth_hunter_2.swf"
+            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\stealthhunter2\\stealth_hunter_2.swf"
           ]
         }
       ]
@@ -390,42 +396,99 @@
       "name": "Territory War",
       "players": "2-4 players (online)",
       "maxPlayers": 4,
-      "online": { "id": "tw", "join": "online" },
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
+      "online": { "id": "ruffle-coop", "join": "online" },
       "categories": ["flash", "online", "versus"],
       "guide": {
         "steps": [
-          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
-          "In the game click ONLINE PLAY on the main menu, or press F9, then HOST or JOIN with a room code.",
-          "Friends can also find your room in the Rooms list and press Join."
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "The host sets up a Custom Battle with the mouse; everyone then plays their turns from the keyboard."
         ],
         "keys": [
-          {
-            "key": "F9",
-            "does": "Opens the online panel in the game."
-          }
+          { "key": "Arrows", "does": "Walk and aim." },
+          { "key": "Space", "does": "Fire or throw." },
+          { "key": "1 to 4, X, V, U, Y, N", "does": "Pick a weapon and the game's other commands." }
         ],
         "tips": [
-          "Red against blue on up to four PCs. Each team's sticks are shared out between that team's players."
+          "Custom Battle Player 1 against Player 2 is hot-seat: every player uses the same keys on their own PC, one turn at a time.",
+          "Only the host's mouse works in the menus.",
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
         ]
       },
       "color": "#6BA539",
       "colorEnd": "#2C4A1E",
-      "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. The online mod puts red against blue on up to four PCs; each team's sticks are shared out between its players.",
+      "description": "Afro-Ninja's stick-figure team battle: walk, aim and throw grenades, shoot and kick on your turn. Online play runs in Ruffle Together: the host sets up the match and friends play their turns from the keyboard.",
       "actions": [
         {
           "id": "online",
           "label": "Play online",
           "icon": "E774",
-          "description": "Host or join a room, no IP needed",
-          "hint": "Click PLAY, then ONLINE PLAY (or press F9): HOST A ROOM gives you a room code; friends type it and press JOIN. Then start a Custom Battle.",
-          // The online mods run in Ruffle: it lets a local file use the network.
-          "players": ["ruffle"],
-          "swf": [
-            "${GAMES_DIR}\\TerritoryWar_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Territory War\\mod\\dist\\TerritoryWar_online.swf"
-          ],
-          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
-          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war"]
+        },
+        {
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "territory-war"]
         },
         {
           "id": "offline",
@@ -433,10 +496,7 @@
           "icon": "E77B",
           "offline": true,
           "description": "Campaign, challenges and battles on this PC",
-          "swf": [
-            "${GAMES_DIR}\\TerritoryWar_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Territory War\\mod\\dist\\TerritoryWar_online.swf"
-          ]
+          "swf": ["${GAMES_DIR}\\TerritoryWar_online.swf"]
         },
         {
           "id": "play",
@@ -515,46 +575,93 @@
       "name": "Ultimate Crab Battle",
       "players": "1-4 players (online co-op)",
       "maxPlayers": 4,
-      "online": { "id": "ucb", "join": "online" },
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
+      "online": { "id": "ruffle-coop", "join": "online" },
       "categories": ["flash", "online", "coop"],
       "guide": {
-        "keys": [
-          {
-            "key": "F9",
-            "does": "Opens the online panel in the game."
-          }
-        ],
         "steps": [
-          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
-          "In the game press F9 for the online panel. With MODE on RELAY (the default) press HOST to get a room code, or type a friend's code and press JOIN.",
-          "Friends can also find your room in the Rooms list and press Join.",
-          "No room codes? Press MODE to switch to DIRECT: the host starts a relay on their PC and friends connect to the host's IP address and port."
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "Friends join the fight by pressing fire on the difficulty menu."
         ],
         "tips": [
           "Up to four ships against the same crab, sharing one HP bar.",
-          "Friends can join in the middle of a fight.",
-          "If the panel says the server doesn't host the game yet, use MODE DIRECT until it is added.",
-          "Ruffle only: Flash Player can't run this online mod."
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
         ]
       },
       "color": "#E8603C",
       "colorEnd": "#1D3C6E",
-      "description": "One giant crab, up to four ships. The online co-op mod gives every player their own ship on their own PC; the team shares one HP bar.",
+      "description": "One giant crab, up to four ships. Online play runs in Ruffle Together: every player flies their own ship, and the team shares one HP bar.",
       "actions": [
         {
           "id": "online",
           "label": "Play online",
           "icon": "E774",
-          "description": "Host or join a room, no IP needed",
-          "hint": "Press F9 for the online panel: HOST gives you a room code; friends type it and press JOIN. MODE switches between room codes (RELAY) and an IP address (DIRECT). Arrows fly, A fires.",
-          // The online mods run in Ruffle: it lets a local file use the network.
-          "players": ["ruffle"],
-          "swf": [
-            "${GAMES_DIR}\\UltimateCrabBattle_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Ultimate Crab Battle\\mod\\dist\\UltimateCrabBattle_online.swf"
-          ],
-          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
-          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle"]
+        },
+        {
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "ultimate-crab-battle"]
         },
         {
           "id": "offline",
@@ -562,10 +669,7 @@
           "icon": "E77B",
           "offline": true,
           "description": "The fight on your own",
-          "swf": [
-            "${GAMES_DIR}\\UltimateCrabBattle_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Ultimate Crab Battle\\mod\\dist\\UltimateCrabBattle_online.swf"
-          ]
+          "swf": ["${GAMES_DIR}\\UltimateCrabBattle_online.swf"]
         },
         {
           "id": "play",
@@ -584,42 +688,93 @@
       "name": "Air Battle",
       "players": "1-4 players (online co-op)",
       "maxPlayers": 4,
-      "online": { "id": "airbattle", "join": "online" },
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
+      "online": { "id": "ruffle-coop", "join": "online" },
       "categories": ["flash", "online", "coop"],
       "guide": {
         "steps": [
-          "Press Play online. Quick play joins the busiest open room, or starts a room if none is open.",
-          "In the game click ONLINE CO-OP on the main menu, or press F9, then HOST or JOIN with a room code.",
-          "Friends can also find your room in the Rooms list and press Join."
-        ],
-        "keys": [
-          {
-            "key": "F9",
-            "does": "Opens the online panel in the game."
-          }
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "Press PLAY and pick a level. Extra boats wait at their spawn point until their player presses a key."
         ],
         "tips": [
-          "Up to four players fly the levels together, one balloon boat each."
+          "Up to four players fly the levels together, one balloon boat each.",
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
         ]
       },
       "color": "#5AB4E6",
       "colorEnd": "#B4621E",
-      "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player.",
+      "description": "BubbleBox's balloon-boat shooter, flown together: up to four boats through the game's levels, one per player. Online play runs in Ruffle Together.",
       "actions": [
         {
           "id": "online",
           "label": "Play online",
           "icon": "E774",
-          "description": "Host or join a room, no IP needed",
-          "hint": "On the main menu click ONLINE CO-OP (or F9): HOST A ROOM gives you a room code; friends type it and click JOIN. Then press PLAY and pick a level.",
-          // The online mods run in Ruffle: it lets a local file use the network.
-          "players": ["ruffle"],
-          "swf": [
-            "${GAMES_DIR}\\AirBattle_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Air Battle\\mod\\dist\\AirBattle_online.swf"
-          ],
-          "overrides": { "ruffle": { "args": ["--tcp-connections", "allow"] } },
-          "flashvars": { "online": "1", "name": "${PLAYER_NAME}" }
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle"]
+        },
+        {
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "air-battle"]
         },
         {
           "id": "offline",
@@ -627,10 +782,7 @@
           "icon": "E77B",
           "offline": true,
           "description": "The levels on your own",
-          "swf": [
-            "${GAMES_DIR}\\AirBattle_online.swf",
-            "${folder:Desktop}\\AIStuff\\ai-work-flash-games\\Air Battle\\mod\\dist\\AirBattle_online.swf"
-          ]
+          "swf": ["${GAMES_DIR}\\AirBattle_online.swf"]
         },
         {
           "id": "play",
@@ -710,15 +862,210 @@
       ]
     },
     {
+      "id": "smileyswar",
+      "name": "Smileys War",
+      "players": "2-4 players (online)",
+      "maxPlayers": 4,
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
+      "online": { "id": "ruffle-coop", "join": "online" },
+      "categories": ["flash", "online", "versus"],
+      "guide": {
+        "steps": [
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "On the Arena screen the host picks HUMANS (2 to 4), then starts the match."
+        ],
+        "tips": [
+          "Each player takes one of the game's smileys in place of a bot and aims with their own mouse.",
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
+        ]
+      },
+      "color": "#F2B632",
+      "colorEnd": "#9A4B12",
+      "description": "A smiley-face shooter arena. Online play runs in Ruffle Together: two to four players take the place of bots, each with their own keys and mouse.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war"]
+        },
+        {
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "smileys-war"]
+        },
+        {
+          "id": "offline",
+          "label": "Play solo",
+          "icon": "E77B",
+          "offline": true,
+          "description": "The game on your own",
+          "swf": ["${GAMES_DIR}\\SmileysWar_online.swf"]
+        }
+      ]
+    },
+    {
       "id": "intrusion",
       "name": "Intrusion",
-      "players": "Online mod in progress",
-      "online": { "id": "intrusion" },
-      "categories": ["flash", "online"],
-      "comingSoon": true,
+      "players": "2-4 players (online co-op)",
+      "maxPlayers": 4,
+      // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
+      "online": { "id": "ruffle-coop", "join": "online" },
+      "categories": ["flash", "online", "coop"],
+      "guide": {
+        "steps": [
+          "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
+          "Your friends type the code in Join by code, or pick your room in the Rooms list.",
+          "Choose the number of players in the game's menu, then start the mission."
+        ],
+        "tips": [
+          "Two to four soldiers share one camera; a fallen soldier respawns using the team's life.",
+          "Everyone needs the same Ruffle Together build and game file; the launcher keeps them current."
+        ]
+      },
       "color": "#7C8591",
       "colorEnd": "#24282E",
-      "description": "Side-scrolling shooter. Its online mod is still being built."
+      "description": "Side-scrolling shooter. Online play runs in Ruffle Together: two to four soldiers fight through the levels together.",
+      "actions": [
+        {
+          "id": "online",
+          "label": "Play online",
+          "icon": "E774",
+          "description": "Host a room for 2 players, or join one with a code",
+          "hint": "Send the room code the message shows to your friend. The game opens once they join. For 3 or 4 players use Other ways to connect.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "2"],
+          "joinArgs": ["--coop-join-relay", "${SERVER}", "--coop-code", "${CODE}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion"]
+        },
+        {
+          "id": "room3",
+          "label": "Host a room for 3 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 2 friends have joined",
+          "hint": "Send the room code the message shows to your two friends. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "3"]
+        },
+        {
+          "id": "room4",
+          "label": "Host a room for 4 players",
+          "icon": "E774",
+          "more": true,
+          "description": "The game starts when 3 friends have joined",
+          "hint": "Send the room code the message shows to your three friends. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host-relay", "${SERVER}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "4"]
+        },
+        {
+          "id": "host",
+          "label": "Host with your IP (2 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790",
+          "hint": "Friends copy your address and port (for example 192.168.1.20:7790) and press Join by IP. Radmin, Tailscale and LAN addresses work.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "2"]
+        },
+        {
+          "id": "host3",
+          "label": "Host with your IP (3 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 2 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once both have joined.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "3"]
+        },
+        {
+          "id": "host4",
+          "label": "Host with your IP (4 players)",
+          "icon": "E774",
+          "more": true,
+          "description": "Direct connect on port 7790; starts when 3 friends have joined",
+          "hint": "Friends copy your address and port and press Join by IP. The game opens once all have joined.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-host", "7790", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion", "--coop-players", "4"]
+        },
+        {
+          "id": "join",
+          "label": "Join by IP",
+          "icon": "E774",
+          "more": true,
+          "description": "Copy the host's address first",
+          "hint": "The game opens once you are connected to the host.",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"],
+          "args": ["--coop-join", "${ADDRESS}", "--coop-name", "${PLAYER_NAME}", "--coop-keys", "intrusion"]
+        },
+        {
+          "id": "offline",
+          "label": "Play solo",
+          "icon": "E77B",
+          "offline": true,
+          "description": "The game on your own",
+          "swf": ["${GAMES_DIR}\\Intrusion_online.swf"]
+        }
+      ]
     },
     {
       "id": "intrusion2",

@@ -515,7 +515,8 @@ TEST(embedded_names_match_the_resource_script) {
 }
 
 TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
-    // Flash Player is never an option for Stealth Hunter 2.
+    // Flash Player is never an option for Stealth Hunter 2: its online actions are Ruffle
+    // Together's own options, which only that player understands.
     std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
     if (!fs::isFile(path)) path = L"launcher\\launcher.json";
     LoadResult r = loadConfigFile(path);
@@ -523,7 +524,9 @@ TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
     const GameSpec* g = r.config.findGame("stealthhunter2");
     REQUIRE(g != nullptr);
     for (const auto& a : g->actions) {
-        CHECK(a.players.size() == 1 && a.players[0] == "ruffle");
+        bool coop = false;
+        for (const auto& arg : a.args) coop = coop || arg == L"--coop-keys";
+        CHECK(coop || a.original || a.offline);
         CHECK(!a.overrides.count("flash"));
     }
     CHECK(r.config.updates.enabled());
