@@ -118,7 +118,7 @@ void Launcher::layoutDetail() {
     }
     dl_ = {};
     tabRows_.clear();
-    std::vector<HWND> all = {playerCombo_, favBtn_,      aboutBtn_,    locateBtn_,   folderBtn_,  getPlayerBtn_,
+    std::vector<HWND> all = {playerCombo_, saveCombo_, favBtn_,     aboutBtn_,    locateBtn_,   folderBtn_,  getPlayerBtn_,
                              stopHostBtn_, copyBtn_,     downloadBtn_, tabPlayBtn_, tabRoomsBtn_,
                              moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_};
     all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
@@ -183,6 +183,24 @@ void Launcher::layoutDetail() {
     int hostBoxH = t.s(14) + hostLines * hostLineH + t.s(8) + rowH + t.s(14);
     int comboH = t.s(30);
     bool picker = SendMessageW(playerCombo_, CB_GETCOUNT, 0, 0) > 2;  // "Automatic" + 2 players
+    // Ruffle Together co-op games: which save the host starts from, with a line saying what that does.
+    bool saveUi = !roomsTab && !g.mod && coopSaveGame(g) && coopSavePlayer() != nullptr;
+    bool saveOk = saveUi && coopSaveSupported();
+    int saveChoice = saveOk ? coopSaveChoiceFor(g) : 0;
+    std::wstring saveNote;
+    bool saveWarn = false;
+    if (saveUi) {
+        if (!saveOk) {
+            saveNote = cfg_.t("coopSave.needs", {{L"VERSION", coopSavePlayer()->coopSaveSince}});
+        } else if (saveChoice > 0) {
+            saveNote = cfg_.t("coopSave.replaces", {{L"GAME", g.name}});
+            saveWarn = true;
+        } else if (std::wstring f = coopSaveFile(g); !f.empty() && fs::isFile(f)) {
+            saveNote = cfg_.t("coopSave.progress");
+        }
+    }
+    int saveNoteH = saveNote.empty() ? 0 : textHeight(dc, t.caption, saveNote, w, DT_WORDBREAK) + t.s(4);
+    int saveH = saveUi ? comboH + t.s(8) + (saveNoteH ? saveNoteH + t.s(4) : 0) : 0;
     std::vector<CatalogFile> downloadable = missingSwf ? missingGameFiles(g) : std::vector<CatalogFile>{};
     bool isUpdate = downloadable.empty();
     if (isUpdate) downloadable = outdatedFor(g);
@@ -206,10 +224,11 @@ void Launcher::layoutDetail() {
                     (showMore_ ? static_cast<int>(moreActs.size()) * (actionH + gap) : 0);
         int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0) + (tabs ? tabsH + t.s(12) : 0);
         int actionsH = static_cast<int>(mainActs.size() + (quick ? 1 : 0)) * (actionH + gap) +
-                       (picker ? comboH + t.s(16) : 0);
+                       (picker ? comboH + t.s(16) : 0) + saveH;
         if (bottom - fixed - actionsH < y + headerMin) {
             actionH = t.s(40);
             picker = false;
+            saveUi = false;
         }
 
         // Row: favorite + folder (ghost buttons).
@@ -319,6 +338,24 @@ void Launcher::layoutDetail() {
             bottom -= actionH + gap;
         }
         if (!mainActs.empty()) placeAction(mainActs[0]);
+
+        // Co-op save: the note under the choice, the choice right above the action buttons.
+        if (saveUi) {
+            bottom -= t.s(4);
+            if (saveNoteH) {
+                dl_.saveNote = {x, bottom - saveNoteH, x + w, bottom};
+                dl_.saveNoteText = saveNote;
+                dl_.saveNoteWarn = saveWarn;
+                bottom -= saveNoteH + t.s(4);
+            }
+            int labelW = textWidth(dc, t.strong, cfg_.t("coopSave.label")) + t.s(12);
+            dl_.saveLabel = {x, bottom - comboH, x + labelW, bottom};
+            MoveWindow(saveCombo_, x + labelW, bottom - comboH, w - labelW, t.s(240), TRUE);
+            SendMessageW(saveCombo_, CB_SETCURSEL, saveChoice, 0);
+            EnableWindow(saveCombo_, saveOk);
+            shown.insert(saveCombo_);
+            bottom -= comboH + t.s(8);
+        }
 
         // Player picker, only worth showing when there is a choice.
         if (picker) {

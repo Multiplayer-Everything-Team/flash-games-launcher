@@ -233,6 +233,8 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 InvalidateRect(hwnd_, &searchBox_, FALSE);
             } else if (id == kIdPlayer && code == CBN_SELCHANGE) {
                 onPlayerChoice();
+            } else if (id == kIdSave && code == CBN_SELCHANGE) {
+                onSaveChoice();
             } else if (id == kIdPageGame && code == CBN_SELCHANGE) {
                 pageScroll_ = 0;
                 layoutRoomsPage();

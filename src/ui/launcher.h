@@ -96,7 +96,9 @@ private:
         bool progress = false;  // ...and a line along the bottom shows how far a mod job is
     };
     struct DetailLayout {
-        RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{};
+        RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{}, saveLabel{}, saveNote{};
+        std::wstring saveNoteText;
+        bool saveNoteWarn = false;
         std::vector<RECT> hostLines;
         RECT rooms{};    // Rooms tab: the room rows
         RECT tabs{};     // the tab strip, underlined
@@ -211,6 +213,13 @@ private:
     std::wstring emptyBody() const;
     int gridRank(int gameIndex) const;  // PC mods before Flash games; favorites, ready, the rest; coming soon last
     void onPlayerChoice();
+    // The host's choice of co-op save (Ruffle Together games). Supported: the installed player knows the option.
+    bool coopSaveGame(const GameSpec& g) const { return g.onlineId == "ruffle-coop"; }
+    const PlayerSpec* coopSavePlayer() const;
+    bool coopSaveSupported() const;
+    std::wstring coopSaveFile(const GameSpec& g) const;
+    int coopSaveChoiceFor(const GameSpec& g) const;
+    void onSaveChoice();
     void notice(const std::wstring& text, const Color& color);
     void save();
     std::wstring stateText(int gameIndex, Color& color) const;
@@ -341,7 +350,8 @@ private:
     std::wstring userPath_;
     Theme theme_;
     HWND hwnd_ = nullptr, nav_ = nullptr, navCombo_ = nullptr, search_ = nullptr, grid_ = nullptr,
-         playerCombo_ = nullptr;
+         playerCombo_ = nullptr, saveCombo_ = nullptr;
+    std::map<std::string, int> coopSaveChoice_;  // game id -> 0 continue, 1 solo save, 2 new game
     HWND aboutBtn_ = nullptr;
     HWND favBtn_ = nullptr, locateBtn_ = nullptr, folderBtn_ = nullptr, getPlayerBtn_ = nullptr,
          stopHostBtn_ = nullptr, copyBtn_ = nullptr;

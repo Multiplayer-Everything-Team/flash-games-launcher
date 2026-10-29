@@ -237,6 +237,13 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"detail.playerAuto", L"Automatic (${PLAYER})"},
         {"detail.playerAutoNone", L"Automatic"},
         {"detail.player", L"Player"},
+        {"coopSave.label", L"Co-op save"},
+        {"coopSave.continue", L"Continue co-op"},
+        {"coopSave.solo", L"Start from my solo save"},
+        {"coopSave.new", L"New game"},
+        {"coopSave.replaces", L"This replaces your co-op progress for ${GAME} the first time the game saves."},
+        {"coopSave.progress", L"Co-op progress saved."},
+        {"coopSave.needs", L"Needs Ruffle Together ${VERSION} or newer."},
         {"detail.players", L"Players"},
         {"detail.controls", L"Controls"},
         {"detail.never", L"Not played yet"},
@@ -987,6 +994,8 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             s.strList("paths", p.paths);
             s.strList("args", p.args);
             s.str("flashvarArg", p.flashvarArg);
+            s.str("coopSaveArg", p.coopSaveArg);
+            s.str("coopSaveSince", p.coopSaveSince);
             if (auto inst = s.get("install", Type::Object)) {
                 Section is(inst, s.child("install"), issues);
                 is.str("github", p.install.github);

@@ -7,6 +7,7 @@
 
 #include "core/embedded.h"
 #include "core/fs.h"
+#include "core/install.h"
 #include "core/log.h"
 #include "core/motion.h"
 #include "core/strings.h"
@@ -95,6 +96,15 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
             notice(cfg_.t(missing == L"CODE" ? "notice.needCode" : "notice.needServer", {{L"ACTION", a.label}}),
                    theme_.c.warning);
             return false;
+        }
+    }
+    // The host's choice of co-op save. "Continue" needs no option, and a player that doesn't know it would refuse to start.
+    if (coopSaveGame(g) && coopSaveSupported()) {
+        int choice = coopSaveChoiceFor(g);
+        bool hosting = std::any_of(r.args.begin(), r.args.end(), [](const std::wstring& s) { return s.rfind(L"--coop-host", 0) == 0; });
+        if (hosting && choice > 0) {
+            r.args.push_back(coopSavePlayer()->coopSaveArg);
+            r.args.push_back(choice == 1 ? L"solo" : L"new");
         }
     }
     addFlashVars(r, flashvars);
@@ -881,6 +891,50 @@ void Launcher::onPlayerChoice() {
     save();
     select(selected_);
     InvalidateRect(grid_, nullptr, FALSE);
+}
+
+const PlayerSpec* Launcher::coopSavePlayer() const {
+    for (const auto& p : cfg_.players)
+        if (!p.coopSaveArg.empty()) return &p;
+    return nullptr;
+}
+
+bool Launcher::coopSaveSupported() const {
+    const PlayerSpec* p = coopSavePlayer();
+    const PlayerStatus* ps = p ? lib_.player(p->id) : nullptr;
+    if (!ps || !ps->found()) return false;
+    if (p->coopSaveSince.empty()) return true;
+    // The release tag the launcher wrote when it installed the player. A copy it didn't install has none.
+    std::string tag;
+    fs::readText(fs::join(fs::parent(ps->exe), kPlayerVersionFile), tag);
+    std::wstring have = widen(tag);
+    while (!have.empty() && (have.back() == L'\r' || have.back() == L'\n' || have.back() == L' ')) have.pop_back();
+    if (!have.empty() && (have[0] == L'v' || have[0] == L'V')) have.erase(0, 1);
+    return !have.empty() && compareVersions(have, p->coopSaveSince) >= 0;
+}
+
+std::wstring Launcher::coopSaveFile(const GameSpec& g) const {
+    // Ruffle Together keeps one co-op save per game file name.
+    for (const auto& a : g.actions) {
+        if (a.swf.empty()) continue;
+        std::wstring name = fs::fileName(fs::normalize(lib_.vars().expand(a.swf.front())));
+        if (name.empty()) continue;
+        return fs::join(lib_.vars().expand(L"${folder:LocalAppData}\\ruffle\\SharedObjects\\coop"), name + L".save");
+    }
+    return {};
+}
+
+int Launcher::coopSaveChoiceFor(const GameSpec& g) const {
+    auto it = coopSaveChoice_.find(g.id);
+    return it == coopSaveChoice_.end() ? 0 : it->second;
+}
+
+void Launcher::onSaveChoice() {
+    if (selected_ < 0) return;
+    int sel = static_cast<int>(SendMessageW(saveCombo_, CB_GETCURSEL, 0, 0));
+    coopSaveChoice_[cfg_.games[selected_].id] = std::clamp(sel, 0, 2);
+    layoutDetail();
+    InvalidateRect(hwnd_, &detail_, FALSE);
 }
 
 void Launcher::save() {

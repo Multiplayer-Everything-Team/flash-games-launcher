@@ -54,6 +54,10 @@
       "website": "https://github.com/multiplayereverything/ruffle-coop/releases",
       // Passes values into a game as FlashVars (used to hand a room code to the mods).
       "flashvarArg": "-P${KEY}=${VALUE}",
+      // Which save a hosted co-op game starts from ("--coop-save solo|new"; the default needs no option).
+      // Releases before "coopSaveSince" don't know it, so it is left out of their command line.
+      "coopSaveArg": "--coop-save",
+      "coopSaveSince": "1.0.3.6",
       // When it isn't found, the launcher offers to install the newest release (checked against its SHA-256).
       "install": {
         "github": "multiplayereverything/ruffle-coop",

@@ -193,6 +193,10 @@ void Launcher::paintDetail(Graphics& g, HDC dc) {
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);
     if (width(dl_.playerLabel) > 0)
         drawText(g, cfg_.t("detail.player"), dl_.playerLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
+    if (width(dl_.saveLabel) > 0)
+        drawText(g, cfg_.t("coopSave.label"), dl_.saveLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
+    if (height(dl_.saveNote) > 0)
+        drawText(g, dl_.saveNoteText, dl_.saveNote, t.caption, dl_.saveNoteWarn ? t.c.warning : t.c.textMuted, DT_WORDBREAK);
 
     if (height(dl_.tabs) > 0) {
         Pen line(gc(t.c.border), 1);

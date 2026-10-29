@@ -111,6 +111,10 @@ struct PlayerSpec {
     // How this player passes a value into the game, e.g. "-P${KEY}=${VALUE}"
     // (Ruffle's FlashVars). Empty: the player can't, and the value is skipped.
     std::wstring flashvarArg;
+    // Ruffle Together's host option that picks the save a co-op game starts from ("--coop-save solo|new"),
+    // and the first release that knows it. An older player fails on an option it doesn't know, so the
+    // launcher adds the option only from that version on. Empty arg: the player has no such option.
+    std::wstring coopSaveArg, coopSaveSince;
 };
 
 struct PlayerOverride {

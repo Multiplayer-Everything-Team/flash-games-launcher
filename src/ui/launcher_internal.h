@@ -78,6 +78,7 @@ enum : int {
     kIdSearch,
     kIdGrid,
     kIdPlayer,
+    kIdSave,
     kIdFav = 110,
     kIdLocate,
     kIdFolder,
