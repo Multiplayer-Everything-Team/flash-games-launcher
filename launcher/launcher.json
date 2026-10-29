@@ -23,7 +23,7 @@
   // read from mods-info, the same file the mods use; "server" is the fallback.
   "rooms": {
     "servers": "https://raw.githubusercontent.com/multiplayereverything/mods-info/main/servers.json",
-    "server": "195.60.166.57:25569"
+    "server": "165.232.82.11:25569"
   },
 
   // The launcher updates itself from the newest release of its repository
