@@ -240,7 +240,8 @@ bool downloadImage(const std::wstring& url, const std::wstring& dest, uint64_t m
         static const unsigned char kPng[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
         bool png = text.size() > 8 && memcmp(text.data(), kPng, sizeof kPng) == 0;
         bool jpg = text.size() > 3 && static_cast<uint8_t>(text[0]) == 0xFF && static_cast<uint8_t>(text[1]) == 0xD8;
-        if (!png && !jpg) ok = false, error = L"That isn't a PNG or JPEG picture";
+        bool webp = text.size() > 12 && memcmp(text.data(), "RIFF", 4) == 0 && memcmp(text.data() + 8, "WEBP", 4) == 0;
+        if (!png && !jpg && !webp) ok = false, error = L"That isn't a PNG, JPEG or WebP picture";
     }
     if (ok && !MoveFileExW(fs::longPath(part).c_str(), fs::longPath(dest).c_str(), MOVEFILE_REPLACE_EXISTING))
         ok = false, error = lastError((L"Cannot save " + dest).c_str());

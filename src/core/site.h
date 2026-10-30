@@ -37,7 +37,7 @@ struct SiteGame {
 };
 
 // What the launcher accepts from the website (anything else is dropped, see docs/SECURITY_REVIEW.md): a repository
-// as "owner/name" of letters, digits, '-', '_' and '.', and a cover as "covers/<name>.png|jpg".
+// as "owner/name" of letters, digits, '-', '_' and '.', and a cover as "covers/<name>.png|jpg|webp".
 bool isGithubRepo(const std::wstring& repo);
 bool isSiteCover(const std::string& path);
 bool isGithubRepoUrl(const std::wstring& url);  // exactly https://github.com/<owner>/<name>
@@ -66,7 +66,7 @@ bool saveSiteCache(const std::wstring& path, const SiteCache& cache);
 // are looked for in `coverDir` (see siteCoverFile); one that isn't there yet shows the initials art.
 void mergeSite(Config& cfg, const std::vector<SiteGame>& list, const std::wstring& coverDir);
 
-// Where the cover of site game `id` is kept: <coverDir>\site-<id>.png (or .jpg).
+// Where the cover of site game `id` is kept: <coverDir>\site-<id>.png (or .jpg, .webp).
 std::wstring siteCoverFile(const std::wstring& coverDir, const SiteGame& s);
 
 // Downloads the covers the merged games need and don't have yet (pictures only, small, https). `siteUrl` is

@@ -4,6 +4,8 @@
 #include <cstring>
 #include <vector>
 
+#include <wincodec.h>
+
 #include "core/log.h"
 #include "core/strings.h"
 
@@ -102,6 +104,48 @@ std::wstring fitText(HDC dc, HFONT font, const std::wstring& text, int width, in
     return best;
 }
 
+// GDI+ has no WebP decoder, but Windows' imaging component does when the WebP extension is installed
+// (it is on current Windows 10 and 11). No codec just means the cover falls back to the initials art.
+static std::unique_ptr<Bitmap> loadWebp(const std::wstring& path) {
+    HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool uninit = SUCCEEDED(init);  // RPC_E_CHANGED_MODE: COM is already up in another mode, use it as is
+    std::unique_ptr<Bitmap> out;
+    {
+        IWICImagingFactory* factory = nullptr;
+        IWICBitmapDecoder* decoder = nullptr;
+        IWICBitmapFrameDecode* frame = nullptr;
+        IWICFormatConverter* conv = nullptr;
+        UINT w = 0, h = 0;
+        if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                       IID_PPV_ARGS(&factory))) &&
+            SUCCEEDED(factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ,
+                                                         WICDecodeMetadataCacheOnDemand, &decoder)) &&
+            SUCCEEDED(decoder->GetFrame(0, &frame)) && SUCCEEDED(frame->GetSize(&w, &h)) && w > 0 && h > 0 &&
+            w <= 8192 && h <= 8192 && SUCCEEDED(factory->CreateFormatConverter(&conv)) &&
+            SUCCEEDED(conv->Initialize(frame, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0,
+                                       WICBitmapPaletteTypeCustom))) {
+            auto bmp = std::make_unique<Bitmap>(static_cast<INT>(w), static_cast<INT>(h), PixelFormat32bppPARGB);
+            BitmapData data{};
+            Rect all(0, 0, static_cast<INT>(w), static_cast<INT>(h));
+            if (bmp->LockBits(&all, ImageLockModeWrite, PixelFormat32bppPARGB, &data) == Ok) {
+                bool upright = data.Stride > 0;
+                HRESULT hr = upright ? conv->CopyPixels(nullptr, static_cast<UINT>(data.Stride),
+                                                        static_cast<UINT>(data.Stride) * h,
+                                                        static_cast<BYTE*>(data.Scan0))
+                                     : E_FAIL;
+                bmp->UnlockBits(&data);
+                if (SUCCEEDED(hr)) out = std::move(bmp);
+            }
+        }
+        if (conv) conv->Release();
+        if (frame) frame->Release();
+        if (decoder) decoder->Release();
+        if (factory) factory->Release();
+    }
+    if (uninit) CoUninitialize();
+    return out;
+}
+
 std::unique_ptr<Bitmap> loadImageFile(const std::wstring& path) {
     if (path.empty()) return nullptr;
     // A picture that isn't there is not a bad picture: a website cover is downloaded after the first paint,
@@ -109,6 +153,11 @@ std::unique_ptr<Bitmap> loadImageFile(const std::wstring& path) {
     if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
         logger().debug(L"Picture not there (yet): " + path);
         return nullptr;
+    }
+    if (path.size() > 5 && toLower(path.substr(path.size() - 5)) == L".webp") {
+        auto webp = loadWebp(path);
+        if (!webp) logger().warn(L"Could not load " + path + L" (Windows needs its WebP image extension)");
+        return webp;
     }
     std::unique_ptr<Bitmap> decoded(Bitmap::FromFile(path.c_str()));
     if (!decoded || decoded->GetLastStatus() != Ok || decoded->GetWidth() == 0) {

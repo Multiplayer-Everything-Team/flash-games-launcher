@@ -52,10 +52,12 @@ bool isSiteCover(const std::string& path) {
     const std::string dir = "covers/";
     if (path.size() <= dir.size() + 4 || path.compare(0, dir.size(), dir) != 0) return false;
     std::string name = path.substr(dir.size());
-    std::string ext = name.size() > 4 ? name.substr(name.size() - 4) : "";
+    size_t dot = name.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = name.substr(dot);
     for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
-    if (ext != ".png" && ext != ".jpg") return false;
-    return onlyChars(name.substr(0, name.size() - 4), "-_.", 80) && name.find("..") == std::string::npos;
+    if (ext != ".png" && ext != ".jpg" && ext != ".webp") return false;
+    return onlyChars(name.substr(0, dot), "-_.", 80) && name.find("..") == std::string::npos;
 }
 
 bool isGithubRepoUrl(const std::wstring& url) {
@@ -123,7 +125,8 @@ const SiteGame* findSite(const std::vector<SiteGame>& list, const std::string& s
 }
 
 std::wstring siteCoverFile(const std::wstring& coverDir, const SiteGame& s) {
-    std::wstring ext = s.cover.size() > 4 && toLower(s.cover.substr(s.cover.size() - 4)) == L".jpg" ? L".jpg" : L".png";
+    std::wstring tail = toLower(s.cover.size() > 5 ? s.cover.substr(s.cover.size() - 5) : s.cover);
+    std::wstring ext = tail == L".webp" ? L".webp" : tail.size() >= 4 && tail.substr(tail.size() - 4) == L".jpg" ? L".jpg" : L".png";
     return fs::join(coverDir, L"site-" + widen(s.id) + ext);
 }
 

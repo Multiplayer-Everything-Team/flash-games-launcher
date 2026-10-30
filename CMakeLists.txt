@@ -94,7 +94,7 @@ add_executable(launcher WIN32
 )
 set_target_properties(launcher PROPERTIES OUTPUT_NAME "${LAUNCHER_NAME}")
 target_compile_definitions(launcher PRIVATE LAUNCHER_VERSION=L"${PROJECT_VERSION}")
-target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 uxtheme dwmapi gdi32)
+target_link_libraries(launcher PRIVATE launcher_core gdiplus comctl32 comdlg32 uxtheme dwmapi gdi32 windowscodecs)
 
 # ---- tests ----------------------------------------------------------------
 enable_testing()

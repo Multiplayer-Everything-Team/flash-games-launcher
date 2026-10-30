@@ -209,3 +209,12 @@ TEST(community_mods_are_marked_unverified_and_their_links_stay_https_github) {
     CHECK(isGithubRepoUrl(L"https://github.com/a/b") && !isGithubRepoUrl(L"https://github.com/a/b/c") &&
           !isGithubRepoUrl(L"https://github.com.evil/a/b") && !isGithubRepoUrl(L"https://github.com/../x"));
 }
+
+TEST(site_covers_accept_png_jpg_and_webp_only) {
+    CHECK(isSiteCover("covers/zombotron.webp"));
+    CHECK(isSiteCover("covers/Bowman.PNG"));
+    CHECK(isSiteCover("covers/raze.jpg"));
+    CHECK(!isSiteCover("covers/x.gif"));
+    CHECK(!isSiteCover("covers/../x.webp"));
+    CHECK(!isSiteCover("other/x.webp"));
+}
