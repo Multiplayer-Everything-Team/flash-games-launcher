@@ -81,11 +81,9 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
         for (const auto& arg : r.args)
             if (arg.find(L"${ADDRESS}") != std::wstring::npos) wantsAddress = true;
         if (wantsAddress) {
+            // The clipboard is only a guess for the field: friends usually copy the address before pressing this.
             address = clipboardText();
-            if (!looksLikeAddress(address)) {
-                notice(cfg_.t("notice.needAddress", {{L"ACTION", a.label}}), theme_.c.warning);
-                return false;
-            }
+            if (!askAddress(address, a.label)) return false;
         }
         {
             std::lock_guard<std::mutex> lock(installMu_);
@@ -98,14 +96,19 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
             return false;
         }
     }
-    // The host's choice of co-op save. "Continue" needs no option, and a player that doesn't know it would refuse to start.
-    if (coopSaveGame(g) && coopSaveSupported()) {
-        int choice = coopSaveChoiceFor(g);
+    // The host's own choices: which co-op save to start from, and the game's host options. "Continue" needs no
+    // option, and a player that doesn't know an option would refuse to start, so those wait for their release.
+    if (coopSaveGame(g)) {
         bool hosting = std::any_of(r.args.begin(), r.args.end(), [](const std::wstring& s) { return s.rfind(L"--coop-host", 0) == 0; });
-        if (hosting && choice > 0) {
+        int choice = coopSaveChoiceFor(g);
+        if (hosting && choice > 0 && coopSaveSupported()) {
             r.args.push_back(coopSavePlayer()->coopSaveArg);
             r.args.push_back(choice == 1 ? L"solo" : L"new");
         }
+    }
+    {
+        std::vector<std::wstring> more = settingArgs(g, r.args);
+        r.args.insert(r.args.end(), more.begin(), more.end());
     }
     addFlashVars(r, flashvars);
     bool startedRelay = false;
@@ -385,7 +388,10 @@ void Launcher::loadCatalog() {
     std::wstring cache = fs::join(lib_.dataDir(), L"catalog.json");
     std::string text;
     std::wstring err;
-    if (fs::readText(cache, text)) parseCatalog(text, cfg_.downloads.catalog, catalog_, err);
+    if (fs::readText(cache, text)) {
+        parseCatalog(text, cfg_.downloads.catalog, catalog_, err);
+        parseCatalogSettings(text, catalogSettings_);
+    }
     if (snapshot_ || !user_.online) {
         checkOutdated();  // the network stays off: compare against the cached list
         select(selected_);
@@ -901,16 +907,80 @@ const PlayerSpec* Launcher::coopSavePlayer() const {
 
 bool Launcher::coopSaveSupported() const {
     const PlayerSpec* p = coopSavePlayer();
+    return p && playerAtLeast(p->coopSaveSince);
+}
+
+bool Launcher::playerAtLeast(const std::wstring& version) const {
+    const PlayerSpec* p = coopSavePlayer();
     const PlayerStatus* ps = p ? lib_.player(p->id) : nullptr;
     if (!ps || !ps->found()) return false;
-    if (p->coopSaveSince.empty()) return true;
+    if (version.empty()) return true;
     // The release tag the launcher wrote when it installed the player. A copy it didn't install has none.
     std::string tag;
     fs::readText(fs::join(fs::parent(ps->exe), kPlayerVersionFile), tag);
     std::wstring have = widen(tag);
     while (!have.empty() && (have.back() == L'\r' || have.back() == L'\n' || have.back() == L' ')) have.pop_back();
     if (!have.empty() && (have[0] == L'v' || have[0] == L'V')) have.erase(0, 1);
-    return !have.empty() && compareVersions(have, p->coopSaveSince) >= 0;
+    return !have.empty() && compareVersions(have, version) >= 0;
+}
+
+const std::vector<Setting>& Launcher::settingsFor(const GameSpec& g) const {
+    auto it = catalogSettings_.find(g.id);
+    return it != catalogSettings_.end() && !it->second.empty() ? it->second : g.settings;
+}
+
+std::string Launcher::settingValue(const GameSpec& g, const Setting& s) const {
+    if (const GameStats* st = user_.find(g.id)) {
+        if (auto it = st->settings.find(s.id); it != st->settings.end()) {
+            if (s.type == "checkbox" && (it->second == "1" || it->second == "0")) return it->second;
+            // A choice the catalog has since removed falls back to the default.
+            if (s.type == "choice")
+                for (const auto& c : s.choices)
+                    if (c.id == it->second) return it->second;
+        }
+    }
+    if (s.type == "checkbox") return s.def == "on" ? "1" : "0";
+    for (const auto& c : s.choices)
+        if (c.id == s.def) return c.id;
+    return s.choices.empty() ? std::string() : s.choices.front().id;
+}
+
+std::vector<std::wstring> Launcher::settingArgs(const GameSpec& g, const std::vector<std::wstring>& actionArgs) const {
+    auto starts = [&](const wchar_t* prefix) {
+        return std::any_of(actionArgs.begin(), actionArgs.end(), [&](const std::wstring& a) { return a.rfind(prefix, 0) == 0; });
+    };
+    bool hosting = starts(L"--coop-host"), joining = starts(L"--coop-join");
+    std::vector<std::wstring> out;
+    for (const auto& s : settingsFor(g)) {
+        if (!(s.scope == "all" || (s.scope == "host" && hosting) || (s.scope == "join" && joining))) continue;
+        if (!playerAtLeast(s.since)) continue;
+        std::string v = settingValue(g, s);
+        if (s.type == "checkbox") {
+            if (v == "1") out.insert(out.end(), s.args.begin(), s.args.end());
+        } else {
+            for (const auto& c : s.choices)
+                if (c.id == v) out.insert(out.end(), c.args.begin(), c.args.end());
+        }
+    }
+    return out;
+}
+
+void Launcher::onSettingChanged(int index, bool combo) {
+    if (selected_ < 0) return;
+    const GameSpec& g = cfg_.games[selected_];
+    const std::vector<Setting>& list = settingsFor(g);
+    if (index < 0 || static_cast<size_t>(index) >= list.size()) return;
+    const Setting& s = list[index];
+    std::string value;
+    if (combo) {
+        int sel = static_cast<int>(SendMessageW(settingCombos_[index], CB_GETCURSEL, 0, 0));
+        if (sel < 0 || static_cast<size_t>(sel) >= s.choices.size()) return;
+        value = s.choices[sel].id;
+    } else {
+        value = SendMessageW(settingChecks_[index], BM_GETCHECK, 0, 0) == BST_CHECKED ? "1" : "0";
+    }
+    user_.stats(g.id).settings[s.id] = value;
+    save();
 }
 
 std::wstring Launcher::coopSaveFile(const GameSpec& g) const {

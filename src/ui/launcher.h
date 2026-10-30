@@ -3,6 +3,7 @@
 // their own processes; the window only starts them, watches them exit and
 // runs the built-in relay while someone hosts.
 #pragma once
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -97,6 +98,7 @@ private:
     };
     struct DetailLayout {
         RECT art{}, title{}, meta{}, slots{}, status{}, desc{}, controlsHead{}, controls{}, stats{}, playerLabel{}, host{}, saveLabel{}, saveNote{};
+        std::vector<std::pair<RECT, std::wstring>> settingLabels;  // the names beside the dropdown settings
         std::wstring saveNoteText;
         bool saveNoteWarn = false;
         std::vector<RECT> hostLines;
@@ -214,6 +216,15 @@ private:
     int gridRank(int gameIndex) const;  // PC mods before Flash games; favorites, ready, the rest; coming soon last
     void onPlayerChoice();
     // The host's choice of co-op save (Ruffle Together games). Supported: the installed player knows the option.
+    // A game's settings: from the catalog when it lists some for the game, else from launcher.json. The
+    // player's choices are kept per game in settings.json.
+    bool playerAtLeast(const std::wstring& version) const;
+    const std::vector<Setting>& settingsFor(const GameSpec& g) const;
+    std::string settingValue(const GameSpec& g, const Setting& s) const;  // "1"/"0" or the choice id
+    std::vector<std::wstring> settingArgs(const GameSpec& g, const std::vector<std::wstring>& actionArgs) const;
+    void onSettingChanged(int index, bool combo);
+    std::array<HWND, kMaxSettings> settingChecks_{}, settingCombos_{};
+    std::map<std::string, std::vector<Setting>> catalogSettings_;
     bool coopSaveGame(const GameSpec& g) const { return g.onlineId == "ruffle-coop"; }
     const PlayerSpec* coopSavePlayer() const;
     bool coopSaveSupported() const;
@@ -437,6 +448,11 @@ private:
     bool usesLobby(int gameIndex) const;
     void copyDiagnostics();
     bool askName(bool firstRun);  // false when the player closed it without a name
+    // A friend's "host:port", typed or pasted in a small window. `address` comes in with a guess (the clipboard)
+    // and goes out with what was typed; false when the window was closed without one.
+    bool askAddress(std::wstring& address, const std::wstring& action);
+    std::wstring textPrompt(bool address, const std::wstring& title, const std::wstring& body, const std::wstring& labelText,
+                            const std::wstring& okText, const std::wstring& initial);
     static LRESULT CALLBACK nameProc(HWND h, UINT m, WPARAM w, LPARAM l);
     HWND lobbyWnd_ = nullptr;
     int lobbyGame_ = -1;

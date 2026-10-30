@@ -363,6 +363,22 @@ PlayerUpdate updateInstalledPlayer(const PlayerSpec& player, const Vars& vars, c
     return u;
 }
 
+void parseCatalogSettings(std::string_view text, std::map<std::string, std::vector<Setting>>& out) {
+    out.clear();
+    std::string perr;
+    json::Value root = json::parse(text, &perr);
+    const json::Value* all = perr.empty() && root.isObject() ? root.find("settings") : nullptr;
+    if (!all || !all->isObject()) return;
+    for (size_t i = 0; i < all->size(); ++i) {
+        const json::Value& list = all->at(i);
+        if (!list.isArray()) continue;
+        std::vector<ConfigIssue> issues;
+        std::vector<Setting> settings = readSettings(list, L"catalog settings." + widen(all->keyAt(i)), issues);
+        for (const auto& issue : issues) logger().warn(issue.where + L": " + issue.message);
+        if (!settings.empty()) out[all->keyAt(i)] = std::move(settings);
+    }
+}
+
 bool parseCatalog(std::string_view text, const std::wstring& baseUrl, std::vector<CatalogFile>& out,
                   std::wstring& error) {
     std::string perr;

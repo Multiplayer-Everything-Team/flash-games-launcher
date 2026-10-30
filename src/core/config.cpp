@@ -237,6 +237,7 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"detail.playerAuto", L"Automatic (${PLAYER})"},
         {"detail.playerAutoNone", L"Automatic"},
         {"detail.player", L"Player"},
+        {"setting.needs", L"${LABEL} (needs Ruffle Together ${VERSION} or newer)"},
         {"coopSave.label", L"Co-op save"},
         {"coopSave.continue", L"Continue co-op"},
         {"coopSave.solo", L"Start from my solo save"},
@@ -370,6 +371,9 @@ const std::vector<std::pair<std::string, std::wstring>>& defaultTexts() {
         {"name.body", L"Choose your player name. Other players see it in rooms and in the game. You can change it later in Settings."},
         {"name.label", L"Player name"},
         {"name.ok", L"Continue"},
+        {"address.body", L"Type or paste your friend's address and port, for example 192.168.1.20:7790. Radmin, Tailscale and LAN addresses work."},
+        {"address.label", L"Host address"},
+        {"address.ok", L"Join"},
         {"nav.soon", L"Coming soon"},
         {"button.guide", L"Guide"},
         {"guide.back", L"Back to games"},
@@ -690,6 +694,43 @@ void readIcon(Section& s, std::wstring& out) {
 }
 
 std::wstring indexPath(const wchar_t* list, size_t i) { return std::wstring(list) + L"[" + std::to_wstring(i) + L"]"; }
+
+}  // namespace
+
+std::vector<Setting> readSettings(const Value& list, const std::wstring& where, std::vector<ConfigIssue>& issues) {
+    std::vector<Setting> out;
+    for (size_t k = 0; k < list.size(); ++k) {
+        Section s(&list.at(k), where + L"[" + std::to_wstring(k) + L"]", issues);
+        Setting st;
+        s.str("id", st.id);
+        s.str("type", st.type);
+        s.str("scope", st.scope);
+        s.str("label", st.label);
+        s.str("since", st.since);
+        s.str("default", st.def);
+        s.strList("args", st.args);
+        if (auto choices = s.get("choices", Type::Array))
+            for (size_t c = 0; c < choices->size(); ++c) {
+                Section cs(&choices->at(c), s.child("choices") + L"[" + std::to_wstring(c) + L"]", issues);
+                SettingChoice ch;
+                cs.str("id", ch.id);
+                cs.str("label", ch.label);
+                cs.strList("args", ch.args);
+                if (ch.id.empty() || ch.label.empty()) cs.error(L"id", L"give \"id\" and \"label\"");
+                else st.choices.push_back(std::move(ch));
+            }
+        if (st.type != "checkbox" && st.type != "choice") s.error(L"type", L"must be \"checkbox\" or \"choice\"");
+        else if (st.scope != "host" && st.scope != "join" && st.scope != "all") s.error(L"scope", L"must be \"host\", \"join\" or \"all\"");
+        else if (st.id.empty() || st.label.empty()) s.error(L"id", L"give \"id\" and \"label\"");
+        else if (st.type == "checkbox" && st.args.empty()) s.error(L"args", L"a checkbox needs \"args\"");
+        else if (st.type == "choice" && st.choices.size() < 2) s.error(L"choices", L"a choice needs at least two \"choices\"");
+        else if (out.size() >= kMaxSettings) s.error(L"id", L"at most four settings");
+        else out.push_back(std::move(st));
+    }
+    return out;
+}
+
+namespace {
 
 ActionSpec readAction(const Value& v, const std::wstring& where, std::vector<ConfigIssue>& issues) {
     ActionSpec a;
@@ -1080,6 +1121,7 @@ LoadResult loadConfig(std::string_view jsonText, const std::wstring& configDir) 
             }
             s.real("imageFocus", g.imageFocus, 0, 1);
             s.boolean("comingSoon", g.comingSoon);
+            if (auto st = s.get("settings", Type::Array)) g.settings = readSettings(*st, s.child("settings"), issues);
             s.idList("categories", g.categories);
             s.color("color", g.color);
             s.color("colorEnd", g.colorEnd);

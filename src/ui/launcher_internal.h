@@ -103,6 +103,14 @@ enum : int {
     kIdPageHideFull,
     kIdPageCode,
     kIdPageCodeJoin,
+    kIdSetting0,  // a game's settings (config.h Setting): checkboxes...
+    kIdSetting1,
+    kIdSetting2,
+    kIdSetting3,
+    kIdSettingCombo0,  // ...and dropdowns
+    kIdSettingCombo1,
+    kIdSettingCombo2,
+    kIdSettingCombo3,
     kIdAction0 = 200,
     kIdRoom0 = 300,      // details panel Rooms tab rows
     kIdPageRoom0 = 400,  // Rooms page rows

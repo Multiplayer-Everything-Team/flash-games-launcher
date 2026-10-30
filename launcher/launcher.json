@@ -939,6 +939,11 @@
       // Online play is Ruffle Together's own lockstep co-op (command-line options, no mod inside the game).
       "online": { "id": "ruffle-coop", "join": "online" },
       "categories": ["flash", "online", "coop"],
+      // The game's settings. The flash-games catalog's own list for this game wins; this one is the fallback.
+      // Ticked by the host: adds --coop-option friendlyfire=1 to the actions that host a room (Ruffle Together 1.0.3.7+).
+      "settings": [
+        { "id": "friendlyfire", "type": "checkbox", "scope": "host", "label": "Friendly fire", "since": "1.0.3.7", "args": ["--coop-option", "friendlyfire=1"] }
+      ],
       "guide": {
         "steps": [
           "Press Play online. A message shows your room code; send it to your friend. For three or four players use Host a room for 3 or 4 players under Other ways to connect: the game starts once everyone has joined.",
@@ -946,9 +951,9 @@
           "The host clicks through the menus (PLAY, START, PLAY AGAIN)."
         ],
         "keys": [
-          { "key": "Arrows or W A S D", "does": "Move." },
-          { "key": "Z or T", "does": "Punch 1." },
-          { "key": "X or Y", "does": "Punch 2." }
+          { "key": "Arrows", "does": "Move." },
+          { "key": "A", "does": "Punch." },
+          { "key": "S", "does": "Punch 2." }
         ],
         "tips": [
           "Everyone plays on their own PC with the same keys; only the host's mouse works in the menus.",

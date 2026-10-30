@@ -1073,6 +1073,8 @@ struct NameDialog {
     HWND edit = nullptr, ok = nullptr;
     std::wstring result;
     bool done = false;
+    bool address = false;  // the field takes "host:port" instead of a player name
+    RECT field{};          // the box around the edit, painted by the dialog
 };
 }  // namespace
 
@@ -1090,6 +1092,7 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             RECT rc;
             GetClientRect(h, &rc);
             FillRect(reinterpret_cast<HDC>(w), &rc, t.brSurface);
+            if (d->field.right > d->field.left) FillRect(reinterpret_cast<HDC>(w), &d->field, t.brBackground);
             const auto& colors = L.cfg_.branding.playerColors;
             int n = static_cast<int>(colors.size());
             for (int i = 0; i < n; ++i) {
@@ -1126,12 +1129,23 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_COMMAND: {
             int id = LOWORD(w), code = HIWORD(w);
             if (code == EN_CHANGE) {
-                bool any = !trim(windowText(d->edit)).empty();
+                std::wstring typed = trim(windowText(d->edit));
+                bool any = d->address ? looksLikeAddress(typed) : !typed.empty();
                 L.btnInfo_[d->ok].ready = any;
                 InvalidateRect(d->ok, nullptr, FALSE);
                 return 0;
             }
             if (id == IDOK || (code == BN_CLICKED && reinterpret_cast<HWND>(l) == d->ok)) {
+                if (d->address) {
+                    std::wstring typed = trim(windowText(d->edit));
+                    if (!looksLikeAddress(typed)) {
+                        SetFocus(d->edit);
+                        return 0;
+                    }
+                    d->result = typed;
+                    DestroyWindow(h);
+                    return 0;
+                }
                 std::wstring name;
                 for (wchar_t ch : windowText(d->edit))
                     if (ch != L'|' && ch != L';' && ch != L',' && ch >= 32) name += ch;
@@ -1163,8 +1177,11 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
-bool Launcher::askName(bool firstRun) {
-    if (snapshot_) return false;
+// One small themed window with a single text field: the player name, or a friend's address and port.
+// Returns what was typed; empty when the window was closed without a value.
+std::wstring Launcher::textPrompt(bool address, const std::wstring& title, const std::wstring& body,
+                                  const std::wstring& labelText, const std::wstring& okText, const std::wstring& initial) {
+    if (snapshot_) return {};
     HINSTANCE inst = GetModuleHandleW(nullptr);
     static bool registered = false;
     if (!registered) {
@@ -1178,11 +1195,11 @@ bool Launcher::askName(bool firstRun) {
     }
     NameDialog d;
     d.self = this;
+    d.address = address;
     HWND owner = lobbyWnd_ && IsWindowVisible(lobbyWnd_) ? lobbyWnd_ : hwnd_;
-    std::wstring title = cfg_.t("name.title");
     HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, kNameClass, title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
                              CW_USEDEFAULT, CW_USEDEFAULT, 100, 100, owner, nullptr, inst, &d);
-    if (!w) return false;
+    if (!w) return {};
     BOOL darkTitle = theme_.dark ? TRUE : FALSE;
     DwmSetWindowAttribute(w, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkTitle, sizeof darkTitle);
     const Theme& t = theme_;
@@ -1198,21 +1215,24 @@ bool Launcher::askName(bool firstRun) {
     int y = t.s(26);
     label(title, kRoleText, t.title, y, t.s(36));
     y += t.s(46);
-    std::wstring body = cfg_.t("name.body");
     int bodyH = textHeight(dc, t.body, body, inner);
     label(body, kRoleMuted, t.body, y, bodyH);
     y += bodyH + t.s(20);
-    label(cfg_.t("name.label"), kRoleText, t.strong, y, t.s(22));
+    label(labelText, kRoleText, t.strong, y, t.s(22));
     y += t.s(28);
-    int fieldH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE) + t.s(12);
-    d.edit = CreateWindowExW(0, L"EDIT", user_.playerName.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, pad, y,
-                             inner, fieldH, w, nullptr, inst, nullptr);
+    int lineH = textHeight(dc, t.body, L"Ag", 100, DT_SINGLELINE);
+    int fieldH = lineH + t.s(16);
+    // A single-line edit draws its text at the top of its own window, so the dark box is painted by the
+    // dialog and the edit sits inside it, centered.
+    d.field = {pad, y, pad + inner, y + fieldH};
+    d.edit = CreateWindowExW(0, L"EDIT", initial.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, pad + t.s(12),
+                             y + (fieldH - lineH) / 2, inner - t.s(24), lineH, w, nullptr, inst, nullptr);
     SendMessageW(d.edit, WM_SETFONT, reinterpret_cast<WPARAM>(t.body), FALSE);
-    SendMessageW(d.edit, EM_LIMITTEXT, 20, 0);
+    SendMessageW(d.edit, EM_LIMITTEXT, address ? 260 : 20, 0);
     y += fieldH + t.s(22);
     d.ok = makeButton(IDOK + 900, BtnStyle::Primary, w);
-    SetWindowTextW(d.ok, cfg_.t("name.ok").c_str());
-    btnInfo_[d.ok].ready = !user_.playerName.empty();
+    SetWindowTextW(d.ok, okText.c_str());
+    btnInfo_[d.ok].ready = address ? looksLikeAddress(trim(initial)) : !initial.empty();
     MoveWindow(d.ok, pad + inner - t.s(150), y, t.s(150), t.s(40), FALSE);
     ShowWindow(d.ok, SW_SHOW);
     y += t.s(40) + t.s(24);
@@ -1234,8 +1254,23 @@ bool Launcher::askName(bool firstRun) {
     }
     EnableWindow(owner, TRUE);
     SetForegroundWindow(owner);
-    if (d.result.empty()) return false;
-    user_.playerName = d.result;
+    return d.result;
+}
+
+bool Launcher::askAddress(std::wstring& address, const std::wstring& action) {
+    std::wstring found = trim(address);
+    std::wstring typed = textPrompt(true, action, cfg_.t("address.body"), cfg_.t("address.label"), cfg_.t("address.ok"),
+                                    looksLikeAddress(found) ? found : std::wstring());
+    if (typed.empty()) return false;
+    address = typed;
+    return true;
+}
+
+bool Launcher::askName(bool firstRun) {
+    std::wstring name = textPrompt(false, cfg_.t("name.title"), cfg_.t("name.body"), cfg_.t("name.label"),
+                                   cfg_.t("name.ok"), user_.playerName);
+    if (name.empty()) return false;
+    user_.playerName = name;
     save();
     logger().info(std::wstring(firstRun ? L"First run: " : L"") + L"player name set");
     if (setName_) SetWindowTextW(setName_, user_.playerName.c_str());

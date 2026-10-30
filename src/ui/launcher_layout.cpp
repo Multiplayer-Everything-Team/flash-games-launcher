@@ -121,6 +121,8 @@ void Launcher::layoutDetail() {
     std::vector<HWND> all = {playerCombo_, saveCombo_, favBtn_,     aboutBtn_,    locateBtn_,   folderBtn_,  getPlayerBtn_,
                              stopHostBtn_, copyBtn_,     downloadBtn_, tabPlayBtn_, tabRoomsBtn_,
                              moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_};
+    all.insert(all.end(), settingChecks_.begin(), settingChecks_.end());
+    all.insert(all.end(), settingCombos_.begin(), settingCombos_.end());
     all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
     all.insert(all.end(), actionBtns_.begin(), actionBtns_.end());
     if (selected_ < 0 || width(detail_) <= 0) {
@@ -200,7 +202,15 @@ void Launcher::layoutDetail() {
         }
     }
     int saveNoteH = saveNote.empty() ? 0 : textHeight(dc, t.caption, saveNote, w, DT_WORDBREAK) + t.s(4);
-    int saveH = saveUi ? comboH + t.s(8) + (saveNoteH ? saveNoteH + t.s(4) : 0) : 0;
+    // The game's own settings (checkboxes and dropdowns) sit under the note.
+    int checkH = t.s(28);
+    static const std::vector<Setting> noSettings;
+    const std::vector<Setting>& setList = roomsTab || g.mod || g.comingSoon ? noSettings : settingsFor(g);
+    bool setUi = !setList.empty();
+    int setsH = 0;
+    for (const auto& sd : setList) setsH += (sd.type == "choice" ? comboH + t.s(4) : checkH) + t.s(2);
+    if (setUi) setsH += t.s(4);
+    int saveH = (saveUi ? comboH + t.s(8) + (saveNoteH ? saveNoteH + t.s(4) : 0) : 0) + setsH;
     std::vector<CatalogFile> downloadable = missingSwf ? missingGameFiles(g) : std::vector<CatalogFile>{};
     bool isUpdate = downloadable.empty();
     if (isUpdate) downloadable = outdatedFor(g);
@@ -229,6 +239,7 @@ void Launcher::layoutDetail() {
             actionH = t.s(40);
             picker = false;
             saveUi = false;
+            setUi = false;
         }
 
         // Row: favorite + folder (ghost buttons).
@@ -339,7 +350,41 @@ void Launcher::layoutDetail() {
         }
         if (!mainActs.empty()) placeAction(mainActs[0]);
 
-        // Co-op save: the note under the choice, the choice right above the action buttons.
+        // The game's settings, right above the action buttons (the last one lowest).
+        if (setUi) {
+            bottom -= t.s(4);
+            for (size_t k = setList.size(); k-- > 0;) {
+                const Setting& sd = setList[k];
+                bool ok = playerAtLeast(sd.since);
+                std::string value = settingValue(g, sd);
+                if (sd.type == "checkbox") {
+                    SetWindowTextW(settingChecks_[k], (ok ? sd.label : cfg_.t("setting.needs", {{L"LABEL", sd.label}, {L"VERSION", sd.since}})).c_str());
+                    SendMessageW(settingChecks_[k], BM_SETCHECK, ok && value == "1" ? BST_CHECKED : BST_UNCHECKED, 0);
+                    EnableWindow(settingChecks_[k], ok);
+                    MoveWindow(settingChecks_[k], x, bottom - checkH, w, checkH, TRUE);
+                    shown.insert(settingChecks_[k]);
+                    bottom -= checkH + t.s(2);
+                } else {
+                    std::wstring label = ok ? sd.label : cfg_.t("setting.needs", {{L"LABEL", sd.label}, {L"VERSION", sd.since}});
+                    int labelW = std::min(textWidth(dc, t.strong, label) + t.s(12), w / 2);
+                    dl_.settingLabels.push_back({{x, bottom - comboH, x + labelW, bottom}, label});
+                    HWND cb = settingCombos_[k];
+                    SendMessageW(cb, CB_RESETCONTENT, 0, 0);
+                    int sel = 0;
+                    for (size_t c = 0; c < sd.choices.size(); ++c) {
+                        SendMessageW(cb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(sd.choices[c].label.c_str()));
+                        if (sd.choices[c].id == value) sel = static_cast<int>(c);
+                    }
+                    SendMessageW(cb, CB_SETCURSEL, sel, 0);
+                    EnableWindow(cb, ok);
+                    MoveWindow(cb, x + labelW, bottom - comboH, w - labelW, t.s(240), TRUE);
+                    shown.insert(cb);
+                    bottom -= comboH + t.s(4) + t.s(2);
+                }
+            }
+        }
+
+        // Co-op save: the note under the choice, the choice right above the settings.
         if (saveUi) {
             bottom -= t.s(4);
             if (saveNoteH) {

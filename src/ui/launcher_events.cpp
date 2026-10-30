@@ -235,6 +235,8 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 onPlayerChoice();
             } else if (id == kIdSave && code == CBN_SELCHANGE) {
                 onSaveChoice();
+            } else if (id >= kIdSettingCombo0 && id <= kIdSettingCombo3 && code == CBN_SELCHANGE) {
+                onSettingChanged(id - kIdSettingCombo0, true);
             } else if (id == kIdPageGame && code == CBN_SELCHANGE) {
                 pageScroll_ = 0;
                 layoutRoomsPage();
@@ -242,7 +244,8 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             } else if ((id == kIdTabCode || id == kIdPageCode) && (code == EN_SETFOCUS || code == EN_KILLFOCUS)) {
                 InvalidateRect(hwnd_, id == kIdTabCode ? &dl_.codeBox : &pageCodeBox_, FALSE);
             } else if (code == BN_CLICKED) {
-                if (id >= kIdAction0 && id < kIdRoom0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
+                if (id >= kIdSetting0 && id <= kIdSetting3) onSettingChanged(id - kIdSetting0, false);
+                else if (id >= kIdAction0 && id < kIdRoom0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();
                 else if (id == kIdFolder) openFolder();
@@ -393,6 +396,7 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
                 select(selected_);
             } else if (parseCatalog(raw, cfg_.downloads.catalog, files, err)) {
                 catalog_ = std::move(files);
+                parseCatalogSettings(raw, catalogSettings_);
                 std::wstring cache = fs::join(lib_.dataDir(), L"catalog.json");
                 fs::ensureDir(lib_.dataDir(), nullptr, nullptr);
                 fs::writeFile(cache, raw.data(), raw.size(), nullptr);

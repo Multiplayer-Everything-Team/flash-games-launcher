@@ -193,6 +193,7 @@ void Launcher::paintDetail(Graphics& g, HDC dc) {
     if (height(dl_.stats) > 0) drawText(g, stats, dl_.stats, t.caption, t.c.textMuted, DT_WORDBREAK);
     if (width(dl_.playerLabel) > 0)
         drawText(g, cfg_.t("detail.player"), dl_.playerLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
+    for (const auto& [rc, text] : dl_.settingLabels) drawText(g, text, rc, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     if (width(dl_.saveLabel) > 0)
         drawText(g, cfg_.t("coopSave.label"), dl_.saveLabel, t.strong, t.c.text, DT_SINGLELINE | DT_VCENTER);
     if (height(dl_.saveNote) > 0)

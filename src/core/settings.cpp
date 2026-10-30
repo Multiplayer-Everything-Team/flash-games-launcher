@@ -70,6 +70,9 @@ UserData loadUserData(const std::wstring& path) {
             if (const json::Value* swf = g.find("swf"); swf && swf->isObject())
                 for (size_t j = 0; j < swf->size(); ++j)
                     if (swf->at(j).isString()) s.swf[swf->keyAt(j)] = widen(swf->at(j).str());
+            if (const json::Value* st = g.find("settings"); st && st->isObject())
+                for (size_t j = 0; j < st->size(); ++j)
+                    if (st->at(j).isString()) s.settings[st->keyAt(j)] = st->at(j).str();
             d.games[games->keyAt(i)] = std::move(s);
         }
     }
@@ -108,6 +111,11 @@ bool saveUserData(const UserData& d, const std::wstring& path, std::wstring* err
             json::Value swf = json::Value::object();
             for (const auto& [action, file] : s.swf) swf.set(action, narrow(file));
             g.set("swf", std::move(swf));
+        }
+        if (!s.settings.empty()) {
+            json::Value st = json::Value::object();
+            for (const auto& [key, value] : s.settings) st.set(key, value);
+            g.set("settings", std::move(st));
         }
         games.set(id, std::move(g));
     }

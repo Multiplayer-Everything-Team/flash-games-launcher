@@ -339,6 +339,10 @@ void Launcher::createControls() {
     SetWindowSubclass(grid_, gridProc, 1, reinterpret_cast<DWORD_PTR>(this));
     playerCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdPlayer);
     saveCombo_ = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdSave);
+    for (size_t i = 0; i < settingChecks_.size(); ++i) {
+        settingChecks_[i] = makeButton(kIdSetting0 + static_cast<int>(i), BtnStyle::Check);
+        settingCombos_[i] = child(WC_COMBOBOXW, WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, kIdSettingCombo0 + static_cast<int>(i));
+    }
     for (const char* key : {"coopSave.continue", "coopSave.solo", "coopSave.new"})
         SendMessageW(saveCombo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(cfg_.t(key).c_str()));
     favBtn_ = makeButton(kIdFav, BtnStyle::Ghost);
@@ -405,6 +409,7 @@ void Launcher::createControls() {
     if (theme_.dark && !theme_.highContrast) {
         for (HWND h : {nav_, grid_}) SetWindowTheme(h, L"DarkMode_Explorer", nullptr);
         for (HWND h : {navCombo_, playerCombo_, saveCombo_, pageGameCombo_}) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
+        for (HWND h : settingCombos_) SetWindowTheme(h, L"DarkMode_CFD", nullptr);
     }
     applyFonts();
 }
@@ -424,6 +429,7 @@ HWND Launcher::makeButton(int id, BtnStyle style, HWND parent) {
 void Launcher::applyFonts() {
     for (HWND h : {nav_, navCombo_, search_, grid_, playerCombo_, saveCombo_, pageGameCombo_})
         SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), TRUE);
+    for (HWND h : settingCombos_) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.body), TRUE);
     for (HWND h : {tabCodeEdit_, pageCodeEdit_})
         if (h) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.button), TRUE);
     for (auto& [b, info] : btnInfo_) SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(theme_.strong), FALSE);

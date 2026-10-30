@@ -532,6 +532,42 @@ TEST(shipped_config_keeps_stealth_hunter_2_on_ruffle) {
     CHECK(r.config.updates.enabled());
 }
 
+TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    LoadResult r = loadConfigFile(path);
+    REQUIRE(r.ok());
+    const GameSpec* g = r.config.findGame("dadnme");
+    REQUIRE(g != nullptr);
+    REQUIRE(g->settings.size() == 1);
+    CHECK(g->settings[0].id == "friendlyfire");
+    CHECK(g->settings[0].type == "checkbox" && g->settings[0].scope == "host");
+    CHECK(g->settings[0].since == L"1.0.3.7");
+    CHECK(g->settings[0].args.size() == 2 && g->settings[0].args[1] == L"friendlyfire=1");
+}
+
+TEST(catalog_settings_checkboxes_and_choices) {
+    std::map<std::string, std::vector<Setting>> out;
+    parseCatalogSettings(R"({ "files": [], "settings": {
+        "dadnme": [
+          { "id": "ff", "label": "Friendly fire", "since": "1.0.3.7", "args": ["--coop-option", "friendlyfire=1"] },
+          { "id": "diff", "type": "choice", "label": "Difficulty", "default": "hard", "scope": "all",
+            "choices": [ { "id": "easy", "label": "Easy", "args": ["--coop-option", "d=0"] },
+                         { "id": "hard", "label": "Hard", "args": ["--coop-option", "d=2"] } ] },
+          { "id": "bad", "type": "choice", "label": "One choice", "choices": [ { "id": "a", "label": "A" } ] },
+          { "id": "bad2", "label": "No args" }
+        ],
+        "other": 5 } })", out);
+    REQUIRE(out.count("dadnme") == 1);
+    REQUIRE(out["dadnme"].size() == 2);  // the two broken ones are left out
+    CHECK(out["dadnme"][0].scope == "host");
+    CHECK(out["dadnme"][1].type == "choice" && out["dadnme"][1].choices.size() == 2 && out["dadnme"][1].def == "hard");
+    CHECK(out.count("other") == 0);
+    std::map<std::string, std::vector<Setting>> none;
+    parseCatalogSettings("not json", none);
+    CHECK(none.empty());
+}
+
 TEST(rooms_a_server_without_the_game_is_told_apart) {
     // The relay answers "E|Unknown game ..." until the mod's mods-info file is merged.
     WSADATA wsa;

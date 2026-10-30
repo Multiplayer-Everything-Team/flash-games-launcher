@@ -156,6 +156,7 @@ doesn't match.
 | `imageFocus` | `0`-`1`, default `0.5`: which part of the cover stays in view when it is cropped (0 top, 1 bottom) |
 | `actions` | Buttons; the first shown is the primary one (Enter / double-click) |
 | `comingSoon` | `true`: listed with *Coming soon* and no buttons; `actions` may be left out |
+| `settings` | The game's settings (a checkbox or a dropdown each, up to four): see "Game settings" below. The catalog's list for the game wins; this one is the fallback. |
 
 ### actions[]
 
@@ -200,6 +201,37 @@ Example, a new local multiplayer game:
   ]
 }
 ```
+
+
+## Game settings
+
+A game can offer settings the player changes in the launcher: a checkbox or a dropdown under the game's
+buttons. The launcher adds the setting's `args` to the command line. The list for a game comes from the
+**flash-games catalog**, so a game can add or change a setting without a launcher release: `catalog.json`
+has a top-level `"settings"` object, game id to list. A game the catalog doesn't list uses `settings` from
+its `launcher.json` entry. The player's choices are kept per game in `settings.json`.
+
+```json
+"settings": {
+  "dadnme": [
+    { "id": "friendlyfire", "type": "checkbox", "scope": "host", "label": "Friendly fire",
+      "since": "1.0.3.7", "args": ["--coop-option", "friendlyfire=1"] },
+    { "id": "difficulty", "type": "choice", "scope": "all", "label": "Difficulty", "default": "normal",
+      "choices": [ { "id": "easy",   "label": "Easy",   "args": ["--coop-option", "difficulty=0"] },
+                   { "id": "normal", "label": "Normal", "args": [] } ] }
+  ]
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `id`, `label` | Required. The id is what is saved; the label is shown. |
+| `type` | `"checkbox"` (default; `args` are added when ticked) or `"choice"` (the picked choice's `args`; at least two `choices`, each with `id`, `label`, `args`) |
+| `scope` | Which actions get the args: `"host"` (default; the ones that start a room), `"join"`, or `"all"` |
+| `since` | The first Ruffle Together release that knows the option. Before it the setting is disabled, because an unknown option stops the player from starting. |
+| `default` | A checkbox: `"on"` starts ticked. A choice: the default choice's id (else the first). |
+
+Entries that don't parse are logged and left out; at most four are used.
 
 ## Relay protocol
 

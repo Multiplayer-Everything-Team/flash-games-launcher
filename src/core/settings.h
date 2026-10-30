@@ -16,6 +16,8 @@ struct GameStats {
     std::string player;      // preferred player id, empty = config order
     std::map<std::string, std::wstring> swf;  // action id -> file chosen with "Locate"
     std::wstring gameDir;                     // PC mods: the game folder the player chose
+    // The game's settings the player changed: setting id -> "1"/"0" for a checkbox, the choice id for a choice.
+    std::map<std::string, std::string> settings;
 };
 
 struct UserData {

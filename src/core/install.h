@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -57,6 +58,9 @@ struct CatalogFile {
 // `baseUrl` is the catalog's own address; file paths are relative to its folder.
 bool parseCatalog(std::string_view json, const std::wstring& baseUrl, std::vector<CatalogFile>& out,
                   std::wstring& error);
+// The catalog's "settings": game id -> that game's settings (see Setting in config.h). A game with no entry, or
+// an entry that doesn't parse, keeps the settings from launcher.json.
+void parseCatalogSettings(std::string_view json, std::map<std::string, std::vector<Setting>>& out);
 // Downloads and parses the catalog. `raw` receives the JSON for caching.
 bool fetchCatalog(const std::wstring& url, std::vector<CatalogFile>& out, std::string& raw, std::wstring& error,
                   const std::atomic<bool>* cancel = nullptr);

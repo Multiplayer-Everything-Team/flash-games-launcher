@@ -199,6 +199,36 @@ struct GuideSpec {
     std::vector<GuideLink> links;
 };
 
+// One game setting the player can change in the launcher ("Friendly fire", "Difficulty"). The launcher draws a
+// checkbox or a dropdown for it and adds its `args` to the command line. Settings come from the game catalog
+// (flash-games catalog.json, "settings") so a game can add one without a launcher release; the ones in
+// launcher.json are the fallback when the catalog has none for that game.
+struct SettingChoice {
+    std::string id;
+    std::wstring label;
+    std::vector<std::wstring> args;
+};
+struct Setting {
+    std::string id;
+    std::string type = "checkbox";  // "checkbox" (args added when ticked) or "choice" (the picked choice's args)
+    std::string scope = "host";     // which actions get the args: "host" (rooms you host), "join", or "all"
+    std::wstring label;
+    // The first Ruffle Together release that knows the option; before it the setting is disabled, because an
+    // unknown option stops the player from starting.
+    std::wstring since;
+    std::vector<std::wstring> args;       // checkbox
+    std::vector<SettingChoice> choices;   // choice; the first one is the default unless `def` names another
+    std::string def;                      // checkbox: "on" starts ticked; choice: the default choice's id
+};
+inline constexpr size_t kMaxSettings = 4;
+
+namespace json {
+class Value;
+}
+struct ConfigIssue;
+// Reads a "settings" array (launcher.json or the catalog). Bad entries are reported and left out.
+std::vector<Setting> readSettings(const json::Value& list, const std::wstring& where, std::vector<ConfigIssue>& issues);
+
 struct GameSpec {
     std::string id;
     std::wstring name, description, playerCount, controls, image;
@@ -213,6 +243,7 @@ struct GameSpec {
     GuideSpec guide;
     std::vector<std::string> categories;
     bool comingSoon = false;  // listed with "Coming soon" and no buttons (its mod isn't built yet)
+    std::vector<Setting> settings;  // fallback; the catalog's settings for this game win
     // A PC game mod: installed into the game's folder instead of played in Ruffle.
     std::shared_ptr<const mod::Spec> mod;
     Color color{0x4F, 0x8B, 0xFF, 255}, colorEnd{0x9C, 0x6B, 0xFF, 255};
