@@ -546,6 +546,35 @@ TEST(shipped_config_gives_dad_n_me_a_friendly_fire_host_option) {
     CHECK(g->settings[0].args.size() == 2 && g->settings[0].args[1] == L"friendlyfire=1");
 }
 
+TEST(shipped_config_gives_zombotron_four_host_options_and_up_to_four_players) {
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    LoadResult r = loadConfigFile(path);
+    REQUIRE(r.ok());
+    const GameSpec* g = r.config.findGame("zombotron");
+    REQUIRE(g != nullptr);
+    CHECK(g->maxPlayers == 4);
+    REQUIRE(g->settings.size() == 4);
+    CHECK(g->settings[0].id == "camera" && g->settings[0].type == "choice" && g->settings[0].choices.size() == 2);
+    CHECK(g->settings[1].id == "zoom" && g->settings[1].choices.size() == 3);
+    CHECK(g->settings[2].id == "friendlyfire" && g->settings[3].id == "bump");
+}
+
+TEST(catalog_settings_accept_the_live_dad_n_me_camera_choice) {
+    std::map<std::string, std::vector<Setting>> out;
+    parseCatalogSettings(R"({ "files": [], "settings": { "dadnme": [
+      { "id": "friendlyfire", "type": "checkbox", "scope": "host", "label": "Friendly fire", "since": "1.0.3.7", "args": ["--coop-option", "friendlyfire=1"] },
+      { "id": "camera", "type": "choice", "scope": "host", "label": "Camera", "since": "1.0.3.7", "default": "shared", "choices": [
+        { "id": "shared", "label": "Shared screen", "args": [] },
+        { "id": "follow", "label": "Follow each player", "args": ["--coop-option", "camera=follow"] },
+        { "id": "zoom", "label": "Follow each player, zoomed in", "args": ["--coop-option", "camera=zoom"] } ] } ] } })", out);
+    REQUIRE(out["dadnme"].size() == 2);
+    const Setting& cam = out["dadnme"][1];
+    CHECK(cam.type == "choice" && cam.def == "shared" && cam.choices.size() == 3);
+    CHECK(cam.choices[0].args.empty());
+    CHECK(cam.choices[2].args.size() == 2 && cam.choices[2].args[1] == L"camera=zoom");
+}
+
 TEST(catalog_settings_checkboxes_and_choices) {
     std::map<std::string, std::vector<Setting>> out;
     parseCatalogSettings(R"({ "files": [], "settings": {
