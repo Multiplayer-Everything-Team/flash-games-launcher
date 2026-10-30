@@ -452,8 +452,25 @@ private:
     // and goes out with what was typed; false when the window was closed without one.
     bool askAddress(std::wstring& address, const std::wstring& action);
     std::wstring textPrompt(bool address, const std::wstring& title, const std::wstring& body, const std::wstring& labelText,
-                            const std::wstring& okText, const std::wstring& initial);
+                            const std::wstring& okText, const std::wstring& initial, bool anyTarget = false);
     static LRESULT CALLBACK nameProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    // Ruffle Together co-op games show Host and Join instead of every way to connect. Host opens a setup
+    // window (players, connection, the game's settings); Join takes a room code or an address in one box.
+    struct HostChoice {
+        size_t action;  // the action that starts this combination
+        int players;
+        bool relay;     // a room code through the central server; otherwise a direct IP
+    };
+    static bool isCoopHostAction(const ActionSpec& a);
+    static bool isCoopJoinAction(const ActionSpec& a);
+    bool coopFlow(const GameSpec& g) const;
+    std::vector<HostChoice> hostChoices(const GameSpec& g) const;
+    bool hostSetup(int gi, size_t& action);
+    void onHostGame();
+    void onJoinGame();
+    static LRESULT CALLBACK hostProc(HWND h, UINT m, WPARAM w, LPARAM l);
+    HWND hostGameBtn_ = nullptr, joinGameBtn_ = nullptr;
+    std::wstring pendingAddress_;  // an address the Join box already took: runAction doesn't ask again
     HWND lobbyWnd_ = nullptr;
     int lobbyGame_ = -1;
     std::unique_ptr<lobby::Session> lobby_;

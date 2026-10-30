@@ -244,7 +244,9 @@ LRESULT Launcher::handle(UINT m, WPARAM w, LPARAM l) {
             } else if ((id == kIdTabCode || id == kIdPageCode) && (code == EN_SETFOCUS || code == EN_KILLFOCUS)) {
                 InvalidateRect(hwnd_, id == kIdTabCode ? &dl_.codeBox : &pageCodeBox_, FALSE);
             } else if (code == BN_CLICKED) {
-                if (id >= kIdSetting0 && id <= kIdSetting3) onSettingChanged(id - kIdSetting0, false);
+                if (id == kIdHostGame) onHostGame();
+                else if (id == kIdJoinGame) onJoinGame();
+                else if (id >= kIdSetting0 && id <= kIdSetting3) onSettingChanged(id - kIdSetting0, false);
                 else if (id >= kIdAction0 && id < kIdRoom0) runAction(selected_, static_cast<size_t>(id - kIdAction0));
                 else if (id == kIdFav) toggleFavorite();
                 else if (id == kIdLocate) locateFile();

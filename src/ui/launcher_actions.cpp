@@ -82,8 +82,12 @@ bool Launcher::runAction(int gi, size_t ai, const std::vector<std::pair<std::wst
             if (arg.find(L"${ADDRESS}") != std::wstring::npos) wantsAddress = true;
         if (wantsAddress) {
             // The clipboard is only a guess for the field: friends usually copy the address before pressing this.
-            address = clipboardText();
-            if (!askAddress(address, a.label)) return false;
+            if (!pendingAddress_.empty()) {
+                address = pendingAddress_;  // the Join box already took it
+            } else {
+                address = clipboardText();
+                if (!askAddress(address, a.label)) return false;
+            }
         }
         {
             std::lock_guard<std::mutex> lock(installMu_);

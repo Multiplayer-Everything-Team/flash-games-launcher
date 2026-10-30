@@ -1074,6 +1074,7 @@ struct NameDialog {
     std::wstring result;
     bool done = false;
     bool address = false;  // the field takes "host:port" instead of a player name
+    bool code = false;     // ...or a room code too (the Join box)
     RECT field{};          // the box around the edit, painted by the dialog
 };
 }  // namespace
@@ -1130,7 +1131,7 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             int id = LOWORD(w), code = HIWORD(w);
             if (code == EN_CHANGE) {
                 std::wstring typed = trim(windowText(d->edit));
-                bool any = d->address ? looksLikeAddress(typed) : !typed.empty();
+                bool any = d->address ? (d->code ? looksLikeJoinTarget(typed) : looksLikeAddress(typed)) : !typed.empty();
                 L.btnInfo_[d->ok].ready = any;
                 InvalidateRect(d->ok, nullptr, FALSE);
                 return 0;
@@ -1138,7 +1139,7 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (id == IDOK || (code == BN_CLICKED && reinterpret_cast<HWND>(l) == d->ok)) {
                 if (d->address) {
                     std::wstring typed = trim(windowText(d->edit));
-                    if (!looksLikeAddress(typed)) {
+                    if (!(d->code ? looksLikeJoinTarget(typed) : looksLikeAddress(typed))) {
                         SetFocus(d->edit);
                         return 0;
                     }
@@ -1180,7 +1181,8 @@ LRESULT CALLBACK Launcher::nameProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 // One small themed window with a single text field: the player name, or a friend's address and port.
 // Returns what was typed; empty when the window was closed without a value.
 std::wstring Launcher::textPrompt(bool address, const std::wstring& title, const std::wstring& body,
-                                  const std::wstring& labelText, const std::wstring& okText, const std::wstring& initial) {
+                                  const std::wstring& labelText, const std::wstring& okText, const std::wstring& initial,
+                                  bool anyTarget) {
     if (snapshot_) return {};
     HINSTANCE inst = GetModuleHandleW(nullptr);
     static bool registered = false;
@@ -1196,6 +1198,7 @@ std::wstring Launcher::textPrompt(bool address, const std::wstring& title, const
     NameDialog d;
     d.self = this;
     d.address = address;
+    d.code = anyTarget;
     HWND owner = lobbyWnd_ && IsWindowVisible(lobbyWnd_) ? lobbyWnd_ : hwnd_;
     HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, kNameClass, title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
                              CW_USEDEFAULT, CW_USEDEFAULT, 100, 100, owner, nullptr, inst, &d);
@@ -1232,7 +1235,7 @@ std::wstring Launcher::textPrompt(bool address, const std::wstring& title, const
     y += fieldH + t.s(22);
     d.ok = makeButton(IDOK + 900, BtnStyle::Primary, w);
     SetWindowTextW(d.ok, okText.c_str());
-    btnInfo_[d.ok].ready = address ? looksLikeAddress(trim(initial)) : !initial.empty();
+    btnInfo_[d.ok].ready = address ? (anyTarget ? looksLikeJoinTarget(trim(initial)) : looksLikeAddress(trim(initial))) : !initial.empty();
     MoveWindow(d.ok, pad + inner - t.s(150), y, t.s(150), t.s(40), FALSE);
     ShowWindow(d.ok, SW_SHOW);
     y += t.s(40) + t.s(24);
@@ -1277,6 +1280,365 @@ bool Launcher::askName(bool firstRun) {
     if (lbRoomName_ && trim(windowText(lbRoomName_)).empty())
         SetWindowTextW(lbRoomName_, (user_.playerName + L"'s room").c_str());
     return true;
+}
+
+// ---- host and join (Ruffle Together co-op games) ----------------------------------
+
+namespace {
+constexpr wchar_t kHostClass[] = L"MultiplayerEverythingLauncherHost";
+struct HostDialog {
+    Launcher* self = nullptr;
+    HWND players = nullptr, conn = nullptr, save = nullptr, note = nullptr, ok = nullptr, cancel = nullptr;
+    std::vector<HWND> setCtl;                // one per setting shown: a checkbox or a dropdown
+    std::vector<const Setting*> setDef;
+    int playersSel = 0, connSel = 0, saveSel = 0;  // read when the window is accepted, before it is destroyed
+    std::vector<std::string> setValues;
+    bool accepted = false, done = false;
+};
+}  // namespace
+
+bool Launcher::isCoopHostAction(const ActionSpec& a) {
+    for (const auto& s : a.args)
+        if (s.rfind(L"--coop-host", 0) == 0) return true;
+    return false;
+}
+
+bool Launcher::isCoopJoinAction(const ActionSpec& a) {
+    if (!a.joinArgs.empty()) return true;
+    for (const auto& s : a.args)
+        if (s.rfind(L"--coop-join", 0) == 0) return true;
+    return false;
+}
+
+bool Launcher::coopFlow(const GameSpec& g) const {
+    if (g.mod || !coopSaveGame(g)) return false;
+    bool host = false, join = false;
+    for (const auto& a : g.actions) {
+        host = host || isCoopHostAction(a);
+        join = join || isCoopJoinAction(a);
+    }
+    return host && join;
+}
+
+std::vector<Launcher::HostChoice> Launcher::hostChoices(const GameSpec& g) const {
+    std::vector<HostChoice> out;
+    for (size_t i = 0; i < g.actions.size(); ++i) {
+        const ActionSpec& a = g.actions[i];
+        if (!isCoopHostAction(a)) continue;
+        int players = 0;
+        bool relay = false;
+        for (size_t k = 0; k < a.args.size(); ++k) {
+            if (a.args[k] == L"--coop-host-relay") relay = true;
+            if (a.args[k] == L"--coop-players" && k + 1 < a.args.size()) players = _wtoi(a.args[k + 1].c_str());
+        }
+        if (players > 0) out.push_back({i, players, relay});
+    }
+    return out;
+}
+
+LRESULT CALLBACK Launcher::hostProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* d = reinterpret_cast<HostDialog*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    if (m == WM_NCCREATE) {
+        d = static_cast<HostDialog*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+        SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(d));
+    }
+    if (!d) return DefWindowProcW(h, m, w, l);
+    Launcher& L = *d->self;
+    const Theme& t = L.theme_;
+    auto accept = [&] {
+        d->playersSel = d->players ? static_cast<int>(SendMessageW(d->players, CB_GETCURSEL, 0, 0)) : 0;
+        d->connSel = d->conn ? static_cast<int>(SendMessageW(d->conn, CB_GETCURSEL, 0, 0)) : 0;
+        d->saveSel = d->save ? static_cast<int>(SendMessageW(d->save, CB_GETCURSEL, 0, 0)) : 0;
+        d->setValues.clear();
+        for (size_t i = 0; i < d->setCtl.size(); ++i) {
+            const Setting& s = *d->setDef[i];
+            if (s.type == "checkbox") {
+                d->setValues.push_back(SendMessageW(d->setCtl[i], BM_GETCHECK, 0, 0) == BST_CHECKED ? "1" : "0");
+            } else {
+                int sel = static_cast<int>(SendMessageW(d->setCtl[i], CB_GETCURSEL, 0, 0));
+                d->setValues.push_back(sel >= 0 && static_cast<size_t>(sel) < s.choices.size() ? s.choices[sel].id : std::string());
+            }
+        }
+        d->accepted = true;
+        DestroyWindow(h);
+    };
+    switch (m) {
+        case WM_ERASEBKGND: {
+            RECT rc;
+            GetClientRect(h, &rc);
+            FillRect(reinterpret_cast<HDC>(w), &rc, t.brSurface);
+            const auto& colors = L.cfg_.branding.playerColors;
+            int n = static_cast<int>(colors.size());
+            for (int i = 0; i < n; ++i) {
+                RECT bar{rc.right * i / n, 0, rc.right * (i + 1) / n, t.s(4)};
+                HBRUSH br = CreateSolidBrush(colors[i].ref());
+                FillRect(reinterpret_cast<HDC>(w), &bar, br);
+                DeleteObject(br);
+            }
+            return 1;
+        }
+        case WM_CTLCOLORSTATIC: {
+            HDC dc = reinterpret_cast<HDC>(w);
+            LONG_PTR role = GetWindowLongPtrW(reinterpret_cast<HWND>(l), GWLP_USERDATA);
+            SetTextColor(dc, (role == kRoleMuted ? t.c.textMuted : role == kRoleError ? t.c.warning : t.c.text).ref());
+            SetBkColor(dc, t.c.surface.ref());
+            return reinterpret_cast<LRESULT>(t.brSurface);
+        }
+        case WM_NOTIFY: {
+            auto* hdr = reinterpret_cast<NMHDR*>(l);
+            if (hdr->code == NM_CUSTOMDRAW && L.btnInfo_.count(hdr->hwndFrom)) {
+                auto* cd = reinterpret_cast<NMCUSTOMDRAW*>(l);
+                if (cd->dwDrawStage == CDDS_PREPAINT) {
+                    L.drawButton(hdr->hwndFrom, cd->hdc, cd->rc, cd->uItemState);
+                    return CDRF_SKIPDEFAULT;
+                }
+                return CDRF_DODEFAULT;
+            }
+            break;
+        }
+        case WM_COMMAND: {
+            int id = LOWORD(w), code = HIWORD(w);
+            HWND from = reinterpret_cast<HWND>(l);
+            if (code == CBN_SELCHANGE && from && from == d->save && d->note) {
+                bool replaces = SendMessageW(d->save, CB_GETCURSEL, 0, 0) > 0;
+                SetWindowLongPtrW(d->note, GWLP_USERDATA, replaces ? kRoleError : kRoleMuted);
+                SetWindowTextW(d->note, replaces ? L.cfg_.t("coopSave.replaces", {{L"GAME", L.cfg_.games[L.selected_].name}}).c_str() : L"");
+                InvalidateRect(d->note, nullptr, TRUE);
+                return 0;
+            }
+            if (id == IDOK || (code == BN_CLICKED && from == d->ok)) {
+                accept();
+                return 0;
+            }
+            if (id == IDCANCEL || (code == BN_CLICKED && from == d->cancel)) {
+                DestroyWindow(h);
+                return 0;
+            }
+            break;
+        }
+        case WM_CLOSE:
+            DestroyWindow(h);
+            return 0;
+        case WM_DESTROY:
+            for (auto it = L.btnInfo_.begin(); it != L.btnInfo_.end();)
+                it = GetParent(it->first) == h ? L.btnInfo_.erase(it) : std::next(it);
+            if (L.hoverBtn_ && GetParent(L.hoverBtn_) == h) L.hoverBtn_ = nullptr;
+            d->done = true;
+            return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+// The Host window: how many players, how they connect, and the game's own settings. `action` is the
+// action that starts that combination. False when the player closed it without pressing Start.
+bool Launcher::hostSetup(int gi, size_t& action) {
+    if (snapshot_) return false;
+    const GameSpec& g = cfg_.games[gi];
+    std::vector<HostChoice> choices = hostChoices(g);
+    if (choices.empty()) return false;
+    std::vector<int> counts;
+    bool hasRelay = false, hasIp = false;
+    for (const auto& c : choices) {
+        if (std::find(counts.begin(), counts.end(), c.players) == counts.end()) counts.push_back(c.players);
+        (c.relay ? hasRelay : hasIp) = true;
+    }
+    std::sort(counts.begin(), counts.end());
+
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    static bool registered = false;
+    if (!registered) {
+        WNDCLASSEXW wc{sizeof wc};
+        wc.lpfnWndProc = hostProc;
+        wc.hInstance = inst;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.lpszClassName = kHostClass;
+        RegisterClassExW(&wc);
+        registered = true;
+    }
+    HostDialog d;
+    d.self = this;
+    HWND owner = hwnd_;
+    std::wstring title = cfg_.t("host.title", {{L"GAME", g.name}});
+    HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, kHostClass, title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
+                             CW_USEDEFAULT, CW_USEDEFAULT, 100, 100, owner, nullptr, inst, &d);
+    if (!w) return false;
+    BOOL darkTitle = theme_.dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(w, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkTitle, sizeof darkTitle);
+    const Theme& t = theme_;
+    int pad = t.s(28), width = t.s(460), inner = width - pad * 2;
+    int comboH = t.s(30), checkH = t.s(28);
+    HDC dc = GetDC(w);
+    auto label = [&](const std::wstring& text, TextRole role, HFONT f, int y, int h) {
+        HWND s = CreateWindowExW(0, L"STATIC", text.c_str(), WS_CHILD | WS_VISIBLE | SS_NOPREFIX, pad, y, inner, h, w, nullptr, inst, nullptr);
+        SetWindowLongPtrW(s, GWLP_USERDATA, role);
+        SendMessageW(s, WM_SETFONT, reinterpret_cast<WPARAM>(f), FALSE);
+        return s;
+    };
+    auto combo = [&](int y) {
+        HWND c = CreateWindowExW(0, WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, pad, y, inner,
+                                 t.s(240), w, nullptr, inst, nullptr);
+        SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(t.body), FALSE);
+        if (theme_.dark && !theme_.highContrast) SetWindowTheme(c, L"DarkMode_CFD", nullptr);
+        return c;
+    };
+    auto add = [&](HWND c, const std::wstring& text) { SendMessageW(c, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str())); };
+    int y = t.s(26);
+    label(title, kRoleText, t.title, y, t.s(36));
+    y += t.s(52);
+    auto row = [&](const std::wstring& text) {
+        label(text, kRoleText, t.strong, y, t.s(22));
+        y += t.s(26);
+    };
+    if (counts.size() > 1) {
+        row(cfg_.t("host.players"));
+        d.players = combo(y);
+        for (int n : counts) add(d.players, cfg_.t("host.playersN", {{L"N", std::to_wstring(n)}}));
+        SendMessageW(d.players, CB_SETCURSEL, 0, 0);
+        y += comboH + t.s(14);
+    }
+    if (hasRelay && hasIp) {
+        row(cfg_.t("host.connection"));
+        d.conn = combo(y);
+        add(d.conn, cfg_.t("host.viaRoom"));
+        add(d.conn, cfg_.t("host.viaIp"));
+        SendMessageW(d.conn, CB_SETCURSEL, 0, 0);
+        y += comboH + t.s(14);
+    }
+    if (coopSavePlayer()) {
+        row(cfg_.t("coopSave.label"));
+        d.save = combo(y);
+        for (const char* key : {"coopSave.continue", "coopSave.solo", "coopSave.new"}) add(d.save, cfg_.t(key));
+        bool ok = coopSaveSupported();
+        SendMessageW(d.save, CB_SETCURSEL, ok ? coopSaveChoiceFor(g) : 0, 0);
+        EnableWindow(d.save, ok);
+        y += comboH + t.s(4);
+        int noteH = textHeight(dc, t.caption, L"Ag", 100, DT_SINGLELINE) * 2 + t.s(4);
+        std::wstring noteText;
+        LONG_PTR role = kRoleMuted;
+        if (!ok) noteText = cfg_.t("coopSave.needs", {{L"VERSION", coopSavePlayer()->coopSaveSince}});
+        else if (coopSaveChoiceFor(g) > 0) {
+            noteText = cfg_.t("coopSave.replaces", {{L"GAME", g.name}});
+            role = kRoleError;
+        } else if (std::wstring f = coopSaveFile(g); !f.empty() && fs::isFile(f)) noteText = cfg_.t("coopSave.progress");
+        d.note = label(noteText, kRoleMuted, t.caption, y, noteH);
+        SetWindowLongPtrW(d.note, GWLP_USERDATA, role);
+        y += noteH + t.s(8);
+    }
+    const std::vector<Setting>& list = settingsFor(g);
+    int checkId = 3000;
+    for (const Setting& s : list) {
+        if (s.scope == "join") continue;
+        bool ok = playerAtLeast(s.since);
+        std::wstring text = ok ? s.label : cfg_.t("setting.needs", {{L"LABEL", s.label}, {L"VERSION", s.since}});
+        std::string value = settingValue(g, s);
+        HWND ctl = nullptr;
+        if (s.type == "checkbox") {
+            ctl = makeButton(checkId++, BtnStyle::Check, w);
+            SetWindowTextW(ctl, text.c_str());
+            SendMessageW(ctl, BM_SETCHECK, ok && value == "1" ? BST_CHECKED : BST_UNCHECKED, 0);
+            MoveWindow(ctl, pad, y, inner, checkH, FALSE);
+            ShowWindow(ctl, SW_SHOW);
+            y += checkH + t.s(8);
+        } else {
+            row(text);
+            ctl = combo(y);
+            int sel = 0;
+            for (size_t c = 0; c < s.choices.size(); ++c) {
+                add(ctl, s.choices[c].label);
+                if (s.choices[c].id == value) sel = static_cast<int>(c);
+            }
+            SendMessageW(ctl, CB_SETCURSEL, sel, 0);
+            y += comboH + t.s(14);
+        }
+        EnableWindow(ctl, ok);
+        d.setCtl.push_back(ctl);
+        d.setDef.push_back(&s);
+    }
+    y += t.s(14);
+    d.ok = makeButton(IDOK + 900, BtnStyle::Primary, w);
+    SetWindowTextW(d.ok, cfg_.t("host.start").c_str());
+    d.cancel = makeButton(IDCANCEL + 900, BtnStyle::Secondary, w);
+    SetWindowTextW(d.cancel, cfg_.t("host.cancel").c_str());
+    int bh = t.s(40), okW = t.s(150), cancelW = t.s(130);
+    MoveWindow(d.ok, pad + inner - okW, y, okW, bh, FALSE);
+    MoveWindow(d.cancel, pad + inner - okW - t.s(10) - cancelW, y, cancelW, bh, FALSE);
+    ShowWindow(d.ok, SW_SHOW);
+    ShowWindow(d.cancel, SW_SHOW);
+    y += bh + t.s(24);
+    ReleaseDC(w, dc);
+    RECT rc{0, 0, width, y};
+    AdjustWindowRectExForDpi(&rc, GetWindowLongW(w, GWL_STYLE), FALSE, GetWindowLongW(w, GWL_EXSTYLE), t.dpi);
+    RECT o;
+    GetWindowRect(owner, &o);
+    int ww = rc.right - rc.left, wh = rc.bottom - rc.top;
+    SetWindowPos(w, nullptr, o.left + (o.right - o.left - ww) / 2, o.top + (o.bottom - o.top - wh) / 3, ww, wh, SWP_NOZORDER);
+    EnableWindow(owner, FALSE);
+    ShowWindow(w, SW_SHOW);
+    SetFocus(d.ok);
+    MSG msg;
+    while (!d.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (IsDialogMessageW(w, &msg)) continue;
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    EnableWindow(owner, TRUE);
+    SetForegroundWindow(owner);
+    if (!d.accepted) return false;
+
+    // What was picked becomes what the action reads: the co-op save choice and the settings.
+    bool relay = d.conn ? d.connSel == 0 : hasRelay;
+    int players = counts[std::clamp(d.playersSel, 0, static_cast<int>(counts.size()) - 1)];
+    const HostChoice* pick = nullptr;
+    for (const auto& c : choices)
+        if (c.players == players && c.relay == relay) pick = &c;
+    if (!pick)
+        for (const auto& c : choices)
+            if (c.players == players) pick = &c;
+    if (!pick) return false;
+    if (d.save && coopSaveSupported()) coopSaveChoice_[g.id] = std::clamp(d.saveSel, 0, 2);
+    for (size_t i = 0; i < d.setDef.size(); ++i)
+        if (playerAtLeast(d.setDef[i]->since) && !d.setValues[i].empty()) user_.stats(g.id).settings[d.setDef[i]->id] = d.setValues[i];
+    save();
+    action = pick->action;
+    return true;
+}
+
+void Launcher::onHostGame() {
+    if (selected_ < 0) return;
+    size_t action = 0;
+    if (!hostSetup(selected_, action)) return;
+    runAction(selected_, action);
+}
+
+void Launcher::onJoinGame() {
+    if (selected_ < 0) return;
+    int gi = selected_;
+    const GameSpec& g = cfg_.games[gi];
+    // The clipboard is only a guess for the box: friends usually copy the code or address first.
+    std::wstring clip = clipboardText();
+    std::wstring typed = textPrompt(true, cfg_.t("button.joinGame"), cfg_.t("join.body"), cfg_.t("join.label"), cfg_.t("join.ok"),
+                                    looksLikeJoinTarget(clip) ? clip : std::wstring(), true);
+    if (typed.empty()) return;
+    if (looksLikeAddress(typed)) {
+        for (size_t i = 0; i < g.actions.size(); ++i) {
+            bool wants = false;
+            for (const auto& arg : g.actions[i].args)
+                if (arg.find(L"${ADDRESS}") != std::wstring::npos) wants = true;
+            if (!wants) continue;
+            pendingAddress_ = typed;
+            runAction(gi, i);
+            pendingAddress_.clear();
+            return;
+        }
+    } else {
+        for (auto& ch : typed) ch = static_cast<wchar_t>(towupper(ch));
+        for (size_t i = 0; i < g.actions.size(); ++i)
+            if (!g.actions[i].joinArgs.empty()) {
+                runAction(gi, i, {{L"join", typed}});
+                return;
+            }
+    }
+    notice(cfg_.t("notice.launchFailed", {{L"PLAYER", g.name}, {L"ERROR", typed}}), theme_.c.error);
 }
 
 // ---- diagnostics --------------------------------------------------------------

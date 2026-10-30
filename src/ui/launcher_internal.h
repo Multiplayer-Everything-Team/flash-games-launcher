@@ -103,6 +103,8 @@ enum : int {
     kIdPageHideFull,
     kIdPageCode,
     kIdPageCodeJoin,
+    kIdHostGame,  // Ruffle Together co-op games: one Host and one Join button instead of every way to connect
+    kIdJoinGame,
     kIdSetting0,  // a game's settings (config.h Setting): checkboxes...
     kIdSetting1,
     kIdSetting2,
@@ -226,6 +228,14 @@ inline std::wstring fillPlaceholders(ResolvedAction& r, const std::wstring& name
     return {};
 }
 
+// A room code: the short word the host's launcher shows (letters and digits only).
+inline bool looksLikeRoomCode(const std::wstring& s) {
+    if (s.size() < 4 || s.size() > 8) return false;
+    for (wchar_t c : s)
+        if (!iswalnum(c)) return false;
+    return true;
+}
+
 // "host:port" the way a friend copies it: an address or name, a colon, a port.
 inline bool looksLikeAddress(const std::wstring& s) {
     size_t colon = s.rfind(L':');
@@ -235,6 +245,15 @@ inline bool looksLikeAddress(const std::wstring& s) {
     for (size_t i = 0; i < colon; ++i)
         if (!(iswalnum(s[i]) || s[i] == L'.' || s[i] == L'-' || s[i] == L'_' || s[i] == L'[' || s[i] == L']' || s[i] == L':'))
             return false;
+    return true;
+}
+
+// What the Join box accepts: a room code or a friend's address and port.
+inline bool looksLikeJoinTarget(const std::wstring& s) {
+    if (looksLikeAddress(s)) return true;
+    if (s.size() < 4 || s.size() > 8) return false;
+    for (wchar_t c : s)
+        if (!iswalnum(c)) return false;
     return true;
 }
 

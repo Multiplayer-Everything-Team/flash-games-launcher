@@ -366,6 +366,12 @@ void Launcher::createControls() {
     quickBtn_ = makeButton(kIdQuick, BtnStyle::Secondary);
     btnInfo_[quickBtn_].icon = kIconQuick;
     moreBtn_ = makeButton(kIdMore, BtnStyle::Ghost);
+    hostGameBtn_ = makeButton(kIdHostGame, BtnStyle::Primary);
+    joinGameBtn_ = makeButton(kIdJoinGame, BtnStyle::Secondary);
+    SetWindowTextW(hostGameBtn_, cfg_.t("button.hostGame").c_str());
+    SetWindowTextW(joinGameBtn_, cfg_.t("button.joinGame").c_str());
+    btnInfo_[hostGameBtn_].icon = L"\uE774";
+    btnInfo_[joinGameBtn_].icon = L"\uE774";
     tabCodeEdit_ = child(L"EDIT", WS_TABSTOP | ES_AUTOHSCROLL | ES_UPPERCASE, 0, kIdTabCode);
     tabCodeBtn_ = makeButton(kIdTabCodeJoin, BtnStyle::Secondary);
     // The Rooms page: game filter, hide full rooms, join by code.

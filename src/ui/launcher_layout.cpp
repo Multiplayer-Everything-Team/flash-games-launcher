@@ -120,7 +120,7 @@ void Launcher::layoutDetail() {
     tabRows_.clear();
     std::vector<HWND> all = {playerCombo_, saveCombo_, favBtn_,     aboutBtn_,    locateBtn_,   folderBtn_,  getPlayerBtn_,
                              stopHostBtn_, copyBtn_,     downloadBtn_, tabPlayBtn_, tabRoomsBtn_,
-                             moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_};
+                             moreBtn_,     quickBtn_,    tabCodeEdit_, tabCodeBtn_, hostGameBtn_, joinGameBtn_};
     all.insert(all.end(), settingChecks_.begin(), settingChecks_.end());
     all.insert(all.end(), settingCombos_.begin(), settingCombos_.end());
     all.insert(all.end(), roomBtns_.begin(), roomBtns_.end());
@@ -156,13 +156,18 @@ void Launcher::layoutDetail() {
     const GameStats* st = user_.find(g.id);
     // Originals show only when Settings asks; "more" actions (direct IP, LAN)
     // wait behind "Other ways to connect".
-    std::vector<size_t> mainActs, moreActs;
+    std::vector<size_t> mainActs, moreActs, allMain, allMore;
+    bool coopUi = !roomsTab && !g.comingSoon && coopFlow(g);
     for (size_t i = 0; i < g.actions.size(); ++i) {
         if (!actionVisible(selected_, g.actions[i])) continue;
+        (g.actions[i].more ? allMore : allMain).push_back(i);
+        // Host and Join stand in for every way of hosting and joining.
+        if (coopUi && (isCoopHostAction(g.actions[i]) || isCoopJoinAction(g.actions[i]))) continue;
         (g.actions[i].more ? moreActs : mainActs).push_back(i);
     }
-    std::vector<size_t> listed = mainActs;
-    if (showMore_) listed.insert(listed.end(), moreActs.begin(), moreActs.end());
+    // What can be missing (game file, player) is judged on every visible action, folded away or not.
+    std::vector<size_t> listed = allMain;
+    if (showMore_ || coopUi) listed.insert(listed.end(), allMore.begin(), allMore.end());
     bool quick = tabs && roomsKnown_ && !g.joinAction.empty() && !notOnServer(g);
     const ActionSpec* missingSwf = nullptr;
     const PlayerSpec* missingPlayer = nullptr;
@@ -186,7 +191,8 @@ void Launcher::layoutDetail() {
     int comboH = t.s(30);
     bool picker = SendMessageW(playerCombo_, CB_GETCOUNT, 0, 0) > 2;  // "Automatic" + 2 players
     // Ruffle Together co-op games: which save the host starts from, with a line saying what that does.
-    bool saveUi = !roomsTab && !g.mod && coopSaveGame(g) && coopSavePlayer() != nullptr;
+    // (With Host and Join the choice moves into the Host window.)
+    bool saveUi = !roomsTab && !g.mod && coopSaveGame(g) && coopSavePlayer() != nullptr && !coopUi;
     bool saveOk = saveUi && coopSaveSupported();
     int saveChoice = saveOk ? coopSaveChoiceFor(g) : 0;
     std::wstring saveNote;
@@ -205,7 +211,7 @@ void Launcher::layoutDetail() {
     // The game's own settings (checkboxes and dropdowns) sit under the note.
     int checkH = t.s(28);
     static const std::vector<Setting> noSettings;
-    const std::vector<Setting>& setList = roomsTab || g.mod || g.comingSoon ? noSettings : settingsFor(g);
+    const std::vector<Setting>& setList = roomsTab || g.mod || g.comingSoon || coopUi ? noSettings : settingsFor(g);
     bool setUi = !setList.empty();
     int setsH = 0;
     for (const auto& sd : setList) setsH += (sd.type == "choice" ? comboH + t.s(4) : checkH) + t.s(2);
@@ -233,7 +239,7 @@ void Launcher::layoutDetail() {
                     (moreActs.empty() ? 0 : rowH + gap) +
                     (showMore_ ? static_cast<int>(moreActs.size()) * (actionH + gap) : 0);
         int headerMin = titleH + t.s(4 + 24 + 16) + (slotsH ? slotsH + t.s(12) : 0) + (tabs ? tabsH + t.s(12) : 0);
-        int actionsH = static_cast<int>(mainActs.size() + (quick ? 1 : 0)) * (actionH + gap) +
+        int actionsH = static_cast<int>(mainActs.size() + (quick ? 1 : 0) + (coopUi ? 2 : 0)) * (actionH + gap) +
                        (picker ? comboH + t.s(16) : 0) + saveH;
         if (bottom - fixed - actionsH < y + headerMin) {
             actionH = t.s(40);
@@ -349,6 +355,16 @@ void Launcher::layoutDetail() {
             bottom -= actionH + gap;
         }
         if (!mainActs.empty()) placeAction(mainActs[0]);
+        // Host and Join lead the list (placed last, so they sit on top).
+        if (coopUi) {
+            for (HWND b : {joinGameBtn_, hostGameBtn_}) {
+                MoveWindow(b, x, bottom - actionH, w, actionH, TRUE);
+                shown.insert(b);
+                bottom -= actionH + gap;
+            }
+            EnableWindow(hostGameBtn_, !installing_);
+            EnableWindow(joinGameBtn_, !installing_);
+        }
 
         // The game's settings, right above the action buttons (the last one lowest).
         if (setUi) {
