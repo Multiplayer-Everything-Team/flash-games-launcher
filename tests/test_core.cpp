@@ -575,6 +575,23 @@ TEST(catalog_settings_accept_the_live_dad_n_me_camera_choice) {
     CHECK(cam.choices[2].args.size() == 2 && cam.choices[2].args[1] == L"camera=zoom");
 }
 
+TEST(shipped_config_keeps_chaos_faction_2_to_two_players_on_its_key_map) {
+    std::wstring path = fs::join(fs::parent(fs::parent(fs::parent(fs::selfExePath()))), L"launcher\\launcher.json");
+    if (!fs::isFile(path)) path = L"launcher\\launcher.json";
+    LoadResult r = loadConfigFile(path);
+    REQUIRE(r.ok());
+    const GameSpec* g = r.config.findGame("chaosfaction2");
+    REQUIRE(g != nullptr);
+    CHECK(g->maxPlayers == 2);
+    for (const auto& a : g->actions) {
+        CHECK(a.id != "room3" && a.id != "room4" && a.id != "host3" && a.id != "host4");
+        bool keyed = false;
+        for (size_t i = 0; i + 1 < a.args.size(); ++i)
+            if (a.args[i] == L"--coop-keys") keyed = a.args[i + 1] == L"chaos-faction-2";
+        if (!a.args.empty()) CHECK(keyed);
+    }
+}
+
 TEST(catalog_settings_checkboxes_and_choices) {
     std::map<std::string, std::vector<Setting>> out;
     parseCatalogSettings(R"({ "files": [], "settings": {
