@@ -210,9 +210,11 @@ void Launcher::layoutSettings() {
     place(logBtn, pad, y, textWidth(dc, t.button, logText) + t.s(32), bh);
     y += bh + t.s(28);
 
-    // Bottom row, under a divider drawn in WM_PAINT: version, project page, Close.
+    // Under a divider drawn in WM_PAINT: the version on its own line (beside the buttons it has no room and
+    // wraps out of its box), then project page and Close.
     SetPropW(settingsWnd_, L"divider", reinterpret_cast<HANDLE>(static_cast<INT_PTR>(y - t.s(14))));
-    place(nextLabel(), pad, y + t.s(8), t.s(200), t.s(20));
+    place(nextLabel(), pad, y, inner, t.s(22));
+    y += t.s(32);
     int right = pad + inner;
     HWND close = GetDlgItem(settingsWnd_, kSetClose);
     place(close, right - t.s(100), y, t.s(100), bh);
